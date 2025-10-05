@@ -1,0 +1,1203 @@
+65BASIC
+
+mode 0 flat 640 x 240 / 8 = 19,200         ; 20K mode 640 x 240 with 2 colors (BBC) (CPC 2)
+mode 1 flat 320 x 240 / 4 = 19,200         ; 20K mode 320 x 240 with 4 colors (BBC) (CPC 1)
+mode 2 flat 160 x 240 / 2 = 19,200         ; 20K mode 160 x 240 with 16 colors (BBC) (CPC 0)
+
+mode 3 text mode 40 x 30                   ; 12K mode 320 x 240 with 16x4 colors (16 palettes, h/v-flip, priority)
+
+mode 4 flat 320 x 240 / 8 = 9,600          ; 10K mode 320 x 240 with 2 colors (1:1)   35.2 lines (17.6 U/D)
+mode 5 flat 160 x 240 / 4 = 9,600          ; 10K mode 160 x 240 with 4 colors (1:2)   35.2 lines (17.6 U/D)
+mode 6 flat 160 x 120 / 2 = 9,600          ; 10K mode 160 x 120 with 16 colors (1:4)  17.6 lines
+
+9,600 is 8K + 1408 which is 88 chars out of the 4K char RAM, leaving 168 available,
+although this complicates the design: 8.8 lines come from the char RAM.
+
+Sprites are 8x8/8x16/16x8/16x16 at 4bpp (Opaque, 8 palettes, H/V-flip, Priority, High-bit)
+
+APA modes, with a 32 x 16 border:
+512*192/8 = 12K at 1bpp (plus 4K sprites) half-wide   (3.2x color clock)
+256*192/4 = 12K at 2bpp (plus 4K sprites) 1.333 ratio (1.6x color clock)
+128*192/2 = 12K at 4bpp (plus 4K sprites) double-wide (0.8x color clock)
+128*96/2  = 6K  at 4bpp (two banks) "low res mode"    (0.8x color clock, double-lines)
+
+232*184*3/8 = 16008 at 3bpp planar, with border       (1.6x color clock)
+
+Alternative with 200 lines, not as convenient for address calc.
+544*200/8 = 13.28K at 1bpp (plus 174 sprite-chrs)
+272*200/4 = 13.28K at 2bpp (plus 174 sprite-chrs) •
+136*200/2 = 13.28K at 4bpp (plus 174 sprite-chrs)
+
+This needs higher-speed parts:
+160*120/2 = 9.375K at 4bpp (plus 6.625K sprites) 1.333 ratio "low res" (diff. dotclock)
+640*200/8 = 16K at 1bpp (no sprites) half wide   (4x color clock)      (diff. dotclock)
+320*200/4 = 16K at 2bpp (no sprites) 1.6 ratio   (2x color clock)      (diff. dotclock)
+160*200/2 = 16K at 4bpp (no sprites) double wide (1x color clock)      (diff. dotclock)
+
+256*200/4 = 12.50K at 2bpp (plus 224 sprite-chrs) 1.28  border 32 x 20
+272*200/4 = 13.28K at 2bpp (plus 174 sprite-chrs) 1.36  border 24 x 20 •
+280*200/4 = 13.67K at 2bpp (plus 149 sprite-chrs) 1.4   border 20 x 20
+288*200/4 = 14.06K at 2bpp (plus 124 sprite-chrs) 1.44  border 16 x 20
+
+256*192/4 = 12K    at 2bpp (plus 256 sprite-chrs) 1.33  border 32 x 24 square
+264*200/4 = 12.89K at 2bpp (plus 199 sprite-chrs) 1.32  border 28 x 20 square
+272*204/4 = 13.54K at 2bpp (plus 157 sprite-chrs) 1.33  border 24 x 18 square
+280*208/4 = 14.21K at 2bpp (plus 114 sprite-chrs) 1.34  border 20 x 16 square
+
+similarly we now have room for 4 screens of 32*24 text:
+64*64*2 = 8K  (32*24*2 = 1536 per screen) at 256*192 resolution
+
+however for double-buffering (e.g. render then scroll)
+64*32*2 = 4K  would be sufficient  (the other 4K can be used as RAM)
+
+8-color tiles? 8*3=24 bytes per tile: 512*24 = 12K
+tile map 64*32*2 = 4K
+planar tiles: STA &8n00,Y; STA &9n00,Y; STA &An00,Y (map at $B000)
+32 tiles per tile page: n = &0 to &F
+map attribs: xVHIPPPT where VH=flip I=priority P=palette (8*4=32) T=top-bit of tile
+
+https://en.wikipedia.org/wiki/Master_System  256x192 16K VRAM  bitplane:4bpp(4 bytes per row)
+
+we need to support multicoloured text:
+Text Mode: 40x28, attribute is 16:16 foreground and background colors (using 32 colors)
+Tile Mode: 40x28, attribute is [HVIOpppT] selecting one of 8 palettes
+
+Text mode is useful for terminal emulation, BBS dialup.
+
+I=0 tile is behind sprites (visible if O=0 and pixel is zero)
+I=1 tile is in front of an I=0 sprite (an O=1 tile/sprite is opaque)
+I=1 tile is behind an I=1 sprite (an O=0 tile/sprite has transparent zero)
+
+Each sprite outputs the pixel (2-bit), palette (3-bit), priority (1-bit)
+The background outputs are passed in to the first sprite.
+
+Background -> HW Sprites -> Output
+               ^
+        in I=0, Sprite I=0 -> Sprite   (normal case)
+        in I=0, Sprite I=1 -> Sprite   (as above)
+        in I=1, Sprite I=0 -> Pass     (priority background is in front of sprites)
+        in I=1, Sprite I=1 -> Sprite   (this sprite is in front of priority background)
+
+This works the same way for stacking sprites:
+
+        in I=0, Sprite I=0 -> Sprite   (this sprite in front of prior sprite)
+        in I=0, Sprite I=1 -> Sprite   (as above)
+        in I=1, Sprite I=0 -> Pass     (prior sprite in front of this sprite)
+        in I=1, Sprite I=1 -> Sprite   (this sprite is in front of prior sprite)
+
+Sprite is only selected if the sprite pixel is non-zero OR attribute.opaque = 1,
+otherwise the inputs pass through unmodified. [transmission gate]
+
+How does transparent background (I=1,O=0) work?
+Background non-zero pixels enter the pipeline with I=1 (in front of I=0 sprites)
+Background zero pixels enter the pipeline with I=0 (behind I=0 sprites)
+
+How does opaque background (I=1,O=1) work?
+All background pixels enter the pipeline with I=1 (in front of I=0 sprites)
+
+OK: 32 bytes palette + 160/4 = 40 sprites + 8*4=32 line sprites +
+    8*2=16 sprite gfx + 8 sprite counters + 8 IO registers
+fits in XO2-256 ?
+(C64 had 8 [24x21], NES had 64 [8x8/8x16])
+(40 8x16 sprites is 20 16x16 sprites)
+
+NES can change which pattern table is used for BG.
+Could map each group of 64 BG tiles to an arbitrary bank? (of 8 banks)
+https://www.nesdev.org/wiki/PPU_rendering
+
+If there is a Character ROM (4K) it can be paged in to VRAM addresses,
+providing a font for free and leaving some VRAM for animated tiles.
+Two sets of 256 glyphs, one ASCII, the other optimised glyph-banks.
+(64 alpha/num/.,) (32 caps/sym) (48 num/caps/syms [ideally])
+But another ROM on the board costs more.
+
+
+Memory Map
+
+&0000 - 32K DRAM (fixed)
+&8000 - 16K Cartridge/Expansion RAM window (paged)
+&C000 - 16K BASIC ROM or 16K Cartridge/Expansion RAM window (paged)
+
+zero      256
+stack     256
+input     256   (line buffer)
+envelope  64    (16 params x4)
+pattern   32    (16 pointers to code?)
+sound     32    (4 channels)
+keyboard  16    (scan buffer)
+for/proc  256   (2 line ptr, 2 var ptr, 2 limit ptr, 2 step ptr = 8 x 10 = 80)
+
+for       10 x 8 = 80  (10 in BBC BASIC)
+while     20 x 2 = 40  (not in BBC BASIC)
+proc      20 x 2 = 40  (used PROC stack at TOP)
+repeat    20 x 2 = 40  (20 in BBC BASIC)
+gosub     26 x 2 = 52  (26 in BBC BASIC)
+
+BASE  = where the user's program starts ($0800)
+TOP   = end of the user's program, where vars are stored (CLEAR resets them)
+APEX  = top of main memory ($8000, or $C000 with RAM expansion)
+
+
+VRAM
+
+512*8*2 = 8K (&2000)  512 tiles @ 2-bpp (BG & Sprites)
+64*64*2 = 8K (&2000)  4 screens, or
+64*32*2 = 4K (&1000)  2 screens, and
+256*8*2 = 4K (&1000)  256 tiles @ 2-bpp (4 animation banks)
+
+VRAM access via VDP can be an accelerator: 6502 only has one Y register.
+It can implement 'unpack' modes, write-direction, ROP modes.
+
+
+https://www.masswerk.at/6502/6502_instruction_set.html
+http://www.riscos.com/support/developers/bbcbasic/appendices/basichistory.html
+
+http://www.6502.org/tools/emu/
+https://github.com/Klaus2m5/6502_65C02_functional_tests
+
+
+The competition:
+
+77 Jan: PET       8K $795        (all in one, video SRAM, 40×25 or 80×25 text)
+77 Jun: Apple II  4K $1,298      (no screen, composite out)
+77 ?  : TRS-80    4K $399        (48K max, video SRAM, $599 with monitor + tape deck)
+78 ?  : Apple Disk II            (clever controller HW)
+79 Jun: Apple II+ ~8K?
+79 Nov: Atari 800  8K $1,000     (48K max, sprites)
+80 Mar: Acorn Atom   2K £170     (12K max, "256×192 was considered high resolution")
+80 Jun: Apple II+   16K          (48K max)
+80 Sep: TRS-80 CoCo 16K $399     (Rev.B 32K with "half-bad" 4164 DRAMs)
+81 Aug: IBM PC  16K/16K          (OEM character set)
+81 Dec: BBC B/32K A/16K
+81    : VIC-20       5K $299
+82 Apr: ZX Spectrum 48K £175     (16K £125, 256×192, 15 colours, low production until Nov 82) Ferranti ULA
+82 Aug: Commodore 64 64K $595    (issues, slow sales, "took off in mid-1983")
+83 Jan: Apple IIe 64K, IBM XT    <-- Robo 48 launch here
+83 ?  : CoCo 2 64K $159          (6-bit DAC!)
+83 Nov: ZX Spectrum [USA] 48K
+84 Jan: Atari 800XL ~64K?
+84 Apr: CPC464 64K [UK]          (came with screen and casette player!)
+89 ?  : Sam Coupe (10,000 gate ASIC)
+
+48K generation: Apple II+, Atari 800, ZX Spectrum (1982–83)
+64K generation: Commodore 64, Apple IIe, Atari 600XL, CPC-464 (1983-84)
+
+New FCC rules in 1980 relaxed RFI requirements (17 dB more power: -43 dBm/MHz)
+
+https://www.youtube.com/watch?v=RQeEO7d1DWw  Launch Pricing
+
+A 16K RAM cartridge is available from day one.
+
+Rev.B includes unpopulated space on the board to install another 16K DRAM,
+bringing total internal memory up to 64K.
+
+CPC 464: 16MHz master clock, like BBC micro.
+
+"By 1982, the TI-99/4A and the Atari 400 were both at $349, the TRS-80 Color Computer
+sold at $379, and Commodore International had just reduced the price of the VIC-20
+to $199 and the Commodore 64 to $499."
+
+1982 price war between Commodore and TI, computers became as inexpensive as video-game
+consoles; Commodore cut the retail price of the C64 to $300 in June 1983.
+
+"Companies reduced production in the middle of the year because of weak demand even as prices
+remained low, causing shortages as sales suddenly rose during the Christmas season; only the
+Commodore 64 was widely available, with an estimated 500,000 computers sold during Christmas."
+
+"By that year, [console] video games were officially dead and computers were hot"
+The arcade game crash of 1984.
+
+"There was also a significant shift in the home video game market, away from consoles to
+personal computer software, between 1983 and 1985. The computer game market was able to
+gain a strong foothold in 1983 and beyond." [UK: rise of computer games in 1984]
+
+"But outside of North America the video game industry was doing very well. Home consoles
+were growing in popularity in Japan while home computers were surging across Europe."
+
+
+Design Points:
+• "Next-generation features at last-generation prices."
+• Low entry price @ 48K       (64K 4164s were still more expensive)
+• Expandable and upgradeable  (users desire this; devs target lowest common..)
+• Targeting home games market (Tile Gfx, HW Sprites, HW Scrolling)
+• Productivity support        (expected by users: word processing, printing)
+• Powerful BASIC              (procedures, graphics and sounds [beeb])
+• Approachable, easy to use   (friendly commands [1980s style])
+• Can make games on it        (bedroom coders)
+
+Technical Goals
+• Tiled graphics, as an extension of tiled text modes
+  • Like the HW palette, these enable very fast changes to the screen
+• Sprites, for the same reason
+  • HW blitter is likely too slow at 2 mem-cycles per pixel (or 2/4px)
+• Very simple custom HW (one 40-pin custom IC)
+  • Every 80s home computer had one, or more (~2 exceptions)
+
+
+"Robo 48" has 32K RAM + 16K VRAM + 16K ROM, 2 MHz 6502, released Oct 1982.
+A cost-optimised home computer for 1983 (using 24 16Kx1 4116 DRAMs)
+320 x 240, using tile map (40 x 30 visible of 64x32 pattern-table)
+256 x 192, using tile map (32 x 24 visible of 32x32 pattern-table)?
+Cartridge port supports banked ROM/RAM (16K windows at &8000 and &C000)
+BASIC ROM can be paged out to access upper 16K RAM at &C000
+BASIC supports running programs out of the 16K window at &8000
+
+It's a home computer with capabilities more like NES / Master System,
+inspired by the prior TMS9918 [1979] with more bits per pixel, APA
+framebuffer modes, HW palette, HW scrolling, a simple DMA and PSG.
+A custom VDP IC based on a real 74LS-series prototype design.
+
+ROM games are more expensive than Tape, so aren't as popular.
+16K RAM carts are popular, later 32K/64K RAM carts.
+Disk expansion is popular later (contains an 8K ROM bank and a
+memory-mapped disk controller.)
+Two bank-switch IO ports for &8000 and for &C000.
+
+BASIC finds RAM by scanning banks, writing and reading back (&55 then &AA)
+and stopping at the first bank that fails. Each device is scanned from
+bank zero. It keeps a small table of valid RAM banks to use.
+
+BASIC accelerator: DMA can be used in streaming mode, where reads from
+the data port load from RAM/VRAM and increment the address. BASIC uses
+this to read program code. DMA also has a jump-table port and table-page
+register: an indirect jump to the jump-table port reads the next DMA byte
+(adding an extra cycle) then fetches a 16-bit address from the table;
+BASIC uses this to dispatch opcodes in 6 cycles.
+
+Graphics accelerator: DMA has an APA mode: the low two address bits are
+interpreted as a pixel mask (ignoring bit 0 in 4bpp mode); the DMA performs
+an and-or masking operation in between the read and write cycle, to modify
+only the addressed pixel. Raster OP modes are also implemented to perform
+an AND, OR, or XOR operation, and optionally invert the loaded value.
+
+These accelerator features are designed to be small extensions to the
+existing DMA function, adding minimal chip area.
+
+
+"Robo 64+" is the 1983 Christmas edition, with a pack-in 16K RAM cartridge
+and a pack-in game on tape. Designed to compete with the Commodore 64.
+The Robo 48 is still available as an entry-level option.
+
+Rev-B 1984 cost-reduced version using 8 half-working 64Kx1 DRAMs for main
+memory (32K) [if they're still a thing] and 2 x 16Kx4 DRAMs for VRAM,
+reduced board size, simplified +5V-only design.
+
+Rev-D 2025 Christmas edition, 62256/62128 SRAM, SDCard slot.
+Crystal edition: transparent case, gold-plated white board, DIP parts.
+Value edition: all SMD parts, single component side.
+
+
+"Robo 2000" has 128K RAM + 64K VRAM + 32K ROM, 4 MHz 65C816, released Oct 1987 maybe (ST/Amiga)
+95% compatible with Robo 48 software, but this can be a curse (switch to 68000?)
+16-bit, 16-color tiles, faster, more RAM, 3-4 layers, 4096 colors, DMA sampled sounds, 3½" disk drive?
+Faster BASIC uses 16-bit instructions; can directly access all RAM/ROM banks.
+Include a 16x16 booth multiplier taking 8 cycles (4x8=32 cycles for a planar matrix)
+Include an 8.8 scalar interpolator DMA mode (for sprite/texture scaling)
+Can slow the 65C816 speed to 1.79 MHz; low half of the ROM is exactly the '48 ROM.
+In compatibility mode, the extra RAM emulates a 96K RAM Cart.
+64K and 128K RAM carts are popular (for a total of 192K and 256K)
+"Requires +64K RAM Cart" / "Requires +128K RAM Cart" on games.
+
+Three-layer:
+512*32   = 16K  512 tiles @ 4-bpp (16-colour tiles and sprites)
+512*32   = 16K  512 tiles @ 4-bpp (16-colour animation tiles)
+64*64*2  = 8K   2 screens layer 1
+64*64*2  = 8K   2 screens layer 2
+64*64*2  = 8K   2 screens layer 3
+512*16   = 8K   512 tiles @ 2-bpp (4-colour tiles)
+
+
+Hardware
+
+DE-9 Joystick ports x2.
+Audio/Casette port: "CUTS" standard format.
+Composite & RGB video port.
+
+
+                       0   1      4       17     25   26   27   28   29   30   31  32  33     34   35   36   37-40
+Cartridge has 40 pins: CS, B2-B0, A12-A0, D0-D7, Vcc, Vss, RDY, IRQ, NMI, R/W, ø1, ø2, Reset, Gnd, +5V, Gnd, NC
+IO is at &FF00 (128 decoded) overlayed on the Cartridge address space.
+Cartridges can hijack IO ports (they receive all accessess)
+
+https://eu.mouser.com/ProductDetail/TE-Connectivity/5530843-4?qs=CWN9I2qbSLsRSJz%252BQBuIeg%3D%3D
+
+Control
+IEN - interrupt enable  (VSync, YComp, HDMA)
+VIC - video control     (256/320, 192/240, APA, HDMA, divider(00=512 01=256 10=128 11=64))
+VIE - video enable      (BG, Sprites, BG0/1, SPR0/1)
+VSZ - video map size    (4:4 width 32,64,128,256, height 32,64,128,256)
+
+Read/Write VRAM:
+VRLO - vram low address auto-increment
+VRHI - vram high address auto-increment
+VRDR - vram data read/write
+VRST - vram stride (64=vertical)
+VRMK - vram mask ANDed with read/writes (drawing accel, use RMW to write)
+VROP - vram OP (&80=RMW; 00=NOT 01=OR 10=AND 11=XOR)
+YLIN - current Y line
+YREF - Y interrupt compare line
+
+Sprites at &8000  (4 byte per sprite)  {X,Y,Tile,Attr}
+Palette at &C000  (16*4=64 bytes)
+
+Scroll:
+SCRH - horizontal start address (5:3 tile addr, fine scroll)
+SCRV - vertical start address (5:3 tile addr, fine scroll)
+
+Tile Addressing:
+
+64*4 = 256 tiles
+64*8 = 512 bytes per plane
+512*1 = 512 for 1bpp (2K for 256 tiles)
+512*2 = 1K for 2bpp  (4K for 256 tiles)
+512*4 = 2K for 4bpp  (8K for 256 tiles)
+
+8 REMAP registers [bbssssss] remap each set of 64 tiles
+Bpp (bb) is 0 = 1bpp; 1 = 2bpp ; 2 = 4bpp
+for 1bpp tiles (ss) selects a 512-byte base address, 32K range
+for 2bpp tiles (ss) selects a 512-byte base address, 32K range
+for 4bpp tiles (ss) selects a 512-byte base address, 32K range
+for 3bpp tiles (ss) selects a 512-byte base address, 32K range ?
+
+[1|1][1|2][2|2] [3|3] [4|4] = 5K for 256
+[3bpp--|3bpp--] [2bp] [2bp]
+
+[1|2] [3|3] [-|-][4|4][4|-] = 5K for 256
+[1bp] [2bp]      [3bpp--]
+
+8*512 = 4K for 512 1bpp tiles
+8*1K = 8K for 512 2bpp tiles     (room for 64x64 map)
+8*1.5K = 12K for 512 3bpp tiles  (room for 64x32 map)
+8*2K = 16K for 512 4bpp tiles    (need 32K expanded VRAM)
+
+The ability to remap each group of 64 tiles allows for fast animation.
+Also, each group can use a different bpp, saving memory for animation.
+
+1K = 64 x 2bpp tiles
+1K = 64 x 2bpp tiles
+1K = 64 x 2bpp tiles   (192 2bpp BG tiles)
+1K = 64 x 2bpp tiles
+1K = 64 x 2bpp tiles
+1K = 64 x 2bpp tiles   (192 2bpp Sprite tiles)
+1.5K = 64 x 3bpp tiles (addressing is really tricky)
+1.5K = 64 x 3bpp tiles
+1.5K = 64 x 3bpp tiles
+1.5K = 64 x 3bpp tiles (256 4bpp Tiles, e.g. 64 x 4 frames)
+
+1K = 64 x 2bpp tiles
+1K = 64 x 2bpp tiles
+1K = 64 x 2bpp tiles   (192 2bpp tiles)
+1.5K = 64 x 3bpp tiles
+1.5K = 64 x 3bpp tiles
+1.5K = 64 x 3bpp tiles
+1.5K = 64 x 3bpp tiles
+1.5K = 64 x 3bpp tiles
+1.5K = 64 x 3bpp tiles (384 4bpp Tiles, e.g. 128 tiles + 64 x 4 frames)
+
+
+Name Table Addressing:
+
+ 32*32*2 = 2K for 32x32 map      (room to spare)
+ 64*32*2 = 4K for 64x32 map      (room for 512 3bpp tiles)
+ 64*64*2 = 8K for 64x64 map      (room for 512 2bpp tiles)
+128*64*2 = 16K for 128x64 map    (need 32K expanded VRAM)
+256*32*2 = 16K for 256x32 map    (need 32K expanded VRAM)
+128*128*2 = 32K for 128x128 map  (need 64K expanded VRAM)
+256*64*2 = 32K for 256x64 map    (need 64K expanded VRAM)
+
+1 VADR register [wwwwbbbb] selects name table address
+Base (b) selects a 2K Base address, with 32K range
+Wrap (w) selects a 2K Wrap address, with 32K range
+
+1 VMAP register [xxyy---p] sets map size and mode:
+X-size (xx) selects the map width: 0=32 1=64 2=128 3=256
+Y-size (yy) selects the map height: 0=32 1=64 2=128 3=256
+Page   (p) adds 32K to Base Address and Wrap Address (64K expanded VRAM)
+
+
+Scrolling Registers - DIRECT (4)
+
+2 direct SCRH,SCRV registers [xxxxxxxx][yyyyyyyy] set scroll offsets:
+X-scroll register: starting tile column ("rotates" the map horizontally)
+Y-scroll register: starting tile row    ("rotates" the map vertically)
+
+2 direct FINH,FINV registers [xxx-----][yyy-----] set fine-scroll offsets:
+X-fine (xxx) sets the starting pixel counter value (clips away left)
+Y-fine (yyy) sets the starting tile row counter value (clips away top)
+These are convenient for fixed-point momentum (implicit AND $E0)
+and incrementing X-scroll/Y-scroll when C=1
+
+
+Scan-out addressing:
+• new screen: set Y-counter to Base Address (2K boundary)
+• new tile row: set X-counter to X-scroll
+• increment X-counter across the scanline, modulo X-size (5,6,7,8 bits)
+• advance to next row: up-count at bit X-size+1 (6,7,8,9) to add (64,128,256,512)
+• wrap Y-counter: when Y-counter (carry-out AND wrap-address-bit), reload Base Address
+
+Correct wrapping requires the row up-count to be modulo the 2K Wrap Address,
+which it always is (2K/64=32, 2K/128=16, 2K/256=8, 2K/512=4)
+
+ 32*32*2 = 2K for 32x32 map      (wrap at Base Address + 2K)
+ 64*32*2 = 4K for 64x32 map      (wrap at Base Address + 4K)
+ 64*64*2 = 8K for 64x64 map      (wrap at Base Address + 8K)
+128*64*2 = 16K for 128x64 map    (wrap at Base Address + 16K) (need 32K expanded VRAM)
+256*32*2 = 16K for 256x32 map    (wrap at Base Address + 16K) (need 32K expanded VRAM)
+
+In tile modes, the horizontal resolution is always 256 pixels.
+
+At each tile boundary, look up the REMAP and TILEBPP registers.
+REMAP determines the base address: it's the high bits of the tile address.
+
+
+Palettes:
+
+32 VPAL [--cccccc] registers configure 8 x 4-color palettes
+Tiles with 1bpp use colors 0 and 1
+Tiles with 2bpp use colors 0 to 3
+Tiles with 4bpp select 2 x 16-color palettes
+
+
+[OLD] VBLR,VBTB registers [llllrrrr][ttttbbbb] set video borders:
+
+Left (l) x4 sets left border width. Use 8 (32px) for 256 px, 9 (36px) to hide 8px of w=32 map.
+Right (r) x4 sets right border width. Use 8 (32px) for 256 px, 9 (36px) to hide 8px of w=32 map.
+Top (t) x4 sets left border width. Use 6 (24px) for 192 lines, 5 (20px) for 200 lines.
+Bottom (b) x4 sets right border width. Use 6 (24px) for 192 lines, 5 (20px) for 200 lines.
+
+
+Add a Luma/Chroma video (S-video) port.
+
+Must be able to remap Sprites/BG to one bank, to save space (CTL reg)
+Also 'wrap' the tile map within the 64x32 bank to save space (CTL reg)
+Can read the current raster Y counter at any time (can poll it)
+Can generate an interrupt when Y counter equals YInt register (CTL reg)
+
+
+tile 80, f86b97a2e79acd8bf86b97a2e79acd8b  ; 128 bits = 8x8 x 2 (4 color) [256 tiles]     = 4K   (own bus)
+put x, y, pl+64, t0, t1...                 ; put map tiles with palette   [64x32 map]     = 4K   16=H 32=V 64=Priority
+get(x,y)                                   ; get map tile
+fill x, y, w, h, t0                        ; fill map tiles
+height 0, 100                              ; set background region height     [scroll regions 0-7]
+scroll 0, x, y, [effect,ofs,len]           ; scroll background to x,y (wraps) [scroll regions 0-7]
+effect 0, 0001123211000000                 ; scanline offset table (repeats)  [64 effect bytes]
+palette pl, c0, c1, c2, c3                 ; set palette from 256 colors [8x4 palettes]   = 32  (on-chip)
+sprite 1, x, y, pl, t0                     ; 8x8 or 16x16  [32 sprites]                   = 128 (on-chip?)
+sprite 1, x, y, pl+16, t0, t1, t2, t3      ; 16=H 32=V 64=Priority
+sprite 1                                   ; hide sprite
+wait                                       ; wait for end of frame
+envelope 8, ASDR,PA,PS,PD                  ; set sound envelope [16 envelopes]            = 32 bytes (pointers)
+pattern 1, 6f5ecd#6c3acgce                 ; 1-8 octave; A-G note; # sharp [16 patterns]  = 32 bytes (pointers)
+play 0,7,1, 1,8,2, 3,5,3                   ; play channel,pattern,envelope queue [4 channels]
+on stop 0 proc nexttune                    ; event handler when channel stops
+window x, y, w, h                          ; set text window (DMA scrolled)
+print "∑´®†¥¨ˆøπ"                          ; click tile palette to enter text?
+heffect 100,0,xofs,yofs,209,0,0,0          ; Y-table: line, register, value (advanced)
+
+
+Stackable expansion port:
+
+• A single inverter supports FOUR stackable devices:
+
+  BA
+  00      -> Invert A if AB same
+  01      -> Invert B if AB different
+  11      -> Invert A if AB same
+  10      -> Invert B if AB different (Don't care)
+
+  XOR "different"       
+  00  = 0               
+  01  = 1               
+  10  = 1               
+  11  = 0
+
+  BA   D  ~D A        BA    BA'                    D B      BA    B'A
+  00 = 0   1 0 = 1    00 -> 01  same, invert A   0 0 = 0  00 -> 00  same, keep B
+  01 = 1   0 1 = 1    01 -> 01  diff, keep A     1 0 = 1  01 -> 11  diff, invert B
+  10 = 1   0 0 = 0    10 -> 10  diff, keep A     1 1 = 0  10 -> 00  diff, invert B
+  11 = 0   1 1 = 0    11 -> 10  same, invert A   0 1 = 1  11 -> 11  same, keep B
+
+  D  = (A XOR B)
+  S  = ~D
+  A' = (A XOR S)
+  B' = (B XOR D)
+
+  B' = (B XOR (A XOR B))          = A     (simplified!)
+  A' = (A XOR ((A XOR B) XOR 1))  = ~B
+
+  Cartridges should use this approach, supporting four stackable
+  devices via two device-select edge-connectors.
+
+• A single inverter supports SIX stackable devices:
+
+  C' = B
+  B' = A
+  A' = ~C
+
+  CBA
+  000  001    address 0
+  001  011    address 1
+  011  111    address 3
+  111  110    address 7
+  110  100    address 6
+  100  000    address 4
+
+  This sequence will not generate addresses 2 or 5; those can be reserved
+  for internal devices, e.g. System ROM, internal RAM expansion, printer
+  interface, built-in disk controller, etc.
+
+  The Expansion Port should use this approach, supporting up to
+  six cascaded devices via three device-select signals.
+
+• We can support EIGHT stackable devices by adding XOR,AND gates:
+
+  CBA
+  000      -> Invert A (AB same)
+  001      -> Invert B (AB diff)
+  011      -> Invert A (AB same) + Invert C (C XOR (A AND B))
+  110      -> Invert B (AB diff)
+  100      -> Invert A (AB same)
+  101      -> Invert B (AB diff)
+  111      -> Invert A (AB same) + Invert C (C XOR (A AND B))
+  010      -> Don't care
+  
+  But this costs 2 ICs in each device; ideally we want one at most.
+
+• With an XOR gate, we can implement an LFSR with period SEVEN.
+       ___
+  C --\\  \__ Ao   C B A
+  B --//__/        / | | __ Ao
+                    / / /
+                   C'B'A'
+
+  However, this may be the only use for an XOR in the device.
+
+The single-inverter approach is the most cost-effective, since
+an inverter can be made from on any spare NAND, NOR or XOR gate,
+or a spare LS04/LS14 inverter.
+
+Each device also needs a 2-input or 3-input NOR gate to detect
+device-select, NOR(A,B,C) with all inputs active low.
+The computer puts a 3-bit address on the CBA pins, resulting in
+that device receiving A=0 B=0 C=0.
+Use another NOR as the inverter for the pass-through port.
+
+Cartridges use the one-inverter, two-wire approach to support
+up to four stacked devices.
+
+  Inside each cartridge, a single 74LS02 supplies a 2-input NOR gate
+  to detect cartridge-select (both inputs low), and an inverter for
+  the ~B signal on the [optional] pass-through cartridge connector.
+  The remaining two NOR gates can be used for bank select logic.
+
+  Cartridges also receive three bank-select signals for 8 x 16K
+  banks per cartridge (up to 128K.)
+
+Expansion Devices use the one-inverter, three-wire approach to
+support up to six stacked devices; the remaining addresses 2 and 5
+are reserved for internal devices.
+
+  Inside each expansion device, a 3-input NOR, or 2 x 2-input NOR
+  are used to detect device-select (all inputs low), and an additional
+  NOR is used to invert ~B for the pass-through connector.
+
+  Expansion devices also receive three bank-select signals.
+
+This makes bank-switching more complex:
+ • device select: 6 expansion + 2 system, 4 cartridge = 12 devices  [high nibble]
+ • bank select: 8 banks  (due to connector limits)                  [low nibble]
+
+There are two bank-switching registers: BNK8 and BNKC, for
+the two 16K banks at addresses $8000 and $C000 respectively.
+
+
+Address Decoding
+
+74LS00  4x 2-input NAND  10 - 15ns "LS"
+74LS02  4x 2-input NOR   10 - 15ns "LS"
+74LS04  6x Inverter      10 - 15ns "LS"
+74LS08  4x 2-input AND   10 - 20ns "LS"  (can be used as a Buffer)
+74LS10  3x 3-input NAND  10 - 15ns "LS"
+74LS20  2x 4-input NAND  10 - 15ns "LS"
+74LS27  3x 3-input NOR   10 - 15ns "LS"
+74LS30  1x 8-input NAND  13 - 20ns "LS"
+74LS32  4x 2-input OR    14 - 22ns "LS"
+74LS86  4x 2-input XOR   20 - 30ns "LS"  (12 - 23ns if other low)
+
+74LS153  4:1 Mux (Select) 25 - 38ns "LS"
+74F153 4:1 Mux (Select)  3.7 - 12ns "F"
+
+NAND(A,B,C,D) = 0 if ALL are 1; 1 if ANY are 0 - detect FF, active low
+NOR(A,B,C,D)  = 0 if ANY are 1; 1 if ALL are 0 - detect 00, active high
+
+Direct A lines change early: can only turn OFF one of the IO decodes early.
+Can it cause a glitch? If all the other lines matched a decode on the previous
+cycle, and the early A lines combine with that to complete a decode?
+
+ h7 = NOR(A15,A14,A13)              3-input NOR 1/3   74LS27-A   10-15ns
+ h4 = NOR(A12,A11,A10)              3-input NOR 2/3
+ h1 = NOR(A9,A8,__)                 3-input NOR 3/3
+ h0 = NOR(A9,A8,A4)                 3-input NOR 1/3   74LS27-B   10-15ns   (A4 included for _E8)
+ l2 = NOR(A2,A1,A0)                 3-input NOR 2/3
+ z7 = NOT(A7)   z6 = NOT(A6)        6 x NOT           74LS04     10-15ns
+ z5 = NOT(A5)   z4 = NOT(A4)        6 x NOT           74LS04     10-15ns
+_Cx = NAND(h7,h4,h1,A7,A6,z5,z4,__) 8-input NAND      74LS30-A   13-20ns   23-35ns ~30ns   1100xxxx  Cx
+_Dx = NAND(h7,h4,h1,A7,A6,z5,A4,__) 8-input NAND      74LS30-A   13-20ns   23-35ns ~30ns   1101xxxx  Dx
+_Ex = NAND(h7,h4,h1,A7,A6,A5,z4,__) 8-input NAND      74LS30-A   13-20ns   23-35ns ~30ns   1110xxxx  Ex
+_Fx = NAND(h7,h4,h1,A7,A6,A5,A4,__) 8-input NAND      74LS30-A   13-20ns   23-35ns ~30ns   1111xxxx  Fx
+_E8 = NAND(h7,h4,h0,A7,A6,A5,A3,l2) 8-input NAND      74LS30-A   13-20ns   23-35ns ~30ns   11101000  E8
+_!WR = NOT(_WR) active low
+
+Write E8:
+_Clk1 & _WR & _E8   (NOR) -> AMUX = DMA_SRC  (74F153) ~6 + ~13 + ~30ns = ~50ns
+LatePhi2                  -> INC SRC
+
+Read E8:
+_Clk1 & _!WR & _E8  (NOR) -> AMUX = DMA_DST  (74F153) ~6 + ~13 + ~30ns = ~50ns
+LatePhi2                  -> INC DST
+
+
+Sheet resistance for N channel in 5µm = 10KΩ  (5 micrometer)
+1 C²g feature size L=W is 1 in 5µm = 0.01 pF
+Tau = Z * Rs * 1 C²g = 10,000 * 0.01 = 0.1 ns  (Z=1)
+
+Sheet resistance for N channel in 2µm = 2*10KΩ  (5 micrometer)
+1 C²g feature size L=W is 1 in 2µm = 0.0032 pF
+Tau = 2 * 10,000 * 0.0032 = 0.064 ns
+
+Sheet resistance for N channel in 1.2µm = 2*10KΩ  (5 micrometer)
+1 C²g feature size L=W is 1 in 1.2µm = 0.0023 pF
+Tau = 2 * 10,000 * 0.0023 = 0.046 ns
+
+Pass transistor: Ron = Rs * Z where Z = 10KΩ
+0.63 * Vdd after one Tau (time constant)
+
+
+The original 6502 came in three versions, A, B and C, differing in their maximum speed, 1, 2 or 4 MHz.
+The 6502 used a two-phase clock to drive its internal circuitry, but only accessed memory during one of the two phases.
+The BBC Micro used interleaving like the C64, but had ~100ns RAM, allowing it to run the CPU and display at 2 MHz each.
+
+MCS6502 [1975]   8 µm  1970  (8 micron: Intel/TI/Fairchild/MOS Technology/MOSTEK)
+8080, 6800       6 μm  1971
+                 5 μm  1973
+68000, 8051    3.5 μm  1977
+8086, 8088       3 μm  1978  ARM1
+68020            2 μm  1979  ARM2
+80386          1.5 µm  1982  ARM3
+68030          1.3 µm  1984
+80486            1 µm  1987
+68040, 486DX4  800 nm  1989  ARM6
+Pentium[Pro]   600 nm  1993
+K5, PowerPC    500 nm  1994
+PentiumII, K6  350 nm  1995  StrongARM
+MMX, P6        280 nm  1996
+K6, Celeron    250 ns  1997  ARM7
+P4, AthlonXP   180 nm  1999
+
+
+"Less than 100 pounds - ZX80"
+
+
+https://eu.mouser.com/c/connectors/card-edge-connectors/standard-card-edge-connectors/?number%20of%20positions=36%20Position
+
+https://www.masswerk.at/6502/6502_instruction_set.html
+https://www.masswerk.at/6502/assembler.html
+https://www.masswerk.at/6502/
+http://www.6502.org/users/mycorner/6502/shorts/index.html
+
+$FFFA, $FFFB ... NMI (Non-Maskable Interrupt) vector
+$FFFC, $FFFD ... RES (Reset) vector
+$FFFE, $FFFF ... IRQ (Interrupt Request) vector
+
+https://www.chibiakumas.com/6502/CheatSheet.pdf
+http://www.6502.org/tutorials/compare_beyond.html
+https://www.asciitable.com/
+http://www.emulator101.com/6502-addressing-modes.html
+https://www.benryves.com/bin/bbcbasic/manual/Appendix_Tokeniser.htm
+https://www.bbcbasic.net/wiki/doku.php?id=detokeniser
+
+RAM test: http://6502.org/source/general/address_test.html
+
+http://6502.org/source/
+http://6502.org/users/obelisk/6502/algorithms.html
+http://6502.org/source/floats/wozfp1.txt  (708 bytes! [3 pages])
+http://6502.org/source/floats/wozfp2.txt  (errata)
+http://6502.org/source/floats/wozfp3.txt  (design notes)
+
+Budget ~2k [8 pages] for FP + SQR + EXP/LOG + SIN/COS/ATAN.
+Should include 4-byte Integer ADD/SUB/MUL/DIV as subroutines.
+Budget ~2K for BASIC parser, var bind, line edit, etc.
+Budget ~2K for BASIC runtime.
+Budget ~2K for BASIC grahpics routines.
+Have 16K ROM in total.
+
+; intern variable names (index by first letter)
+; store address of variable in the code area
+; % vars are 16-bit
+; literals are 16-bit unless decmial
+; wilson format: {<cr> <linehi> <linelo> <len> <text>} <cr> <ff>
+; line-index: <line.lo><line.hi><code.len><comment.len><comment> at TOP
+; how to get from current line's code to line-index?
+; always know current line number,
+; every function knows the length of its argument-list (syntax check)
+; therefore opcodes can assume N arguments follow
+; (n+2)*4 => var _n num _2 add num _4 mul
+;  n+2*4  => var _n num _2 num _4 mul add
+; LIST uses a stack to reassemble the source
+; evaluation will also need a stack (of nums, of strs)
+; variables become 2-byte addresses of variable storage (slot followed by name)
+; all numeric vars are 5-byte; integers have a zero mantissa
+; LINE token begins a line, followed by *lo,hi ptr to line-index
+; GOTO,GOSUB scans line-index forward from current line (writes back address)
+; PROC,FN have their own name tables (var,var%,str$,proc,fn)
+; vars set in command mode are lost when the basic program is run
+; the basic program cannot be resumed once stopped?
+
+; Locomotive BASIC (CPC 464)
+10 INK 1,26          ' Set ink 1 to colour 26
+20 PAPER 4           ' Set background to red
+30 PEN 1             ' Set drawing color
+40 CLS               ' Fill screen with paper color
+40 PLOT 10, 20       ' Draw a point at coordinates (10, 20) using green
+50 LINE 10,20, 50,60 ' Draw a line from (10,20) to (50,60) in green
+
+; Spiral demo (cpcbox.com)
+10 MODE 1
+20 FOR i=0 TO 3
+30 INK i,INT(RND*27)
+40 NEXT
+50 ORIGIN 320,200
+60 x=0: y=0: a=0
+70 r=1
+80 FOR t=1 TO 1000
+90 x=INT(r*COS(a))
+100 y=INT(r*SIN(a))
+110 PEN (t MOD 4)
+120 DRAW x,y
+130 a=a+0.1
+140 r=r+0.5
+150 NEXT
+160 GOTO 160
+
+"No such variable at line N"  if used before assigned
+"No REPEAT at line N"
+"No FOR at line N"
+"Bad DIM at line N"           if try to re-DIM
+"No such variable at line N"  if try to READ a string into a num-var
+
+PRINT
+• String
+• Variable
+• Variable$
+• Expression
+• Expression$
+• SPC(N|Expression)
+• TAB(N|Expression)
+• TAB(X|Expression,Y|Expression)
+• CHR$(N|Expression)
+• use ; to join items
+• ends the line unless PRINT ends with ;
+
+INPUT
+• allows multiple variables and prompts
+• uses the same parser as 'DATA' statements
+• comma-separated inputs, can quote strings, unused inputs ignored
+• consecutive prompts are concatenated
+• comma causes ? to be printed (ignored between prompts; spurious commas ignored)
+• comma is sticky until the next prompt
+• input "LINE" captures the whole line
+
+IF K=136 THEN X=X-4
+IF H=F*G THEN PRINT "CORRECT" ELSE PRINT "WRONG"
+IF K=6 THEN K=9: PRINT "K WAS 6" ELSE PRINT "K WAS NOT 6": PRINT "END OF LINE" (both part of ELSE)
+IF X=5 OR Y=6 THEN PRINT "TOO LARGE"
+IF NOT (X=6) THEN PRINT "X NOT 6"
+IF H=F*G THEN PROCGOOD ELSE PROCBAD
+IF TEMP>=-273.16 THEN 360
+IF SCALE$="C" THEN GOSUB 370
+
+ON M GOTO 1000,1200,1350 ' IF M=1 GOTO 1000
+ON M GOSUB 1000,1200,1350
+ON M PROCa,PROCb,PROCc   ' BBC Basic 5
+
+TRUE=-1 FALSE=0
+G = (6=6): PRINT G
+
+FOR (stmthi,stmtlow,varhi,varlow,val1-val5,step1-step5=14)
+REPEAT (stmthi,stmtlow)
+WHILE (stmthi,stmtlow)
+PROC (stmthi,stmtlow)
+FN (stmthi,stmtlow)
+
+DEF FNSUM(X,Y,Z) = X+Y+Z
+DEF FNSTOP:PRINT"Another go?":R$=GET$:=(R$="Y")OR(R$="y")
+
+Strings up to 255 characters
+
+DIM Y(5,3)
+DIM Y!(100)
+
+DATA 22,Hello,,"5"         ' double comma is an empty-string
+BYTE 22,7,"Hello",&D,&A    ' stores only bytes (strings are converted to bytes)
+BYTE &203b8c408211         ' sequence of hex bytes
+
+Compact data:
+Bit x0=x0: is integer, Bit 6 more; Bit 5 sign; Bits 4-0 value (0-31) [up to 5 bytes]
+Bit 10=01: is decmial, Bit 6-5: length; Bit 4 sign; 
+Bit 10=11: is string,  if &3F length byte follows (more than 63 chars LSR;LSR)
+
+; sign-extension
+; http://www.6502.org/users/mycorner/6502/shorts/sign.html
+AND #$1F  ; Clear any unused bits (assuming 5-bit value in lower 5 bits)
+CLC       ; Clear carry
+ADC #$F0  ; Set top bits clear if -ve, set if +ve (added to sign bit)
+EOR #$F0  ; Toggle bits (&F+0=&F->&0; &F+1=&0->&F)
+
+; other tricks
+; http://www.6502.org/users/mycorner/6502/shorts/index.html
+
+
+if v>100 { print "1"; v-=100 }
+if v>10 { print "1"; v-=10 }
+
+0s   (v)%10
+10s  (v/10)%10
+100s (v/100)%10
+
+Q := 0
+R := 0                     
+loop:                   -- for i := 31 .. 0 do
+  C <- ASL N            -- shift out top bit of the Numerator
+  ASL R <- C            -- shift into bottom bit of Remainder
+  CMP #10
+  BCC loop              -- if R ≥ D then:  (R <= 9*2=18)
+  LDA R
+  SBC #10               -- Subtract Denom from Remainder
+  STA R
+  SEC
+  LSR Q                 -- Q(i) := 1 into top bit
+end
+
+0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8
+
+;Divide by 10
+;17 bytes, 30 cycles
+  lsr
+  sta  temp
+  lsr
+  adc  temp
+  ror
+  lsr
+  lsr
+  adc  temp
+  ror
+  adc  temp
+  ror
+  lsr
+  lsr
+
+
+; could do this once per LINE and insert an ADVANCE opcode in long lines?
+ar_adv:          ; add Y to Code, reset Y
+  TYA            ; [2] amount to add
+  LDY #0         ; [2] reset Y
+  CLC            ; [2]
+  ADC Code       ; [3] add Y to Code
+  STA Code       ; [3] set new Code low
+  TYA            ; [2] A=0
+  ADC CodeH      ; [3] add Carry to Code
+  STA CodeH      ; [3] set new Code high
+ar_next:
+  LDA (Code),Y   ; [5] next opcode (15 CYCLES, 8 bytes)  [25 cycles for 16-bit addresses!]
+  STA JtA        ; [3] jump table arithmetic
+  INY            ; [2]
+  JMP (JtA)      ; [5] dispatch (Z=0)  [15]
+
+
+dispatch_Y:      ; also needs ar_adv approx. once per page
+  LDA (Code),Y   ; [5] get opcode (19/20 cycles, 12 bytes)  (min disp. 13 cycles 6 bytes)
+  STA JtA        ; [3] Jump Table Arith low-byte
+  INY            ; [2] advance
+  JMP (JtA)      ; [5] dispatch  [15]+[3] JMP at dest = [18]
+
+dispatch_Y0:
+  LDA (Code),Y   ; [5] Y=0 always
+  STA JtA        ; [3] Jump Table Arith low-byte
+  INC Code       ; [5]
+  BCC dispatch_2 ; [2]
+  JMP (JtA)      ; [5] dispatch  [20]+[3] is bad = [23]
+
+dispatch_Y_65C02:
+  LDA (Code),Y   ; [5] get opcode (19/20 cycles, 12 bytes)  (min disp. 13 cycles 6 bytes)
+  INY            ; [2] advance
+  TAX            ; [2]
+  JMP (Table,X)  ; [6] dispatch  [15] direct
+
+
+Dispatch Acceleration:
+
+6502 Code: using INC with Y=0 (dispatch_Y0)                         = [23 cycles]     (slow, simple)
+6502 Code: using Y indexing (dispatch_Y) with per-page (ar_adv)     = [18 cycles]  -5 (best SW, messy)
+DMA Read: LDA DDRW [3+1]; STA JtA [3]; JMP (JtA) [5]; JMP addr [3]  = [15 cycles]  -3 (6502, DMA HW)
+DMA Jump: JMP (DDRW) [5+1]; JMP addr [3] using Table-Page byte      = [9 cycles]   -9 (6502, same HW)   • BASELINE
+Bus Snoop: JMP (DDRW) [5+1] (see below)                             = [6 cycles]  -12 (6502, bus snoop) • extra HW
+
+ [Op:6C] [Lo:D8] [Hi:00]• [IndLo:-RDY:(DDR)] [IndLo:+RDY:(DDR<<1)] [IndHi:(DDR<<1|1)]
+
+Without snooping, we must wait until &00D8 appears on the address bus:
+
+ [Op:6C] [Lo:D8] [Hi:00] [IndLo:-RDY] [DDR-load] [IndLo:+RDY:(DDR<<1)] [IndHi:(DDR<<1|1)] = [7 cycles]
+
+It's not possible to prefetch DMA data; the CPU uses the bus every cycle.
+
+65C02 Code: using Y indexing + JMP (addr,X)  [dispatch_Y_65C02]     = [15 cycles]  -3 (vs 6502, still messy)
+DMA 65C02: LDX DDRW [3+1]; JMP (Table,X) [6]                        = [10 cycles]  -8 (DMA Jump is better)
+
+
+IENA    = $CE    ; Interrupt + Enable  (VSync-I, YComp-I, HDMA-En, BG-En, Sprite-En, --)
+
+YLIN    = $F6    ; current Y-line (read only)
+YCMP    = $F7    ; interrupt Y-line compare
+VCTL    = $F8    ; video mode
+INTC    = $F9    ; interrupt control
+INTA    = $FA    ; interrupt status
+
+
+
+
+
+mode 0: Copy         (copy bytes [via DDRW])
+mode 1: Fill         (repeatedly write current DDRW byte)
+mode 2: APA-mode     (low 1-3 bits of addresses select the pixel, i.e. pixel addressing)
+mode 3: Transparent  (zero pixels are not copied [using DBPP setting])
+
+Vertical mode uses the current Map X-size from VMAP to determine stride.
+Decrement starts at DSRL,DSRH and decrements backwards DCNT times.
+
+
+IO Registers
+
+SRCL    = $D0    ; DMA src low
+SRCH    = $D1    ; DMA src high
+SRCB    = $D2    ; DMA src bank      (low 4 bits, ignored for VRAM?)
+DSTL    = $D3    ; DMA dest low
+DSTH    = $D4    ; DMA dest high
+DSTB    = $D5    ; DMA dest bank     (low 4 bits, ignored for VRAM?)
+DCTL    = $D6    ; DMA control       (7:src-inc, 6:dest-inc, 5:vram-src 4:vram-dst, 3-0:mode)
+DRUN    = $D7    ; DMA count         (writing starts DMA, 0=256)
+DDRW    = $D8    ; DMA data R/W      (streaming mode: reading this reads src; writing this writes to dest)
+JTAB    = $D9    ; DMA jump-table high byte (always page-aligned)
+DJMP    = $DA    ; DMA jump indirect (read: start indirect table jump)
+DJMH    = $DB    ; DMA jump indirect (read: high byte of indirect jump; write: DMA FASTLOAD address [7 bytes])
+HDML    = $DC    ; HDMA src low      (enabled in VCTL)
+HDMH    = $DD    ; HDMA src high
+VMSK    = $DE    ; VRAM mask, ANDed with read/writes (drawing accel, use with VROP=RMW)
+VROP    = $DF    ; VRAM op ($80=RMW; 00=NOT 01=OR 10=AND 11=XOR)
+
+DJMP - DMA jump       (trigger address decode, no register)
+DTAB - DMA table page (jump table page byte)
+
+mode: 0 = copy
+      1 = copy reverse      (copy in reverse direction; decrements addresses)
+      2 = copy vertical     (increments by current map width in VMAP)
+      3 = copy transparent  (does not write zero pixels; uses BPP in VCTL)
+      4 = fill (with src low byte)
+      5 = APA rop/mask mode (applies VMSK,VROP)
+
+
+(palette access, sprite access?)
+
+TON0    = $E0    ; PSG
+PCH0    = $E1
+VOL0    = $E2
+TON1    = $E3
+PCH1    = $E4
+VOL1    = $E5
+TON2    = $E6
+PCH2    = $E7
+VOL2    = $E8
+TON3    = $E9
+PCH3    = $EA
+VOL3    = $EB
+KEYB    = $EC    ; Keyboard scan (write: set row; read: scan column)
+MULW    = $ED    ; Booth multiplier (write {AL,AH,BL,BH} read {RL,RH})
+??      = $EE
+??      = $EF
+
+YLIN    = $F0    ; current Y-line         (read: V-counter; write: wait for VBlank)
+YCMP    = $F1    ; compare Y-line         (read/write, $FF won't trigger)
+SCRH    = $F2    ; horizontal scroll      (tile offset from 0, wraps)
+SCRV    = $F3    ; vertical scroll        (row offset from 0, wraps)
+FINH    = $F4    ; horizontal fine scroll (top 3 bits)
+FINV    = $F5    ; vertical fine scroll   (top 3 bits)
+VCTL    = $F6    ; video control          (see below)
+VMAP    = $F7    ; name table size (4:4 width 32,64,128,256, height 32,64,128,256)
+VTAB    = $F8    ; name table base address (high byte)
+VINT    = $F9    ; video interrupt (7:VSync, 6:VCmp, 5:HSync | 3:BG 2:Sprites 1:HDMA)
+VACK    = $FA    ; interrupt status  (VSync, VCompare, HSync)  (read:status / write:clear)
+BNK8    = $FB    ; Bank switch $8000 (low 4 bits)
+BNKC    = $FC    ; Bank switch $C000 (low 4 bits)
+??      = $FD
+??      = $FE
+??      = $FF
+
+
+Video Control:
+
+1 VCTL register [agwubbdd] sets video mode:
+(7) APA mode (A) sets direct VRAM addressing, fixed at address 0
+(6) Greyscale (G) disables Colorburst for improved text legibility
+(5) Horizontal (H) is 0=512 1=640 visible pixel-clocks per line (shift rate)
+(4) Double (U) line-doubled mode; halves the number of source lines
+(3-2) Vertical (V) is 0=192 1=200 2=224 3=240 visible lines per frame
+(1-0) Divider (DD) is 0=640 (1bpp) 1=320 (2bpp) 2=160 (4bpp) 3=80 (8bpp)
+
+Pixel latch rate is determined by divider (dd)
+Pixel shift rate is always 512/640 depending on (H)
+
+
+
+HDMA data:
+00000000 nnnnnnnn  - wait for YLine 'n'
+aaaaaaaa dddddddd  - write byte 'd' at address 'a'
+
+Implementation: 12-bit counter (low 16 pages), 8-bit YReg for "wait for YLine".
+
+Can use HDMA to play samples (need to unpack 64 samples per frame: 64*4=256 bytes: 0,YLine,IO,sample)
+every 4th line. Can unpack 1-bit delata modulation with ASL;ADC;STA loop. Too much work.
+
+
+
+https://au.mouser.com/ProductDetail/Western-Design-Center-WDC/W65C02S6TPG-14?qs=opBjA1TV903lvWo9AEKH5w%3D%3D
+W65C02S6TPG-14 PDIP-40
+W65C02S6TQG-14 QFP-44
+
+https://www.youtube.com/watch?v=pD0dVebSZMs Tandy 200 1985 - has QFP/SOP SMD components
+"The first QFPs were introduced in Japan in 1977"
+
+Kitronik 2444 Breadboard $8.01
+MIKROE-1097 Breadboard $18.36
+
+1979 Memory Applications Handbook National Semiconductor RARE ••
+1980 Memory Databook National Semiconductor (Memory Applications Handbook) ••
+1980 MOS Databook National Semiconductor (Data Sheets Application Notes)
+1980 NATIONAL SEMICONDUCTOR Data Conversion Acquisition Databook Handbook
+1980 NATIONAL SEMICONDUCTOR Interface Databook (Bus, Level, Memory) •
+1981 Logic Databook National Semiconductor Corporation (74-series)
+1981 National Semiconductor CMOS Databook
+1982 Telecommunications Databook National Semiconductor Corporation
+1983 National Semiconductor Data Book Interface Bipolar LSI Memory Logic
+1984 National Semiconductor Corporation MOS MEMORY Databook - ORDERED
+
+DigiKey - 0.1 µF ceramic capacitor at each power pin
+RS - SAD-01 Breadboard, SKS-100 Jumpers
+
+14.31818/4 = 3.579545  MHz (6502 clock)
+14.31818/8 = 1.7897725 MHz
+HYB4164-2 150ns access / 280ns cycle time (random read/write) = 3.571429 MHz   (shipping ver)   $3.75/ea "overstocked"
+HY53C464-10 100ns access / 175ns cycle time (random read/write) = 5.714286 MHz (development)    $4.70/ea
+MCM4116BP15 150ns access / 375ns cycle time (random read/write) = 2.666666 MHz (OK at 1.78 MHz) $4.70/ea
+DT1#fsN*^9IuXa*cPs
+
+A 175ns cycle (100ns DRAM) fits within the 186ns (5.3693181825) pixel cycle (w=256)
+Two cycles at 350ns fit within two pixels at 372ns, so 4 accesses per tile.
+
+tCP=20 + tPC=65
+
+tCRP=15 + tCSH=100 + tCP=20 + tRSH=35 + tRP=65 = 235ns (1 random read + 1 fast page mode)
+Two cycles at 235ns fit within 1.5 pixes at 279ns
+
+8 pixels is 1488ns; 1488/235 = 6 read-pairs in 8 pixels using fast page mode,
+less if the reads are sequential (e.g. gfx)
+
+
+MC6845 CRTC contains 18 x 8-bit registers, 8+7 counters, 14 address = 173 bits!
+
+BBC Micro   16.0 MHz ?
+
+VGA Dotclk  25.175 MHz
+            25.175 / 7 = 3.5964285714285715 MHz
+
+Colorburst  3.579545 MHz
+            3.579545 * 7 = 25.056815 MHz
+
+
+DRAM Refresh
+
+1.79 / 4096 = 0.00043701171875 MHz = 2.2882681564246 ms
+2    / 4096 = 0.00048828125    MHz = 2.048 ms                 (2/8192 = 4.096 ms)
+
+1.79 / 3072 = 0.0005826822916666667  MHz = 1.7162011173184 ms (for 2ms DRAM)  [3072=%11000.. 12-bit]
+1.79 / 3584 = 0.0004994419642857143  MHz = 2.0022346368715 ms (for 2ms DRAM)  [3584=%11100.. 12-bit] ••
+1.79 / 6144 = 0.00029134114583333334 MHz = 3.4324022346369 ms (for 4ms DRAM)  [6144=%11000.. 13-bit]
+1.79 / 7168 = 0.00024972098214285716 MHz = 4.004469273743 ms  (for 4ms DRAM)  [7168=%11100.. 13-bit] ••
+
+Use the top 7/8 bits to select the row (RAS)
+
+
+Use ~BE to set 65C02 Address & Data Bus to Z (Async)
+
+65C02 latches Read data on the falling edge of PHI2.
+
+The Read/Write (RWB) output signal is used to control data transfer. When in the high state, the microprocessor is reading data from memory or I/O. When in the low state, the Data Bus contains valid data to be written from the microprocessor and stored at the addressed memory or I/O location. The RWB signal is set to the high impedance state when Bus Enable (BE) is low.
+
+The SYNC line goes high during the clock cycle of an OpCode fetch and stays high for the entire cycle. If the RDY line is pulled low during the clock cycle in which SYNC went high, the processor will stop in its current state and will remain in the state until the RDY line goes high. In this manner, the SYNC signal can be used to control RDY to cause single instruction execution.
+
+A low input logic level on the Ready (RDY) will halt the microprocessor in its current state. Returning RDY to the high state allows the microprocessor to continue operation following the next PHI2 negative transition. This bi-directional signal allows the user to single-cycle the microprocessor on all cycles including write cycles. A negative transition to the low state prior to the falling edge of PHI2 will halt the microprocessor with the output address lines reflecting the current address being fetched. This assumes the processor setup time is met. This condition will remain through a subsequent PHI2 in which the ready signal is low. This feature allows microprocessor interfacing with low-speed memory as well as direct memory access (DMA). The WAI instruction pulls RDY low signaling the WAit-for-Interrupt condition, thus RDY is a bi- directional pin. On the W65C02 hard core there is a WAIT output signal that can be used in ASIC's thus removing the bi-directional signal and RDY becomes only the input. In such a situation the WAI instruction will pull WAIT low and must be used external of the core to pull RDY low or the processor will continue as if the WAI never happened. The microprocessor will be released when RDY is high and a falling edge of PHI2 occurs. This again assumes the processor control setup time is met. The RDY pin no longer has an active pull up. It is suggested that a pull up resistor be used on this pin when not being used. The RDY pin can still be wire ORed.
+
+BE is high: Address, Data and RWB buffers are active.
+RDY low before falling edge of PHI2. Resumes on falling edge of PHI2 when RDY is high.
+Address lines are maintained while RDY is low.
+SYNC goes high during 01 of an OPCODE fetch and stays high for the remainder of that cycle.
+SYNC can be used to control RDY to cause single instruction execution.
+
+The NMOS device would ignore the assertion of a Ready (RDY) during a write operation.
+The CMOS family will stop the processor during 02 clock if RDY is asserted during a write operation.
+
+https://core-electronics.com.au/professional-solderless-breadboard-830-tie-points-metal-backing-plate.html
+
+https://electronics.stackexchange.com/questions/360812/10k-resistor-pull-up-down-standard-for-74-series-chips
+I've never heard of pull-down resistors used with LS logic, as everything was
+designed for direct interconnection and unused inputs were tied directly to ground or V+.
+In the same context, pull-up resistors were only used for open-collector outputs.
+74LS 1K max pulldown, 10K pullup. 74HCxx 10K pullup.
+
+Making 65C02 TTL compatible
+https://retrocomputing.stackexchange.com/questions/24665/is-the-w65c02s-ttl-compatible
+Rockwell R65C02 is TTL compatible
+
+https://wilsonminesco.com/6502primer/ClkGen.html  Clock Gen using 74LS04
+
+Suppliers:
+https://www.reddit.com/r/AskElectronics/wiki/buying/  Big List
+https://www.lcsc.com/
+https://www.futureelectronics.com/   Contracts
+https://www.arrow.com/
+https://www.newark.com/
+
+https://www.dcode.fr/boolean-expressions-calculator
+
+
+/opt/homebrew/Cellar/sdl2/2.32.0
+
+
+Line Clipping
+
+BBC: starting farther off the left of the screen takes longer to draw.
+Suggests they're running the line routine from the starting point (and stopping at the right edge)
+
+BBC: using coordinates outside of [-32768,32767] is an immediate no-op.
+Suggests they're testing for out-of-bounds coords before truncating to int16 for the VDU.
+
+
+ADV7513 or ADV7511 are TMDS encoders  https://www.analog.com/en/products/adv7511.html
+
+
+Beeb Keyboard:
+counter cycles through columns; making any key contact causes an interrupt.
+ISR: loads each column in turn into counter, then sets each row in turn (10x)
+
+N-key rollover
+https://en.wikipedia.org/wiki/Key_rollover
+common sequences: beeb has we et dr uo op ax fy jk sc gh nl vb bm
+https://www.mechanical-keyboard.org/key-rollover-test/

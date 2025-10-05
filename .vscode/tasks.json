@@ -1,0 +1,31 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "process",
+			"label": "build_sdl",
+			"command": "clang",
+			"args": [
+				"-Wall",
+                "-Wextra",
+                "-pedantic",
+				"-I",
+				"/opt/homebrew/Cellar/sdl2/2.32.0/include",
+				"-L",
+				"/opt/homebrew/Cellar/sdl2/2.32.0/lib",
+				"-l",
+				"SDL2",
+				"-g",
+				"${workspaceFolder}/emu/sdl_main.c",
+				"${workspaceFolder}/emu/fake6502.c",
+				"${workspaceFolder}/emu/ula.c",
+				"${workspaceFolder}/emu/render.c",
+				"${workspaceFolder}/emu/debugger.c",
+				"-o",
+				"${workspaceFolder}/emu/robo"
+            ],
+			"group": "build",
+			"problemMatcher": [], // Keep this if you don't want problem matching
+		}
+	]
+}

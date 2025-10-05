@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+clang -Wall -Wextra -pedantic \
+-I /opt/homebrew/Cellar/sdl2/2.32.0/include -L /opt/homebrew/Cellar/sdl2/2.32.0/lib -l SDL2 \
+-g emu/sdl_main.c emu/fake6502.c emu/ula.c emu/render.c emu/debugger.c \
+-o emu/robo

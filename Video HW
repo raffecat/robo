@@ -1,0 +1,428 @@
+Video HW
+
+https://en.wikipedia.org/wiki/Composite_artifact_colors
+https://retrocomputing.stackexchange.com/questions/2205/ideal-resolution-for-color-computer-on-ntsc
+https://forums.nesdev.org/viewtopic.php?t=14394 Why Doesn't the NES Show Artifact Colors?
+https://courses.csail.mit.edu/6.111/f2008/handouts/L12.pdf
+https://www.nesdev.org/wiki/NTSC_video   NTSC Timings
+https://www.smspower.org/Development/VDP-Index  (Master System)
+https://segaretro.org/Sega_Master_System/Technical_specifications
+https://www.smspower.org/Development/PixelAspectRatio  (Video Timing)
+
+"Most early consoles have exactly 228 color burst periods per scanline" (max. 176 visible)
+"192 lines is generally considered the standard for NTSC systems" (NTSC 262.5 scanlines; computers 262 scanlines, 22 vtrace)
+"4xNTSC crystals (14.31818Mhz) were usual and cheap; 240 active scanlines, ~224 visible typical"
+"divide by 2 to get a pixel clock of 7.15909 MHz; 454.6 equal intervals, use 454 per scanline, 320 visible +134"
+"A rate of about 5/3 chroma will do a nice job of avoiding chroma artifacts while yielding roughly-square pixels."
+NTSC: 227.5 color-burst cycles per line (160+67.5) [approx. 328 x 224 visible]
+NES: 341-dot (227.333-color burst period) scanline (256+85) 1.6 ratio 4.8/3 chroma [342/228 is 1.5]
+VGA: 640 x 480: 256 * 2 = 512; 192 * 2 = 384 (32.5MHz px clk)
+2600: 160 x 192 (228 clocks per line, 160 visible)
+400/800: 320 x 192 (2x pixels per color clock)
+256 * 0.625 = 160 (1.6 pixels per color clock)
+256 * 2.5 = 640 (4x color clock) so each px lasts 2.5 dots at 14.31818 (or 5 dots at 28.63636)
+
+NTSC Colorburst = 3.579545454545454 (315/88) MHz
+PAL Colorburst = 4.43361875 MHz (283.75 × 15625 Hz + 25 Hz)
+
+5.3693181825 pixel clk = 186.24ns per pixel, 2*186 = 372ns cycle (200ns DRAM is 375ns cycle)
+so 1 DRAM accesses per 2 pixels (4 per tile: name, gfx, gfx, sprite)
+
+Once MPEG came along, everyone standardised on 13.5MHz pixel clock (which works equally well for PAL,
+and means that the same crystal and pixel widths can be used globally instead of switching 12.27 or 14.75)
+It's equal to 640 pixels across most of the active width of the screen (52.15µs to be exact,
+leaving about 7 pixel times unsampled right at the very edges out of a full 53.33µs window),
+and as it's derived from the NTSC colour clock (24/7ths of 3.58MHz = 12.272), also gives us
+exactly 780 clocks per line so it's easy to use it for timing purposes as well.
+This was even adopted by a small number of Japanese home computers in the late 80s/early
+90s to give a TV-compatible high-rez overscan mode based off a 24.545MHz crystal
+(= twice 12.272) and counting 1560 clocks/line instead.
+The active period of a line is NOT what's typically displayed, and includes quite a bit of overscan.
+
+Systems that still do NTSC at all mostly use a pixel clock of 13.500 MHz (27.000 MHz / 2),
+which is what you get when you multiply 30 frames/sec * 525 lines/frame * 858 pixels/line / 1.001
+(color correction factor). 27.000 MHz crystals and oscillator modules are VERY common, because
+they are still used as reference frequency generators for HD systems as well.
+NTSC is 315/88 = 3.57954 MHz *4 = 14.31816
+PAL  is 4.43361875 MHz * 5 = 22.16809375
+
+3.57954*6 = 21.47724   /4 = 5.36931      MHz (186ns per pixel)
+Dot rate  = 21.47727273/4 = 5.3693181825 MHz (186ns per pixel)
+27.0 MHz  = 27.00000000/5 = 5.4          MHz (185ns per pixel)
+
+NTSC provides 227.5 colour cycles per line; PAL is very close to 283.75.
+In both cases, the visible area is around 80% of the line (181),
+but most home computers had a much bigger border than that:
+  — Acorn machines paint for 40µs/320 = 125ns, which is 62.5% of the line (PAL)  142,284?
+  - 48K Spectrum paints for 36.57µs (128/224ths), which is around 57%   (PAL)  128,256
+  - Atari 2600 paints for close to 70% of a line              (NTSC)
+  - if we paint at 44.698µs/320 = 139.68ns per pixel, 279.36ns per 2px [280/300 = 93.3%]
+  - C64 paints for 46µs/320 = 143.75ns per pixel, 287.5ns per 2px [290-300ns MAX]  6.9565217391304 MHz PCLK
+  - C64 bitmap mode "320 pixels in 40µs" 40µs/320 = 125ns per pixel, 250ns per 2px
+  - if we paint at 48µs/320 = 150ns per pixel, 300ns per 2px [320ns is 6.6% over]
+  - if we paint at 52µs/320 = 325ns per 2px (but we're in overscan)
+
+14.318181818181 / 1 = 14.31818181818 MHz = 69.84126984ns (70ns)  * 640 = 44.698µs
+14.318181818181 / 2 = 7.159090909090 MHz = 139.6825396ns (140ns) * 320 = 44.698µs
+14.318181818181 / 3 = 4.772727272727 MHz = 209.5238095ns (210ns) * 320 = 67.047µs (too wide)
+14.318181818181 / 4 = 3.579545454545 MHz = 279.3650793ns (280ns) * 160 = 44.698µs
+14.318181818181 / 5 = 2.863636363636 MHz = 349.2063492ns (350ns) * 160 = 55.873µs (too wide)
+
+PAL 17.734475 / 1 = 17.734475 MHz = 56.387ns (56ns) * 640 = 36.0879µs
+PAL 17.734475 / 2 = 8.8672375 MHz = 112.78ns (113ns) * 320 = 36.0879µs
+PAL 17.734475 / 5 = 3.546895 MHz = 281.94ns (281ns) * 320 = 36.0879µs
+
+150ns @ 6.6666666 MHz pixel clock
+143.75ns @ 6.9565217391304 MHz pixel clock
+
+6.66666666666/7.15905 * 256 = 238.39289663641966  (14.31818 / 2 = 7.15909)
+238/256 * 7.15905 = 6.655679296874999 MHz = 150.247ns
+239/256 * 7.15905 = 6.683644335937499 MHz = 149.619ns
+6.66666666666/7.15905 * 16 = 14.899556039776229
+15/16 * 7.15905 = 6.711609375 MHz = 148.996 ns (149 ns) * 320 = 47.678µs (NEAR 48ns)
+6.9565217391304/7.15905 * 256 = 248.75780518607672 (C64)
+249/256 * 7.15905 = 6.963294726562499 MHz = 143.61ns (C64)
+14.31818/3 = 4.772726666 MHz = 209.524ns * 256 = 53.638µs (NES)
+20 MHz / 3 = 6.666666666 Mhz = 150ns * 320 = 48ns (EXACT) ••
+13.5 MHz / 2 = 6.75 MHz = 148.148148 ns * 320 = 47.407µs (Phasing artefacts?)
+
+Color clocks:
+160 vis 21 border = 181 visible of 228
+320 vis 42 border = 362 visible of 456
+
+Display   320  48µs    320  48µs    (%101000|000 stop display EDP)
+RBorder   16   2.4µs   336  50.4µs  (%101010|000 start HBlank SHB)
+HBlank    16   2.4µs   352  52.8µs  (%101100|000 start HSync  SHS)
+HSync     24   3.6µs   376  56.4µs  (%101111|000 end HSync    EHS)
+HBlank    32   4.8µs   408  61.2µs  (%110011|000 end HBlank   EHB)
+Display   16   2.4µs   424  63.6µs  (%110101|000 reset, start display SDP)
+
+Active  53.33µs 346.666666666666  344            51.6µs
+
+423 * 150 = 63.450µs NTSC
+427 * 150 = 64.050µs PAL
+
+NTSC  52.6μs visible, 1.5μs front, 4.7μs sync, 4.7μs back = 63.5μs
+
+
+At 143ns per pixel, palette MUST be on-chip (static RAM is >=200ns)
+2K   HM6116-3   150ns access SRAM  (1985)
+
+16K  HM4716A-4  250ns access 410ns cycle (won't work)                        (Commodore PET expansion)
+16K  HM4716A-2  150ns access 320ns cycle (300 may work)   ••  may work at 48µs (older gen)
+16K  HM4716A-1  120ns access 320ns cycle (300 may work)   ••  may work at 48µs (older gen)
+16K  HM4816A-7  150ns access 320ns cycle (300 may work)   ••  likely works at 48µs
+16K  HM4816A-4  120ns access 270ns cycle (287 is plenty!) ••  works at 44µs  (Robo 48)
+16K  HM4816A-3  100ns access 235ns cycle (287 is extra!)  ••  works at 44µs  (BBC Micro issue 3, replacement)
+16K  MB8118-12  120ns access 270ns cycle (287 is plenty!) ••  works at 44µs  (Robo 48)
+16K  MB8118-10  100ns access 235ns cycle (287 is extra!)  ••  works at 44µs  (BBC Micro issue 3, early 1982)
+16K  HYB4116-2  150ns access 320ns cycle (300 may work)   ••  likely works at 48µs
+
+tRCD=20+tCAS=100+tCP=60+tCAS=100+tCRP=-20 = 260
+tRAS=150+tRP=100 = 250
+
+287*4 = 1148ns
+1x random 375ns, 1x random 375ns, 1x page 170ns, 1x random 375ns = 1295ns
+
+If we went with 3x reads per 8 pixels: 143.75*3 = 431.25ns (410ns DRAM OK)
+but now we can only read the name table and 2bpp background.
+OK add 2x 2114-2 1Kx4 200ns SRAM at 2.35ea = $4.70 (ouch)
+
+
+FORGOT about the attribute byte: tile id, attrib, gfx-0, gfx-1 per 8px tile,
+       so 4 reads are already used (two pairs of random+paged)
+^^^^^^
+This means Sprites must go in their own 128-byte memory,
+just as the palette must go in its own 32-byte memory (accessed every pixel)
+Bright side: can scan/load sprites at the pixel rate!
+What does a small 100ns SRAM cost? (still can't do palette)
+
+
+What if we load 2 name table bytes: 375 + 170
+Then load 4 background bytes: 375 + 170 + 170 + 170
+And render 16 pixels: 16*143.75 = 2300 - 1430 = 870 enough for 2*375 = 750
+At a cost of 2*8=16 bits extra storage, and complex timing.
+
+
+At 2x CLK per access, we can read 4 times per 8 pixels (186/372ns based on 256x192)
+Data must be latched at the rising edge of CAS, tCSH after ~RAS = 200ns (access time)
+and must satisfy hold timing before tCSH+tOFF = 250ns (50ns after CAS released)
+
+16K  MK4116-3   200ns access 375ns cycle (372ns is just enough) •
+16K  HYB4116-P3 200ns access 375ns cycle (372ns is just enough) •
+16K  MCM4116B   250ns access 410ns cycle (372ns is NOT enough)
+16K  F4116-4    250ns access 410ns cycle (372ns is NOT enough)
+64K  HYB4164-2  150ns access 220ns cycle (186ns is not enough, 372ns is plenty)
+     tCSH=150ns tOFF=40ns tRAS=150 tRP=100 tRCD=50 tCAS=100 tCPN=50
+64K  HYB4164-3  200ns access 330ns cycle (372ns is plenty)
+     tCSH=200ns tOFF=50ns tRAS=200ns tRP=120ns tRCD=65 tCAS=135 tCPN=60
+
+RAS En (tASR=0 tRAH=25)      (tAR=120)     186+46=232ns (tCSH=200ns Latch Data, Release CAS & RAS)
+^             (CAS En tASC=0, tCAH=55)   ________^______________________________ 
+|__________________^____________________|                                       |
+                                       372ns          tCPN=60ns                 .
+                   ....tCAS=93+135=228ns.........^....tRP=120ns 186-46=140ns.....
+......tRCD=65......^___________________                      ___________________ 
+|__________________|                   |_________^__________|                   |
+                  186ns                .                   186ns                .
+
+          _________^          _________          ^_________           _________ 
+|________|         |_________|         |_________|         |_________|         |
+        93ns       .        93ns       .        93ns       .        93ns       .  
+              ^    ^                             ^                             ^
+      2/3 69.75   93ns                          232ns                         372ns
+
+Could move CAS back 23.25ns (1/4 cycle) to extend tRP to 163ns.
+
+
+Rule of thumb: HBLANK 20% of total scan width for CRT.
+Retrace time should be about one third the horizontal scanning period.
+The horizontal sync delay (Sync Position), HS pulse width (Sync Width),
+and horizontal scan delay (remainder) are typically programmed with a 1:2:2 ratio. 
+
+total line = 43*8 = 344  (344 * 20% = 68)
+HBLANK = 16+24+24 = 64   (64/344 = 18.6%)
+344-64 = 280-256  = 24   (border 12+12)
+
+000-255 Visible         256  32
+256-267 Right Border     12  1.5
+268-283 Front Porch      16  2
+284-307 HSync            24  3
+308-311 Back Porch        4  0.5  \
+312-327 Colorburst       16  2    |  24 3
+328-331 Back Porch        4  0.5  /
+332-343 Left Border      12  1.5
+344     Reset Counter
+
+
+000-255 Visible         256  32
+256-267 Right Border     12  1.5
+268-283 Front Porch      16  2
+284-307 HSync            24  3
+308-311 Back Porch        4  0.5
+312-327 Colorburst       16  2
+328-331 Back Porch        4  0.5
+332-343 Left Border      12  1.5
+344     Reset Counter
+
+
+https://en.wikipedia.org/wiki/List_of_home_computers_by_video_hardware
+https://en.wikipedia.org/wiki/TMS9918
+https://en.wikipedia.org/wiki/Motorola_6845
+https://en.wikipedia.org/wiki/Commodore_64
+https://www.c64-wiki.com/wiki/Graphics_Modes                    (1bpp/320•2/8x8 2bpp/160•3/8x8+1 40x25•1/8x8+1 40x25•2/4x8+1)
+https://www.cpcwiki.eu/index.php/CPC_old_generation             (4bpp/160 2bpp/320 1bpp/640)
+https://neuro-sys.github.io/2019/10/01/amstrad-cpc-crtc.html •
+https://www.atariarchives.org/dere/  De Re Atari
+https://spectrumforeveryone.com/technical/zx-spectrum-models/   (1bpp/256•1/8x8+1)
+
+https://beebwiki.mdfs.net/MODE_6
+https://www.cpcwiki.eu/index.php/Video_modes
+https://www.copetti.org/writings/consoles/nes/
+
+https://www.kicad.org/
+
+
+320 + 64 = 384 / 0.8 = 480
+480 * 0.2 = 96
+20 + 40 + 40 = 100
+
+32       100000  GFX_ON
+352   101100000  GFX_OFF
+384   110000000  HBLANK
+404   110010100  HSYNC
+444   110111100  HSEND
+480   111100000  RESET
+
+https://electronics.stackexchange.com/questions/340947/can-i-use-a-12mhz-for-ntsc-video-generation
+https://beebwiki.mdfs.net/CRTC
+
+Amiga    640px 45μs per scanline
+AppleII  560px 45.6μs
+Atari ST 480px
+C64      320px of 480px
+C16      320px 46μs of 52μs line (362px?)
+BBC PAL  640px 64μs (CRTC: 128*8=1024 Vis 80*8=640 Back 18*8=144 Sync 8*8=64 Front 22*8=176)
+         there are 312.5 scanlines in a 50Hz field (20ms per field)   pixel rate (2/4/8/16MHz)
+8-bit consoles 576-584px 47.5-48µs (256 pixels at 5.37MHz)
+NTSC     52.6μs visible, 1.5μs front, 4.7μs sync, 4.7μs back = 63.5μs
+
+https://martin.hinner.info/vga/pal.html
+
+64µs per line   445*0.14375 = 63.96874999999999
+46 visible  46 / 320        = 0.14375           use 320 (80 x4)
+6  border   6 / 0.14375     = 41.73913043478261  use 40 (10 x4, 5 each side)
+12.05 blank 12.05 / 0.14375 = 83.82608695652175  use 84 (16 x4)
+4.7 sync    4.7 / 0.14375   = 32.69565217391305  use 32 (8  x4)
+1.65 front  1.65 / 0.14375  = 11.478260869565217 use 12 (3  x4)
+5.7 back    5.7 / 0.14375   = 39.652173913043484 use 40 (10 x4)
+
+320 + 40 + 80 = 440 * 0.14375 = 63.250   (should be 64)
+320 + 40 + 82 = 442 * 0.14375 = 63.5375  (should be 64)
+320 + 40 + 83 = 443 * 0.14375 = 63.681   (should be 64)  +0.181  -0.319
+320 + 40 + 84 = 444 * 0.14375 = 63.825   (should be 64)  +0.325  -0.175 ••
+320 + 40 + 85 = 445 * 0.14375 = 63.96875 (should be 64)          -0.031
+320 + 40 + 86 = 446 * 0.14375 = 64.1125  (should be 64)
+
+68µs per line   427*0.15 = 64.05
+48 visible  48 / 320     = 0.15               use 320 (80 x4)
+4  border   4 / 0.15     = 26.666 use 26 (6 x4, 3 each side)
+12.05 blank 12.05 / 0.15 = 80.333 use 80 (16 x4)
+4.7 sync    4.7 / 0.15   = 31.333 (8  x4)
+1.65 front  1.65 / 0.15  = 11 use 12 (3  x4)
+5.7 back    5.7 / 0.15   = 39.652173913043484 use 40 (10 x4)
+
+320 + 26 + 80 = 426 * 0.15 = 63.9 (should be 64)
+
+625,312.5 lines
+a common pixel rate used in DVD players etc is 14.75MHz; 7.375MHz for non-interlaced pixels
+"I used an 8MHz clock throughout my Z80 project - this made the time divisions for the sync
+periods etc simple integers - and the pixels were not noticably rectangular."
+digital sampling: 720 samples per line at 13.5 MHz (with digital blanking)
+sync 4µs back porch 8µs visible 52µs total 64µs (no front porch)
+
+13.5 MHz is the standard sampling rate for NTSC digital component video (ITU-R BT.601)
+704 active pixels per line for a 4:3 image (NTSC-Film standard resolution 720 × 480 pixels)
+
+1024 total:
+640  display
+88   border
+208  blank
+88   border
+
+https://danalee.ca/ttt/analog_video.htm
+https://martin.hinner.info/vga/timing.html
+
+https://electronics.stackexchange.com/questions/340947/can-i-use-a-12mhz-for-ntsc-video-generation
+https://retrocomputing.stackexchange.com/questions/3260/actual-resolution-of-composite-video-monitors
+https://www.eevblog.com/forum/projects/strugling-with-composite-video-and-vertical-synchronisation/
+https://courses.csail.mit.edu/6.111/f2008/handouts/L12.pdf
+https://bitsavers.trailing-edge.com/components/motorola/_dataSheets/6845.pdf
+http://www.tinyvga.com/vga-timing
+https://www.nesdev.org/wiki/NTSC_video
+https://en.wikipedia.org/wiki/Colorburst
+https://en.wikipedia.org/wiki/TMS9918
+https://en.wikipedia.org/wiki/Yamaha_V9938
+https://retrocomputing.stackexchange.com/questions/4625/graphics-chips-in-1980
+
+https://www.youtube.com/watch?v=tN7XZlOu3po Star Wars C64
+https://www.youtube.com/watch?v=HDf6KX5wnbc retro games
+
+By 1981 JEDEC took PLCC for standardisation which produced a norm in 1984
+
+Every 8 pixels, make 4 memory accesses:
+0: read name table
+1: read gfx byte 0
+2: read gfx byte 1
+3: read sprite Y or X,A,G,G,G,G (for next line)
+
+There's no time for the CPU to access VRAM, except during VBlank.
+
+1 MHz 6502 accessed RAM every 2nd cycle, leaving the other cycle
+for video access. 2 MHz RAM, 500ns cycle / 300ns access.
+
+2 MHz 6502 (BBC Micro 1982) requires 4 MHz memory: 250ns cycle time,
+150ns access time: used Hitachi HM4816A-3 with 100ns access, 235ns cycle.
+
+2 MHz 6502 (no contention) only needs 500ns cycle time;
+any 500ns or faster 4116 will work.
+
+https://archive.org/details/BYTE_Vol_07-04_1982-04_Human_Factors_Engineering/page/n537/mode/2up?view=theater
+300ns 8/$15; 150ns 8/$19; crystals all cost 3.95
+6502 $6.95; 6502-A $9.50/12.95; Z80A $6.00
+Lower-half DRAM listed at 2/3 the price [also a slower 200ns part vs 150ns]
+16K 4116 100/$1.15 [$37/32] •• (64K 4164 10/$9.95 [$80/8])  16K is half the price! ($9.20/8; $18.40/16)
+44-pin connector Kim Eyelet $2.15
+
+Acorn didn't use the ubiquitous 4116 chips (which could only provide cycle times up to 375ns)
+• MK 4116-2   150ns access time, 375ns cycle
+• MK 4116-3   200ns access time, 375ns cycle
+• F  4116-4   250ns access time, 410ns cycle •
+• HM4716A-4   250ns access time, 410ns cycle •
+• HYB4116-PЗ  200ns access time, 375ns cycle
+• MCM4116B-30 300ns access time, 480ns cycle
+• 450ns was also possible
+
+"DRAM in 1982 was asynchronous, not the synchronous varieties we get these days"
+• CAS latency: read a byte from the currently selected page
+• access time: select a new page and fetch a byte
+• page mode cycle time: read from the current page and be ready for the next
+• cycle time: perform a random access and be ready for the next
+
+1978/1979 5¼" disk drives for Apple II, TRS-80 and Commodore PET.
+1979 PET 2001-N in 16K / 32K models. All 32K PETs used sixteen 4116 chips.
+1981 PET updated to use 6845 CRTC
+
+Composite Luma Chroma Sync +5V Gnd Shield (7-pin DIN)
+
+rising edge:
+ _   _   _   _   _   _   _   _   _   _   _   _   _   _   _   _  
+| |_| |_| |_| |_| |_| |_| |_| |_| |_| |_| |_| |_| |_| |_| |_| |_    CLK       (640px CLK)  75ns (Shift CLK)
+ ___     ___     ___     ___     ___     ___     ___     ___    
+|   |___|   |___|   |___|   |___|   |___|   |___|   |___|   |___    CLK/2     (320px CLK)  150ns (based on 48µs visible display)
+ _______         _______         _______         _______        
+|       |_______|       |_______|       |_______|       |_______    CLK/4     (160px CLK)  300ns (VRAM CLK)
+ _______________                 _______________                
+|               |_______________|               |_______________    CLK/8     (Load GFX)   600ns
+
+
+"Dot clock of PAL is 7.375 for square pixels."
+
+Digital sampling: the existing analogue video signals are sampled at 13.5 MHz.
+Digital television ordinarily contains 720 pixels per line, but only 702 (PAL) to 704 (NTSC) of them contain picture content.
+Yields 64px border.
+PAL 52 μs * 13.5 MHz = 702 pixels;        625-line 50 Hz, 575 active [two half-lines] actual: 704 x 576
+NTSC 52.856 μs * 13.5 MHz = 713.5 pixels; 525-line 60 Hz, 485* active [two half-lines] actual: 704 x 480 (* 480 in Digital)
+Width must always scale to 768 (PAL) or 640 (NTSC) for square pixels.
+720 - 704 = 16 "nominal analogue blanking"
+
+https://en.wikipedia.org/wiki/Nominal_analogue_blanking
+https://en.wikipedia.org/wiki/Overscan#Overscan_amounts
+
+(Disk controller: cheaper and faster WDC1770 floppy disk controller [than Intel 8271])
+
+GameBoy Color  32 bg + 24 spr colors
+
+
+NTSC Colorburst = 3.579545454545454 (315/88) MHz            [315*4/88 = 14.318181818181818(C64)]
+PAL-B Colorburst = 4.43361875 MHz (283.75 × 15625 Hz + 25 Hz) [(283.75*15625+25)*5 = 22.16809375]
+PAL-B Pix Clock  = 3.546895 MHz (17.734475 / 5 = 3.546895)  where does this come from?
+
+PAL: 4.43361875  8.867238/2  17.734475/4(C64)  26.6017125/6(NES)
+
+14.318181818181 / 7 = 2.045454545454 MHz CPU clock   = 488.8888888ns RAM cycle  (480ns)
+14.318181818181 / 4 = 3.579545454545 MHz Colorburst  = 279.3650793ns VRAM cycle (280ns) [93.3% of 300ns]
+14.318181818181 / 2 = 7.159090909090 MHz Pixel clock = 139.6825396ns Pixel time (140ns)
+14.318181818181 / 1 = 14.31818181818 MHz Shift clock = 69.84126984ns Pixel time (70ns)
+
+14.318181818181 / 14 = 1.0227272727272143 (C64 CPU)
+14.318181818181 / 12 = 1.19318181818175   (2600 CPU)
+14.318181818181 / 8  = 1.789772727272625  (NES, Atari 800, CoCo)
+14.318181818181 / 7  = 2.0454545454544286 (C128 CPU)
+
+64µs line * 262 lines per field = 16768µs / 488.8888ns = 34,298.188 cycles per field
+64µs line / 488.8888ns = 130.9 cycles per line
+
+PAL/NTSC choose the colour subcarrier frequency so it’s not an integer multiple
+of line rate, to reduce dot-crawl interference  (i.e. colour cycles per line)
+
+"standard 384 × 288 quarter-resolution of 625-line [PAL] TV screen area" -> border 32+32 visible
+PAL Colorburst = 4.43361875 MHz (283.75 colour cycles × 15625 Hz + 25 Hz)
+283.75*2 = 567.5 half-cycles;
+567.5 * 52μs/64μs = 461.09375 visible; 567.5 - 461.09375 = 106.40625 hblank
+GPT: 4.4336MHz×12μs = 53.2 * 2 = 106.4 hblank
+Shift CLK = 4.43361875*2 = 8.8672375 MHz
+
+https://hackaday.io/project/75-z80-microcomputer-system/log/240-pal-colour
+
+PAL 384 = 32 + 320 + 32 on-screen; 283.75 color = 567.5 clk
+non-rendering = 183.5 + 32 + 32 = 247.5 clk
+
+PAL 461 = 320 + 141 /2 = 70.5 borders
+HBLANK 320+72
+RESET  320+72+104+72 = 568 (40+9+13+9 x8)
+
+320/5 = 64 column mode: draw the first 5 pixels of each tile.
+
+4.43361875*4 = 17.734475 MHz
+17.734475 / 9 = 1.970497222222222 MHz

@@ -1,0 +1,140 @@
+IO Ports
+
+Considerations:
+• BASIC will use DMA source streaming (read DDRW) to read code;
+  • No point having DMA bank registers; physical RAM is non-contiguous.
+• Text output will use DMA destination streaming (write DDRW) to output text;
+• Need direct access to palette and sprite memory for fast per-scanline changes;
+• HDMA: per-scanline scroll, per-scanline palette change, sample playback?
+        (can use YCMP and CPU interrupt instead; C64 only had this)
+• DMA setup is expensive (5*6=30 cycles just to load constants!)
+  • DMA fastload: LDA #zp; STA IO_DFLD; loads 6 bytes from zero-page in 6 cycles (8-aligned)
+
+How do you draw lines?
+• use APA-mode; keep the destination pointer in DSTL,DSTH
+• increment by 1 (X-basis) or by screen width (Y-basis)
+• conditionally add screen width (X-basis) or 1 (Y-basis)
+• store color into DDRW after updating coordinates
+
+How do you fill scanlines of a triangle/rectangle?
+• use fill-mode to fill complete bytes (pixel divisor depends on BPP)
+• switch to APA-mode to draw partial endpoints?
+• addressing is incompatible: need to shift down fill-mode address
+
+
+IO Registers
+
+SRCL    = $D0    ; DMA src low         (DMA uses current BNK8/BNKC mapping)
+SRCH    = $D1    ; DMA src high        (BASIC must handle bank-crossing due to non-contiguous RAM)
+DSTL    = $D2    ; DMA dest low
+DSTH    = $D3    ; DMA dest high
+DCTL    = $D4    ; DMA control         (7-6:direction 5:vertical 4:reverse 2-0:mode)
+DRUN    = $D5    ; DMA count           (writing starts DMA, 0=256)
+AROP    = $D6    ; DMA raster op       (2:rop_en 1-0:rop[0=NOT 1=OR 2=AND 3=XOR])
+DDRW    = $D7    ; DMA data R/W        (read: reads from src++; write: writes to dest++)
+DJMP    = $D8    ; DMA jump indirect   (read: indirect table jump; write: set jump table page)
+DFLD    = $D9    ; DMA fast load       (read: indirect jump high-byte; write: DMA fastload [load 5 bytes])
+BNK8    = $DA    ; Bank switch $8000   (low 4 bits)
+BNKC    = $DB    ; Bank switch $C000   (low 4 bits)
+HDML    = $DC    ; HDMA src low        (enabled in VENA)
+HDMH    = $DD    ; HDMA src high
+KEYB    = $DE    ; Keyboard scan (write: set row; read: scan column)
+MULW    = $DF    ; Booth multiplier (write {AL,AH,BL,BH} read {RL,RH})
+
+DCTL direction:                        [implementation: drives different chip-enables]
+    0 = mem -> mem                     
+    1 = mem -> vram                    
+    2 = vram -> mem                    
+    3 = vram -> vram                   (can be used for windowed scrolling)
+DCTL vertical:                         (increments [Dest] by current map width in VMAP [column upload])
+DCTL reverse:                          (derements src and dest addresses [memmove])
+DCTL mode:
+    0 = copy                           (copy bytes)
+    1 = fill                           (using src low-byte)
+    2 = copy transparent               (copy pixels, skip zero pixels; BPP from VCTL)
+    3 = APA/ROP mode                   (uses DROP; APA addressing: low 1-3 bits of address select pixel; BPP from VCTL)
+    4 = expand                         (copy and expand 1bpp to 2bpp [1 byte to 2 bytes]) ... if cheap!
+    5 = palette memory                 (read src / write dest is palette memory, low-byte only; ignores direction)
+    6 = sprite memory                  (read src / write dest is sprite memory, low-byte only; ignores direction)
+    7 = clear sprites                  (write $FF to the Y coords of sprites, low-byte only; ignores direction)
+
+AROP register [-----ERR] APA-mode Raster Op:
+(2) Enable Raster OP
+(1-0) 0=Invert 1=OR 2=AND 3=XOR
+
+TON0    = $E0    ; PSG Ch.0 tone
+PCH0    = $E1    ; PSG Ch.0 pitch
+VOL0    = $E2    ; PSG Ch.0 volume
+TON1    = $E3    ; PSG Ch.1 tone
+PCH1    = $E4    ; PSG Ch.1 pitch
+VOL1    = $E5    ; PSG Ch.1 volume
+TON2    = $E6    ; PSG Ch.2 tone
+PCH2    = $E7    ; PSG Ch.2 pitch
+VOL2    = $E8    ; PSG Ch.2 volume
+TON3    = $E9    ; PSG Ch.3 tone
+PCH3    = $EA    ; PSG Ch.3 pitch
+VOL3    = $EB    ; PSG Ch.3 volume
+GP0R    = $EC    ; Game port 0 read
+GP1R    = $ED    ; Game port 1 read
+GP2R    = $EE    ; Game port 2 read       (not fitted)
+GP3R    = $EF    ; Game port 3 read       (not fitted)
+
+YLIN    = $F0    ; current Y-line         (read: V-counter; write: wait for VBlank)
+YCMP    = $F1    ; compare Y-line         (read/write, $FF won't trigger)
+SCRH    = $F2    ; horizontal scroll      (tile offset from 0, wraps)
+SCRV    = $F3    ; vertical scroll        (row offset from 0, wraps)
+FINH    = $F4    ; horizontal fine scroll (top 3 bits)
+FINV    = $F5    ; vertical fine scroll   (top 3 bits)
+VCTL    = $F6    ; video control          (7:APA 6:Grey 5:Double 4:HCount 3-2:VCount 1-0:Divider) (see below)
+VENA    = $F7    ; interrupt enable       (7:VSync 6:VCmp 5:HSync 3:BG_En 2:Spr_En 1:HDMA_En)
+VSTA    = $F8    ; interrupt status       (7:VSync 6:VCmp 5:HSync)  (read:status / write:clear)
+VMAP    = $F9    ; name table size        (4:4 width 32,64,128,256; height 32,64,128,256)
+VTAB    = $FA    ; name table base        (high byte)
+VBNK    = $FB    ; tile bank R/W          (write: [aaaadddd] bank addr,data; read: [aaaa----] read data)
+PALA    = $FC    ; palette address        (direct palette-memory address, top bit enables auto-increment)
+PALD    = $FD    ; palette data R/W       (direct palette-memory data, increments address if enabled)
+PALA    = $FE    ; sprite address         (direct sprite-memory address)
+PALD    = $FF    ; sprite data R/W        (direct sprite-memory data, increments address)
+
+VCTL register [AGHUVVDD] set video mode:
+(7) APA mode (A) direct [non-tiled] VRAM addressing fixed at address 0
+(6) Narrow mode (N) render the left 5 pixels of each tile (64 tiles)
+(5) 16 Color (C) attributes contain [BBBBFFFF] BG,FG colors (2x16 palettes)
+(4) Greyscale (G) disables Colorburst for improved text legibility
+(3-2) Vertical (VV) is 0=192 1=200 2=224 3=240 visible lines per frame
+(1) Horizontal (H) is 0=256 1=320 visible pixel-clocks per line (shift rate)
+(0) Divider (D) is 0=256|320 (2bpp) 1=128|160 (4bpp)
+
+Pixel latch rate is determined by divider (D)
+Pixel shift rate fixed, with 256/320 clocks per line (H)
+In 'APA' mode, (A) and (C) are ignored.
+In 'Narrow' mode (N) tiles are still 8x8x2 in memory, but only the left 5 columns are displayed.
+In '16 Color' mode, 0=BG 1=FG 2=alt-BG 3=alt-FG (2x16 alt-palettes)
+
+VENA register [VCH-BSD-] video enable:
+(7) VSync Interrupt enable (V)
+(6) VCmp Interrupt enable (C)
+(5) HSync Interrupt enable (H)
+(3) Background enable (B)
+(2) Sprites enable (S)
+(1) HDMA enable (D)
+
+HDMA data format:
+00000000 nnnnnnnn  - wait for YLine 'n' (sets YCMP)
+00000000 FFFFFFFF  - generate HSync interrupt
+aaaaaaaa dddddddd  - write byte 'd' at address 'a'
+
+Implementation: 12-bit counter (low 16 pages), 8-bit YReg for "wait for YLine" (reuse YCMP?)
+
+Can use HDMA to play samples (need to unpack 64 samples per frame: 64*4=256 bytes: 0,YLine,IO,sample)
+every 4th line. Can unpack 1-bit delata modulation with ASL;ADC;STA loop. Too much work.
+
+
+How would you emulate Raster OPs without ROP HW?
+• enable APA mode for pixel addressing
+• load from DMA source
+• and/or/xor the current color
+• store to DMA dest
+• decrement and loop: 15 cycles per pixel
+
+Is it worth considering a Blitter (expanded DMA) instead of Sprites?

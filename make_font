@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+clang font/convert.c font/ASCIIv4.c -o font/ASCII
+./font/ASCII >font/font.txt

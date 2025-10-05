@@ -1,0 +1,312 @@
+
+DMA module:
+1  Decode ZeroPage & 0xC0
+6  CPU IO address
+8  CPU data
+3  CPU Sync,RDY,RWD
+4  RAM bank (RAS En)
+8  RAM address/data (8 RAS/CAS/Data)
+3  RAM RAS/CAS/WRITE
+
+1+6+8+3+4+8+3 = 33
+
+CLK,Reset,OE (input pins)
+
+
+3-bit Div8                           3 cells
+
+6-bit H-counter                                  2 x 74LS193
+1     H-blank decode
+1     H-sync decode
+1     Colorburst decode
+1     Reset decode                  10 cells
+
+8-bit V-counter (low 3 bits are tile row)        2 x 74LS193
+1     V-blank decode
+1     V-sync decode
+1     Reset decode                  11 cells
+
+8-bit V-compare                      8 cells     1 x 74LS273
+
+7-bit tile counter                   7 cells
+7-bit tile scroll                    7 cells
+
+8-bit BG gfx 0 shift
+8-bit BG gfx 1 shift                16 cells
+
+3+10+11+8+7+7+16 = 62
+
+
+8-bit sprite counter       (4 cells)
+8-bit sprite gfx 0 shift   (4 cells)
+8-bit sprite gfx 1 shift   (4 cells)
+1     draw start                        15 cells x 8  =  [104 cells]
+2     priority encode (2bpp)
+
+DMA Unit
+20    source address
+20    destination address
+8     count
+8     mode
+8     latch
+
+20+20+8+8+8 = 64
+
+           NOR(A8,A9)   \
+           NOR(A10,A11) -   2xAND4 --> ZeroPage
+           NOR(A12,A13) -   74LS21
+           NOR(A14,A15) /
+           74LS02 4xNOR
+
+
+           NOR(8,9,10)    \
+           NOR(11,12,13)  -  2xAND4 --> IOPage
+           NOR(14,15,G)   -  74LS21/1
+           AND(6,7)       /
+           74LS27 3xNOR3/3•
+           74LS08 4xAND2/1
+
+
+74LS00  4x 2-input NAND
+74LS02  4x 2-input NOR
+74LS04  6x 1-input INVERTER
+74LS05  6x 1-input INVERTER Open Collector
+74LS08  4x 2-input AND
+74LS10  3x 3-input NAND
+74LS20  2x 4-input NAND
+74LS21  2x 4-input AND •
+74LS27  3x 3-input NOR •
+74LS30  1x 8-Input NAND •
+74LS32  4x 2-input OR
+74LS38  4x 2-input NAND Open Collector (Bus)
+74LS69  2x 4-bit Binary Counter, Parallel Out (No Load, No Cascade)
+74LS86  4x 2-input XOR
+74LS93  4-bit Binary Counter, Parallel Out (No Load, No Cascade)
+
+74LS157 Quad 2:1 Mux
+74LS158 Quad 2:1 Mux, Inverted Outputs (lower delay)
+74LS161 4-bit Up-Counter, synchronous, presettable, carry look-ahead, parallel out
+74LS165 8-bit Shift Register with Parallel Load
+74LS169 4-bit Up-Down Counter with Carry Look-ahead, Sync Load, Parallel Out
+74LS174 6x D-Type Flip-Flop
+74LS175 4x D-Type Flip-Flop with Q and _Q ouputs
+74LS191 4-bit Up-Down Counter, Presettable, Synchronous, Carry and Borrow outputs
+74LS193 4-bit Up/Down Counter, Async Presettable, Synchronous, Cascadeable •••
+74LS273 8-bit Register, Parallel In/Out, Rising Edge (Reset,Clk)
+74LS279 4x S-R Latch, Async
+74LS365 6x Bus Driver (Bipolar Buffer)
+74LS373 8-bit Transparent D-Latch, Edge-Triggered, 3-State
+74LS393 2x 4-bit Binary Counter (Reset,Outputs,Clk) (Up Only)
+74LS573 Same as '373 with straight-through pinout
+
+DMA Src:  5 x 74LS193  (20 bits, 3 registers)
+DMA Dst:  5 x 74LS193  (20 bits, 3 registers)
+DMA Cnt:  2 x 74LS193  (8 bits, down-counted, 1 register)
+DMA Ctl:  1 x 74LS273  (8-bit, 1 register)
+DMA DL:   1 x 74LS273  (8-bit, 1 register)
+DMA JTb:  1 x 74LS273  (8-bit, 1 register)                 / 72 bits (9 bytes)
+
+
+Video Timing:
+
+H-timing counter:  6 bits  (up to 8*64=512)        or   
+V-timing counter:  8 bits  (up to 256 lines)
+Text base page:    5 bits  (base address up to 32K, 1K-aligned)
+                   ------
+                   19 bits (ATF750CL 10 Macrocell 20 FF 12-in 10-out)
+
+Row latch (74LS273)  7 bits  (reload each frame, SW can do this [optional])
+Text page (74LS273)  5 bits  (up to 8 bits is OK)
+
+
+Video BG:
+
+Fine scroll H:     3 bits  (increment each pixel, extra clocks to gfx shift at start of line)
+Column counter:    7 bits  (128 tiles)
+Column latch:      7 bits  (reload each line)                                      [can be off-chip]
+Row counter:       7 bits  (128 tiles, must reload each frame)
+Fine scroll V:     3 bits  (low 3 bits of gfx row address, increment each line)
+Palette latch:     3 bits  (from attribute byte PPP, must keep after loading gfx)  [OHVIPPPT]
+Priority latch:    1 bit   (from attribute byte I, must keep after loading gfx)
+Tile shifter:     16 bits  (also index/attr latch; shift: 16px@1bpp 8px@2bpp 4px@4bpp)
+                  --------
+Total:            47 bits  of 48  (47+7+19 = 73 bits)
+
+Still need external Palette SRAM,         32/64 bytes (of 1Kx4=512 byte SRAM)
+Also need Sprite RAM [X,Y,Tile,Attr] 64*4 = 256 bytes (of 1Kx4=512 byte SRAM)
+
+
+Video Sprites (ATF1504ASL x2 = 256-FF):
+
+H position:        9 bits   (count down, latch on zero as 'drawing' state)
+Tile shifter:     16 bits   (also index/attr latch; shift: 16px@1bpp 8px@2bpp 4px@4bpp)
+Palette latch:     3 bits   (from attribute byte PPP, must keep after loading gfx)  [xHVIPPPT]
+Priority latch:    1 bit    (from attribute byte I, must keep after loading gfx)
+                  --------
+                  29 bits   (29*8 = 232 of 256)
+
+Wide Sprites:    +16 bits   (16*8 = 128) could pull from RAM, 128 bytes
+
+
+Audio / Video (ATF1504ASL x2 = 256-FF):
+
+Freq counter     10 bits    (count down)
+Wave counter      3 bits    (up/down)   [13 bit function]
+Wave pattern      8 bits    (register)
+Volume            4 bits    (register)  - move to 2nd ATF1504ASL (so IC1 has 128 bits)
+Noise             1 bit     (register)
+Frequency        10 bit     (register)  [23 bit registers]
+                 --------
+                 36 bits    (32*4 = 128 | 4*4=16 + (47+7+19 = 73) = 89 of 128)
+
+(IC1 -> IC2 needs 4*3 = 12 audio bits; IC2 shifts them << volume: 4*4=16 cells)
+
+
+Tile Graphics Banking
+
+There are 8 x 4-bit bank registers.
+Each group of 64 tiles has a native offset:
+
+BPP      Bank Size     Offsets                Bank Multiplier      Addressable RAM
+1        512           0, 512, 1024, 1536     2048                 32 K
+2        1024          0, 1024, 2048, 3072    4096                 64 K
+4        2048          0, 2048, 4096, 6144    8192                 128 K
+
+Drawbacks: can't mix bank sizes; need 2 x 512 banks to align with a 1024 bank, etc.
+Also can't pack 2 x 512 next to 2 x 1024 because the native offsets don't align:
+
+0        512           0    - 512
+1        512           512  - 1024
+                              ^^^^ 1K gap after this
+2       1024           2048 - 3072
+3       1024           3072 - 4096
+
+Another option, always aligned to 1024-byte banks:
+
+BPP      Bank Size     Offsets                Bank Multiplier      Addressable RAM
+1        512           0, 512, 1024, 1536     4096                 64 K
+2        1024          0, 1024, 2048, 3072    4096                 64 K
+4        2048          0, 2048, 4096, 6144    4096                 64 K
+
+This still has the native-alignment problem shown above.
+We really need 6-bit bank-selectors..
+
+Observations:
+• a single 1bpp bank doesn't save any memory
+• 16 x 512 = 8K (bad)   64 x 512 = 32K (better)  64 x 1024 = 64K (great)
+• can we use a "two consecutive" rule to fix alignment?
+
+
+Basic Sprite HW:
+
+Sprite Counter: 2 x 74LS193  (8-bit counter, down-counted on rising Shift-CLK)
+                1 x AND      (AND _Cout with Shift-CLK to halt on 0)
+
+Sprite Shifter: 2 x 74LS165  (8 bits x 2 planes, parallel-loaded)                                       + 2 x Shift (74LS165)
+                1 x AND      (AND NOT _Cout with NOT Shift-CLK [delay shift one pixel])                 + 2 x AND (74LS08/2)
+
+Sprite Attrib:  1 x 74LS273  (8-bit register, sprite attribute byte: [xVHIPPPT])
+                             (T,V,H irrelevant: tile lookup has already happened)
+
+Priority Enc:   1 x OR       (shifter outputs, all planes: 'non-zero', 74LS32/1)                        + 4-input OR
+                2 x 74LS158  (8x 2/1 data selector: mine/upstream [a layer of AND gates])                 (NAND with inverted _Q
+                                                                                                          outputs from Shift regs)
+                (all Sprites evaluate their 'non-zero' and selector at once)
+                                                                                                        + Counter decode at -8
+                7 ICs + 1/4 NAND,OR,SR-Latch + 1/2 AND                                                    to switch to the second
+                                                                                                          pair of Shift registers
+This HW has the same limitation as the NES: if the BG is Priority=1 (in front)                            (and switching Mux)
+and some Sprite is Priority 1 (in front of the BG) but there's a Priority=0 sprite
+above the Priority=1 sprite, the Priority=0 sprite will take precedence.                                IT's cheaper than twice
+This is because Sprite precedence ignores the Priority flag.                                            the visible sprites,
+SW fix: always list Priority=1 sprites 1st in the Sprite List, so they take precedence.                 but left-edge is a problem
+It's not worth spending HW to fix it.
+
+An option:
+
+  Determine final visibility at each Sprite (control logic)
+  Merge graphics and attributes from each Sprite:
+
+  2 x 74LS30   (8-input NAND, 'OR' inverted inputs)
+  6 x 74LS30   (8-input NAND, 'OR' inverted inputs)
+
+An option:
+
+  1x 74LS148 8 to 3 Priority Encoder
+  2x 74LS151 8-input Multiplexer (gfx0, gfx1)
+  6x 74LS151 8-input Multiplexer (6-bit attribute)
+
+  Nine ICs and 72 inbound traces!!
+
+
+DERIVATION: 
+
+  non-zero = OR(shift0, shift1)
+  encoded  = AND(gfx0, non-zero, NOT(upstream))
+  output   = NOT(encoded) for NAND output merge
+
+  not-non-zero = NOR(shift0, shift1)
+  output       = NOR(gfx, not-non-zero, upstream) -> 'AND' with inverted GFX
+
+
+
+
+Background Engine
+
+     Load new pair
+     Every 8 px    (preload 2 pairs)          End of LINE -> Fine Y Counter (Cout)       Every 8 px
+           |                                                      |                            |
+           v                                                      v                            v
+0 -> Shift_T1_L -> Shift_T0_L ->                             INC Address ROW            INC Address COL   <- Reload at
+0 -> Shift_T1_H -> Shift_T0_H ->  (shift at pixel clk)       (bit 5/6/7)  ^               (5/6/7-bit)        End of LINE
+                       ^                                      ^           |                ^                 (7-bit REG)
+                       |                                      |        Reload at           |
+                  Fine X Sel                                  |        Start of FRAME      |
+                           |                                  |                            |
+                           v                                  Width                        Width
+                     Output Pixel                             CTRL                         CTRL       (53 bits of STATE)
+
+
+
+Sprite Engine
+
+                               Previous Sprite
+                                      ^
+          Preload on                  |            Every Pixel                                     
+          Previous LINE               |                  |                                
+             |      |                 |                  v     Zero                       
+             v      v                 |             INC ~X Pos ----> Set DRAW S/R                  (8-bit X-REG)  \  Line
+0 -> Shift_G1_L -> Shift_G0_L ->      |              (9-bit) \                                     (8-bit T-REG)  |  Setup
+0 -> Shift_G1_H -> Shift_G0_H ->      |               ^       \_____ Bit 3/4 Set?    <-            (8-bit A-REG)  /  State
+     |  ^     ^             \_____    |               |              Clear DRAW S/R   |   
+    /   |     |                   \   |          (from X-REG)                         |      
+   |    DRAW  HFLIP   DRAW --> Output-MUX           NEXT LINE -----> Clear DRAW S/R   Width  
+   |    (Shift EN)    HFLIP /  /      |               |    \____________________      CTRL   
+   \__________________________/       v               v           \             \                  
+       (reverse shift)            Next Sprite       HFLIP(1)      PAL(3)        PRI(1)             (70 bits of STATE)
+                                                    (from A-REG)  (from A-REG)  (from A-REG)
+
+Line Setup
+
+                                                                        _____ INC YAddr __Cout__ Clear SCN
+Scan sprites in RAM: Clear CNT(3), Clear LDS(2), Set SCN(1)            /
+On SCN & LDS=0: Fetch YAddr, Compare(GE) YLINE & Compare (LT) YLINE+8/16 -> Set LDS.0 (LDS=1)
+On SCN & LDS=1: Fetch X -> SEL(CNT) -> X-REG; INC LDS
+On SCN & LDS=2: Fetch T -> SEL(CNT) -> T-REG; INC LDS
+On SCN & LDS=3: Fetch A -> SEL(CNT) -> A-REG; INC LDS __Cout__ INC CNT __Cout__ Clear SCN       Width CTRL
+                                                                                                  |
+At HBLANK-8: Clear CNT(3), Clear LDS(2), Set SGL(1)             VFLIP -> invert TileAddr:Row low 3/4 bits (XOR)
+On SGL & LDS=0: Fetch G0L -> SEL(CNT) -> Shift_G0_L; INC LDS
+On SGL & LDS=1: Fetch G0H -> SEL(CNT) -> Shift_G0_H; INC LDS
+On SGL & LDS=2: Fetch G1L -> SEL(CNT) -> Shift_G1_L; INC LDS
+On SGL & LDS=3: Fetch G1H -> SEL(CNT) -> Shift_G1_H; INC LDS __Cout__ INC CNT ___Cout__ Clear SGL
+
+With more HBLANK time: X,T,A can be loaded late (replaces X-REG, T-REG, A-REG!)
+
+340-256=84 HBLANK = 42 memory cycles. NES loads 64 sprites x 2 = 128 bytes, starting 324-260=64/2 = 32 Mem /4 = 8 Spr
+Need 4*8 = 32 graphics memory cycles, uncontended (from sprite RAM)
+
+[||]/\ 4 sprites    /\/\/\ 6 sprites
+[||]\/              \/\/\/    (or 9)
+<==>[]              [][][] 
+

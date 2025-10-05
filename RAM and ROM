@@ -1,0 +1,250 @@
+RAM and ROM
+
+Excellent reference:
+
+https://www.ardent-tool.com/memory/Chip_Conversion.html
+
+DRAM Parts:
+
+ 2114 - 1K x 4  (Intel, MOSTek, AMD, NEC) [M58725] (SRAM)
+ FM27C256Q - 1K x 8  (Intel, AMD, Hitachi - 8 bit bus version of 2114) [MSM2128] "2148 SRAM DIP"
+ 6116 - 2K x 8  (Hitachi, Toshiba, NEC, Fujitsu, Cypress - still common) [TMM2016,TC5516]
+ 4027 - 4K x 1  [MK4115j-40,TMS4027-20NL,MK-4027] 250ns (7805 & 7812 ?) (need 16)
+ 4116 - 16K x 1 [NEC D416C-2] [4517,2118,HM4816A-3 5v] (common, ~$1.50 to $2) (need 8, $10) [ZX Spectrum]
+ 4416 - 16K x 4 [TMS4416 1980] more expensive than 4x 4116 until 83-84 (when 64K was available) +expensive
+ 2620 - 16K x 4 DRAM IMS2620P
+ 4164 - 64K x 1 [5164 CMOS] (1985-12 $0.69) (1983 ~$3.50 to $4 per chip in modest volumes) (need 8, $28)
+ 4532 - 32K x 1 [TMS4532-20NL3,M3732-L,TMS4532-20NL4,M3732-H] [half-faulty 64Kx1, at ~$1.75-2.50?] (need 8, $16) [ZX Spectrum]
+ 4164 - 64K x 1 [D4164C-3] [5v] "address multiplexed" ($7–8 in late 1983)
+ 4464 - 64K x 4 [MT4067-15,41464,MB81464] (1987)  []
+ 6264 - 
+ 6287 - 64K x 1 [6264]
+41256 - 
+62256 - 32K x 8 [TC55257,KM62256,HM62256,P51256,CXK582] [1993]
+
+SRAM Parts:
+                                                                    AU$8.44/7.26                                        Avnet
+AS6C62256-55PCN •256kbit SRAM 32K x 8  55ns  PDIP-28  5V  OE  wide    $8.34/6.60   Alliance [Active, 907]  (Commercial) $3.21/1K
+AS6C62256-55SCN (SOP version)
+AS6C62256-55PIN  256kbit SRAM 32K x 8  55ns  PDIP-28  5V  OE  wide    $8.38/7.34   Alliance [Active, 95]   (Industrial)
+AS6C6264-55PCN    64kbit SRAM  8K x 8  55ns  PDIP-28  5V  OE  wide    $7.73/6.13   Alliance [Active, 1569] (Commercial) $3.02/1K
+AS6C62256A-70PCN 256kbit SRAM 32K x 8  70ns  PDIP-28  5V  OE  wide                 Alliance [Obsolete]
+AS7C256C-15PCN   256kbit SRAM 32K x 8  15ns  PDIP-28  5V  OE  narrow  $12.43/9.17  Alliance [Active]                    $5.09/1K
+AS7C164A-15PCN    64kbit SRAM  8K x 8  15ns  PDIP-28  5V  OE  narrow  $6.02/5.01   Alliance [Active]                    $2.09/1K
+CY7C164-20PC      64kbit SRAM 16K x 4  20ns  PDIP-22  5V      narrow  $2.89        Cypress  [Obsolete]
+
+SMJ4464-15JDL    256kbit DRAM 64K x 4 150ns  PDIP-18  5V  G           $24.10       TI           (Rochester 600)  [Obsolete] Ceramic?
+SMJ4464-12JDS    256kbit DRAM 64K x 4 150ns  PDIP-18  5V  G           $30.36       TI           (Rochester 6134) [Obsolete]
+SMJ4416-15JDS     64kbit DRAM 16K x 4 150ns  PDIP-18  5V  G           $14.49       TI           (Rochester 3681) [Obsolete]
+SMJ4416-20JDS     64kbit DRAM 16K x 4 200ns  PDIP-18  5V  G           $14.49       TI           (Rochester 3516) [Obsolete]
+4164-150          64kbit DRAM 64K x 1 150ns  PDIP-16  5V  CAS         $3.75/$2.95  Major Brands (Jameco "overstocked") [Obsolete]
+KM4164B-12        64kbit DRAM 64K x 1 120ns           5V  CAS         $2.80/$2.29  Samsung      (Jameco "More in 5 weeks" 736 + 1000)
+M41464-10        256kbit DRAM 64K x 4 100ns           5V  CAS         $4.70/$3.95  OKI          (Jameco "More in 7 weeks") [Obsolete]
+
+https://au.element14.com/alliance-memory/as6c62256-55pcn/sram-256kbit-0-to-70deg-c-dip/dp/426090602
+https://au.rs-online.com/web/p/sram/1700736?cm_mmc=aff2-_-au-_-octopart-_-1700736-_-instock&gad_source=7&dclid=CKuRuMbRmY8DFfSKrAId5BAE6w
+
+https://octopart.com/electronic-parts/integrated-circuits-ics/memory/ram?lifecyclestatus=Production&case_package=DIP&case_package=PDIP&interface=Parallel
+https://www.avnet.com/americas/product/alliance-memory/as6c62256-55pcn/evolve-174267/?CMP=EMA_Octopart_inventoryfeed_VSE
+
+https://www.shengyuic.com/products/detail/SAMSUNG/KM4164B-10/8074292.html  Global part finder
+KM4164B-10  $0.97/0.85   Cat:PMIC
+KM4164B-12  $0.58/0.51   Manufacturer:SES Cat:PMIC
+KM4164B-15  $13.00/11.44 Manufacturer:Samsung (Octopart 22,987)
+
+
+SMJ4464-12JDS 64Kx4 DRAM 120ns Shenzhen Taichengxing "TI 68-LCC (J-Lead)"                           (Obsolete $20/part, 17K stock)
+TMS4161-15NL  64KX1 Video DRAM 150ns NMOS   Shenzhen Taichengxing Electronic Technology Co., Ltd.   (Obsolete)
+SMJ4161-15JDS 64Kx1 Video DRAM 150ns        Zhiyucheng (shenzhen) Technology Co., Ltd               (Obsolete)
+SMJ4161-20JDS 64KX1 Video DRAM 200ns NMOS                                                           (Obsolete)
+
+https://www.amiga-stuff.com/hardware/64kx4-dram.html  DRAM Tables
+
+
+62256 SRAM 32K x 8 Async
+https://au.mouser.com/ProductDetail/Alliance-Memory/AS6C62256-55PCN?qs=LD2UibpCYJqgbIupMJnGTQ%3D%3D&mgh=1&vip=1&srsltid=AfmBOoqe5f0NgqZFEI--qrBr49XATbtiboPo3Je1KnDxMdTeBZzLSWX6Bfg
+
+
+AS7C164A 32Kx8 SRAM 5V 28-TSOP    (https://www.alliancememory.com/product/eol-5v-fast-sram/ DIP-28)
+MCM6665BP15 DRAM 64Kx1
+
+2716 2Kx8 450ns Intel EPROM      $8.95  (1982-04)
+2764/2564 8Kx8 450ns NMOS EPROM  $16.95 (1983-01)  $49.95 (1982-04) ••
+27128 16Kx8 250ns NMOS EPROM            (not advertised in 1983-01)
+TMS27PC256-15NE OTP           $2.28 US (6406)  $3.63 AU (6406)  [Rochester] (obsolete)
+FM27C256Q 32Kx8 EPROM         $14.95 AU (DigiKey:obsolete)
+AT27C256R-70PU OTP            $4.26 AU (4280)  [ACTIVE]  (E14 $4.43 3516) (Mouser $4.29  6732)
+AT28C256-15PU EEPROM          $18.49 AU (1030) [ACTIVE]  (E14 $19.18 204) (Mouser $20.45 1085)
+SST39SF010
+STM M27128A-2F1 16Kx8 DIP28
+27C256 32Kx8
+27C512 64Kx8
+
+"Standard 28-pin 16Kx8 ROM"
+"but original 16K Atari ROMs are on 2x chips"
+
+"Before around 1983, four 4116 chips were cheaper than a single 4416
+solely because 4416 wasn't widely produced or priced lower yet."
+
+"The Commodore 64 initially used eight 64kx1 DRAM chips, but in the mid-80s,
+the cost-reduced redesign used two 64kx4 chips (256kbit, 4 data lines) instead."
+
+"Around 1987, 256kbit replaced 64kbit in turn, so computers like the
+Commodore 64 started using two of them for 64Kbyte."
+
+
+16Kx4 DRAM (TMS4416, IMS2620)
+
+• 1983 Timex-Sinclair TS2068 (as main memory)
+• 1984 Commodore 16 (for 16K main memory)
+• 1985 Commodore C128 (for 16K video memory)
+• 1989 Philips NSC 800 (for 16K video memory)
+
+TI introduced the first 16K x 4 as TMS 4416 in 1980.
+Still it took until 1983/84 until they became widely available;
+at that time 64 KB RAM was the way to go for new designs.
+
+"BYTE 1985-12, listed at $4.95, compared to 4164 same speed grade $0.69"
+
+
+Jan 1983 Byte
+
+Set of NEC 16K 4116 (8) 200ns $13.95 (retail)
+BMC 13" Color Composite $265; NEC 12" Color Monitor $399
+Computer Discount: 16K 4116 (8) $11.00   (1.15 ea, 8/9.20)  (48K $27.60)
+                   64K 4164 (8) $88.00
+Quest Electronics: 64K 4164 (8) 200ns $48.95
+                   2Kx8 2016    200ns $4.19  nMOS Static
+                   2Kx8 6116P-4       $4.95  CMOS Static
+A B Computers:     16K 4116 (8) $14.00
+Micropro Unlimited 64K 200ns $4.99 ?
+Chips & Dale       16K 4116 (8) 250ns $9.50  (100+ $1.05/ea)
+                   16K 4116 (8) 200ns $11    (100+ $1.18/ea)
+                   64K 4164     200ns $5.45  (ea)
+                   2764 300ns 5V 28pin $12   (ea)    (MM2764 450ns)  ($9.95 100+)
+                   4116N-4   250ns $1.49 (8/10.95)
+                   4164N-200 200ns $7.49 (8/54.95)   [200ns is 375ns cycle; 300ns is 480ns cycle]
+
+DoKay              6502 1 Mhz $5.49
+                   6502A 2 Mhz $9.45
+                   TR1602 UART $3.90
+                   Crystal 14.31818 $3.90
+                   Edge Connector 22/44 Kim Eyelet $2.15 (10+)
+
+
+Handwell Corp El Camino Real, Wholesale 2116
+
+"Big Board" SBC Z-80, 64K 4116 RAM $319
+
+Examples of 4116 class RAM chips
+https://minuszerodegrees.net/memory/4116.htm
+https://minuszerodegrees.net/memory/4164.htm
+
+RAM: use surplus 16K DRAMS: 16Kx1 DRAM x 16 (triple-voltage supply!)
+RAM: or use new 64K half-valid chips: 32Kx1 x 8 (single 5V supply)
+VRAM: use old 8Kx1 DRAMS: 8Kx1 x 16 (too much board space)
+VRAM: or use half-working 16Kx1 DRAMS: 8Kx1 x 16 (too much board space)
+
+NES is 256 x 240 (32 x 30) stretched horizontally
+Atari 800 is 160 x 192 (2 and 4 colours)
+CoCo3 has 160/256/320 x 192 with 16/4/2 colours
+C64 is 320 x 200 (4 colours)
+
+
+HISTORY:
+
+https://archive.org/details/BYTE_Vol_07-04_1982-04_Human_Factors_Engineering/page/n537/mode/2up?view=theater
+https://archive.org/details/byte-magazine-1983-01/page/n537/mode/2up?view=theater
+
+
+BUYING DRAM:
+
+https://monotech.fwscart.com/Vintage_DRAM_chips_4116_4164_41256_44256/p6083514_20105811.aspx
+https://www.digikey.com/en/supplier-centers/rochester-electronics
+
+https://www.digikey.com/en/products/filter/memory/memory/774   "Through-Hole, Parallel, Volatile, Active"  (SRAM only)
+
+http://www.residualstock.com/
+
+https://au.element14.com/alliance-memory-inc/as6c62256-55pcn/sram-256kbit-0-to-70deg-c-dip/dp/4260906  32Kx8 SRAM $7.32
+
+https://sinclair.wiki.zxnet.co.uk/wiki/DRAMS
+https://jcmit.net/memoryprice.htm
+BYTE magazine - parts sourcing
+
+https://www.unicornelectronics.com/prod.htm   NOS
+https://www.jameco.com/                       NOS
+
+BBC Micro used HM4816A-3 DRAM chips, which are 16Kx1 and use a single supply.
+This was several years before the 64Kbit chips arrived.
+"it is a page mode DRAM, meaning it can access data within a row more quickly
+than accessing data in different rows. -3 is likely a speed rating"
+
+In 1984, the February edition of Acorn User featured a 16KB "Sideways RAM" expansion board,
+using 16Kbit DRAM chips, for £35, while the July edition featured a 128KB model (from the
+same manufacturer!) using 64Kbit DRAM chips, for £40.
+"The sharpest drop in price occurred in November 1984."
+
+ZX Spectrum 48K used 8x4116 16x1 + 8x4532 32x1, presumably cheaper than 8x4164 64x1.
+
+https://tedium.co/2016/11/24/1988-ram-shortage-history/
+1985 slump: 256kbit DRAM (64Kx4) in BYTE magazine for $2.95 in September of 1985,
+a sharp decline from $8.95 in January.
+"People started selling chips for whatever price they could get.”
+
+https://www.c64-wiki.com/wiki/RAM#Cross_reference_table
+
+The C64 uses eight MN4164p-15 or equivalent 64K dynamic RAM (DRAM) chips (e.g. MT4264),
+and a MN2114 or equivalent 1K static RAM (SRAM) chip for color.
+MT4264-15 and TMS4164-15NL are compatible.
+
+Atari 800 uses MT4264-15 (Micron, a 4164)
+
+C64-compatible 4164/4264 64Kx1 or 4464 64Kx4:
+Hitachi    HM 4864
+OKI        M 3764 A
+Micron     MT4264
+Mitsubishi M5K4164 ANP-10
+Motorola   MCM 6665 AP
+NEC        uPD 4164-1
+Toshiba    TMM 4164 C-3
+
+Color SRAM 2114 1Kx4:
+
+
+
+BOM Cost
+
+By early 1985 the C64's price was $149; with an estimated production cost of $35–50.
+
+   1983-01                2025                                 SMD
+   ----                   ----
+1  6502A      $           65C02                $17.66 Mouser   $11.30  WDC      (MOS, Rockwell, Synertek, WDC) $6.95 retail
+16 4116-3     $15.00    1 AS6C62256-55PCN 32K   $7.17 Mouser   $3.90   32Kx8    DRAM 250ns (up to 375ns OK) $1.15ea retail
+8  HM4816A-4  $15.00    2 AS6C6264-55PCN  8K    $6.62 Mouser   $3.74   16Kx8    DRAM assume 2x price
+1  2716       $3.00       TMS27PC256-17FML      $2.78 DigiKey  $2.78   16Kx8    16K EPROM 450ns +5V $3.49 retail  (proto AT28 $18.49)
+1  Custom IC  ??          LCMXO2-640HC-4TG100C $12.43 Digikey  $8.36   640LE    80 cells x 4 slices x 2 LUT+F/F
+1  PCB        $2.00       PCB-EC-Ag             $2.74 PCBWay   $2.74   100qty   $274.34 per 100 boards 200x100    (proto 10 @ $54)
+1  Cart.Sock              5530843-4             $3.00 Mouser   $2.00   100qty   44-pin cartridge socket (too expensive, $2)
+1  Switch                 
+1  Power                  RAPC732OF             $1.50 Mouser   $1.00   100qty   (too expensive, $1)
+1  DIN                    1658998-1             $1.50 Mouser   $1.00   1qty     (too expensive, $1)
+1  SD.Slot                SD-4-B SameSky        $0.70 Mouser   $0.70   100qty   just right
+1  Case                                         $5.00          $4.00
+1  Keyboard PCB                                 $2.00          $2.00            $198 per 100 boards 180x90
+64 Key Switch                                   $10.00         $5.82            Keychron K Pro Red
+64 Key Cap                                      $8.00          $6.40            $0.10 x 64
+   -----------------      ----------------------               -----
+              $41.00                      $46.35
+
+17.66+7.17+6.62+2.78+12.43+2.74+3+1.50+1.50+0.70+5+2+10+8.00 = 81.10   target $80  price $200  (premium)
+11.30+3.90+3.74+2.78+8.36+2.74+2+1+1+0.70+4+2+5.82+6.40      = 55.74   target $50  price $100  (low cost)
+
+DC Power Connector R/A JACK 1.3MM OPEN
+Keychron K Pro Red Switch (110 pcs) $29 retail ~ $10 x 64/110 = $5.82 (CentreCom)
+
+Ali Express "SD Card 1GB 2GB 4GB 8GB 16GB 32GB 64GB Secure Digital Flash Memory Card" AU$1.45
+                     ^
+
+Omron Tactile Switches $0.25/1500 ($0.50)
+

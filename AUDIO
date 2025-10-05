@@ -1,0 +1,277 @@
+
+https://mixbutton.com/music-tools/frequency-and-pitch/music-note-to-frequency-chart#1st
+https://en.wikipedia.org/wiki/Ring_counter#Johnson_counter
+
+7475799
+1060
+
+Audio (4x3) - DIRECT (12)
+TON1 - ch.1 tone shaping     (see below)                    3-bit up/down counter per channel
+PCH1 - ch.1 pitch            (quarter note increments)      10-bit counter per channel (see SN76489)
+VOL1 - ch.1 volume           (5 volume, 1 noise, 2 pitch)   noise mode: see below
+
+CPU can write VOI at start of a frame to switch ADSR phase
+at 1/60ths of a second, or at arbitrary times via HDMA.
+
+    This HW is too expensive: (requires a 5-bit adder, 5-bit counters)
+
+    5-bit saturating counter, resets to 0 at the start of each cycle,
+    upwards for 8 ticks, downwards for 8 ticks.
+
+    Upwards delta:                           Harmonic  Clip    Shape                     Downwards delta:
+    1 = 1,1,1,1,1,1,1,1  to 8  = 2    at 8,   0,       0       1/4 triangle              down 8 then drop to 0
+    2 = 2,2,2,2,2,2,2,2  to 16 = 4    at 8,   0,       0       1/2 triangle              down 16 then drop to 0
+    3 = 3,3,3,3,3,3,3,3  to 24 = 6    at 8,   0,       0       3/4 triangle              down 24 then drop to 0
+    4 = 4,4,4,4,4,4,4,4  to 32 = 8    at 8,   0,       0       triangle                  down to 0 in 8
+    5 = 5,5,5,5,5,5,5,5  to 30 = 7.5  at 6,  +2,       1       flat-top triangle         down to 0 in ~7, flat ~1
+    6 = 6,6,6,6,6,6,6,6  to 30 = 7.5  at 5,  +2,       2       flat-top triangle wide    down to 0 in ~6, flat ~2
+    7 = 7,7,7,7,7,7,7,7  to 28 = 7    at 4,  +4,       3       clipped sine              down to 0 in ~5, flat ~3
+    8 = 8,8,8,8,8,8,8,8  to 32 = 8    at 4,   0,       4       trapezium                 down to 0 in ~4, flat ~4
+    9 = 9,9,9,9,9,9,9,9  to 27 = 6.75 at 3,  +5,       4       sine-ish                  down to 0 in ~4, flat ~4
+    A = A,A,A,A,A,A,A,A  to 30 = 7.5  at 3,  +2,       4                                 down to 0 in ~4, flat ~4
+    B = B,B,B,B,B,B,B,B  to 32 = 8    at 3,   0,       5       sloped square             down to 0 in ~3, flat ~5
+    C = C,C,C,C,C,C,C,C  to 24 = 6    at 2,  +8,       5       sine-ish                  down to 0 in ~3, flat ~5
+    D = D,D,D,D,D,D,D,D  to 26 = 6.5  at 2,  +6,       5       sine-ish                  down to 0 in ~3, flat ~5
+    E = E,E,E,E,E,E,E,E  to 28 = 7    at 2,  +4,       5                                 down to 0 in ~3, flat ~5
+    F = F,F,F,F,F,F,F,F  to 30 = 7.5  at 2,  +2,       5       square                    down to 0 in ~2, flat ~6
+
+Instead use 3-bit ripple counters, add 0/1/2/4 each cycle,
+use Cout to SET all bits (clamp at 7) if counting up,
+use Cout to CLEAR all bits (clamp at 0) if counting down.
+
+Tone [AABBCCDD] A,C up, B,D down, 4 clocks each (reset to 0 on 15th)
+Noise mode: suppress clamping (SET/CLEAR) only.
+
+
+      | |             | |             | |             | |             | |             | |        
+      |   |         |   |             |   |         |   |             |   |         |   |       
+    |       |     |       |         |       |     |       |         |       |     |       |      
+    |         | |         |         |         | |         |         |         | |         |     
+  |                         |     |                         |     |                         |   
+  |                         |     |                         |     |                         |   
+|                             | |                             | |                             | 
+|                             | |                             | |                             | 
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+      | |             | |             | |             | |             | |             | |        
+      | |             | |             | |             | |             | |             | |         
+    |     |         |     |         |     |         |     |         |     |         |     |         
+    |     |         |     |         |     |         |     |         |     |         |     |        
+  |         |     |         |     |         |     |         |     |         |     |         |    
+  |         |     |         |     |         |     |         |     |         |     |         |    
+|             | |             | |             | |             | |             | |             |   
+|             | |             | |             | |             | |             | |             |   
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+      | |                             | |                             | |                        
+      | |                             | |                             | |                       
+    |     |                         |     |                         |     |                       
+    |     |                         |     |                         |     |                       
+  |         |         | |         |         |         | |         |         |         | |           
+  |         |       |     |       |         |       |     |       |         |       |     |        
+|             |   |         |   |             |   |         |   |             |   |         |      
+|             | |             | |             | |             | |             | |             |    
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+      | |                             | |                             | |                      
+      | |                             | |                             | |                      
+    |     |                         |     |                         |     |                    
+    |     |                         |     |                         |     |                    
+  |         |                     |         |                     |         |                  
+  |         |                     |         |                     |         |                  
+|             |                 |             |                 |             |                
+|             | _ _ _ _ _ _ _ _ |             | _ _ _ _ _ _ _ _ |             | _ _ _ _ _ _ _ _
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+    _ _             _ _             _ _             _ _             _ _             _ _             
+  |     |         |     |         |     |         |     |         |     |         |     |          
+  |     |         |     |         |     |         |     |         |     |         |     |         
+  |     |         |     |         |     |         |     |         |     |         |     |         
+  |     |         |     |         |     |         |     |         |     |         |     |         
+|         |     |         |     |         |     |         |     |         |     |         |      
+|         |     |         |     |         |     |         |     |         |     |         |      
+|         |     |         |     |         |     |         |     |         |     |         |      
+|         | _ _ |         | _ _ |         | _ _ |         | _ _ |         | _ _ |         | _ _  
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+    _ _                             _ _                             _ _                          
+  |     |             | |         |     |             | |         |     |             | |       
+  |     |             | |         |     |             | |         |     |             | |       
+  |     |           |     |       |     |           |     |       |     |           |     |       
+  |     |           |     |       |     |           |     |       |     |           |     |       
+|         |       |         |   |         |       |         |   |         |       |         |     
+|         |       |         |   |         |       |         |   |         |       |         |     
+|         |     |             | |         |     |             | |         |     |             |  
+|         | _ _ |             | |         | _ _ |             | |         | _ _ |             |  
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+    _ _                             _ _                             _ _                         
+  |     |                         |     |                         |     |                       
+  |     |                         |     |                         |     |                        
+  |     |                         |     |                         |     |                          
+  |     |                         |     |                         |     |                        
+|         |                     |         |                     |         |                       
+|         |                     |         |                     |         |                        
+|         |                     |         |                     |         |                       
+|         | _ _ _ _ _ _ _ _ _ _ |         | _ _ _ _ _ _ _ _ _ _ |         | _ _ _ _ _ _ _ _ _ _
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+    _ _                             _ _                             _ _                            utilise 
+  |     |                     |   |     |                     |   |     |                     |    the reset
+  |     |                     |   |     |                     |   |     |                     |    at F
+  |       |                 | |   |       |                 | |   |       |                 | |    
+  |       |                 | |   |       |                 | |   |       |                 | | 
+|           |             |   | |           |             |   | |           |             |   |  
+|           |             |   | |           |             |   | |           |             |   |  
+|             |         |     | |             |         |     | |             |         |     |  
+|             | _ _ _ _ |     | |             | _ _ _ _ |     | |             | _ _ _ _ |     |    
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+      | |             | |             | |             | |             | |             | |         phases
+      | |             | |             | |             | |             | |             | |       
+    |   |           |   |           |   |           |   |           |   |           |   |       
+    |   |           |   |           |   |           |   |           |   |           |   |       
+  |       |       |       |       |       |       |       |       |       |       |       |     
+  |       |       |       |       |       |       |       |       |       |       |       |     
+|         |     |         |     |         |     |         |     |         |     |         |     
+|         | _ _ |         | _ _ |         | _ _ |         | _ _ |         | _ _ |         | _ _ 
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+  | |             | |             | |             | |             | |             | |           
+  | |             | |             | |             | |             | |             | |            
+  |   |           |   |           |   |           |   |           |   |           |   |          
+  |   |           |   |           |   |           |   |           |   |           |   |         
+|       |       |       |       |       |       |       |       |       |       |       |       
+|       |       |       |       |       |       |       |       |       |       |       |       
+|         |     |         |     |         |     |         |     |         |     |         |      
+|         | _ _ |         | _ _ |         | _ _ |         | _ _ |         | _ _ |         | _ _ 
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+                        _ _ _                           _ _ _                           _ _ _     
+                      |       |                       |       |                       |       |   
+                      |       |                       |       |                       |       | 
+                    |         |                     |         |                     |         | 
+                    |         |                     |         |                     |         | 
+                  |           |                   |           |                   |           | 
+                  |           |                   |           |                   |           | 
+                |             |                 |             |                 |             | 
+_ _ _ _ _ _ _ _ |             | _ _ _ _ _ _ _ _ |             | _ _ _ _ _ _ _ _ |             | 
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+    _ _                             _ _                             _ _                         
+  |     |                         |     |                         |     |                       
+  |     |                         |     |                         |     |                       
+  |       |                       |       |                       |       |                     
+  |       |                       |       |                       |       |                     
+|           |                   |           |                   |           |                   
+|           |                   |           |                   |           |                   
+|             |                 |             |                 |             |                 
+|             | _ _ _ _ _ _ _ _ |             | _ _ _ _ _ _ _ _ |             | _ _ _ _ _ _ _ _ 
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+  |   |       |   |   |       |   |   |       |   |   |       |   |   |       |   |   |       |  noise, up-only
+  |   |       |   |   |       |   |   |       |   |   |       |   |   |       |   |   |       |           (meh)
+  |   |     |     |   |     |     |   |     |     |   |     |     |   |     |     |   |     |  
+  |   |     |     |   |     |     |   |     |     |   |     |     |   |     |     |   |     |  
+|   |     |     |   |     |     |   |     |     |   |     |     |   |     |     |   |     |    
+|   |     |     |   |     |     |   |     |     |   |     |     |   |     |     |   |     |    
+|   |   |       |   |   |       |   |   |       |   |   |       |   |   |       |   |   |      
+|   |   |       |   |   |       |   |   |       |   |   |       |   |   |       |   |   |      
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+  |   | |         |   | |   |     |   | |         |   | |   |     |   | |         |   | |   |     noise, up/down
+  |   | |         |   | |   |     |   | |         |   | |   |     |   | |         |   | |   |           (better)
+  |   |   |       |   | |   |     |   |   |       |   | |   |     |   |   |       |   | |   |         
+  |   |   |       |   | |   |     |   |   |       |   | |   |     |   |   |       |   | |   |         
+|   |       |   |   |     |   | |   |       |   |   |     |   | |   |       |   |   |     |   |
+|   |       |   |   |     |   | |   |       |   |   |     |   | |   |       |   |   |     |   |
+|   |         | |   |     |   | |   |         | |   |     |   | |   |         | |   |     |   |
+|   |         | |   |     |   | |   |         | |   |     |   | |   |         | |   |     |   |
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+  |   | |         |       |   |   |   | |         |       |   |   |   | |         |       |   |   noise, up/down
+  |   |   |       |       |   |   |   |   |       |       |   |   |   |   |       |       |   |
+  |   |     |   |         |   |   |   |     |   |         |   |   |   |     |   |         |   |
+  |   |       | |         |   |   |   |       | |         |   |   |   |       | |         |   |
+|   |                 | |   | | |   |                 | |   | | |   |                 | |   | |
+|   |                 | |   | | |   |                 | |   | | |   |                 | |   | |
+|   |               |   |   | | |   |               |   |   | | |   |               |   |   | |
+|   |               |   |   | | |   |               |   |   | | |   |               |   |   | |
+0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F 0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+
+ 32.703 Hz = C1 Double Low C, Double Bass
+ 55.000 Hz = A1
+ 65.406 Hz = C2 Low C, Cello C
+130.813 Hz = C3 Viola C
+261.626 Hz = C4 Middle C ••
+523.251 Hz = C5 Treble C
+1046.50 Hz = C6 High C
+2093.00 Hz = C7 Double High C
+4186.00 Hz = C8 Triple High C
+7902.13 Hz = B8
+
+8192 cycles per second (131,072 Hz; 2^17)
+
+62500/239 = 261.506
+
+500000/63 = 7936.508 (B8 7902.13)
+500000/67 = 7462.687 (A# 7458.62)
+500000/71 = 7042.253 (A  7040.00)
+500000/127 = 3937.00 (B7 3951.07)
+500000/253 = 1976.28 (B6 1975.53)
+
+
+C2  65.41  * 16 = 1046.56
+C2# 69.30  * 16 = 1108.8     267904 / 242 = 1107.0413
+D2  73.42  * 16 = 1174.72
+A2  110    * 16 = 1760
+A#  116.54 * 16 = 1864.64
+B   123.47 * 16 = 1975.52
+
+C4  261.63 * 16 = 4186.08
+C4# 277.18 * 16 = 4434.88
+D4  293.66 * 16 = 4698.56
+D4# 311.13 * 16 = 4978.08
+E4  329.63 * 16 = 5274.08         193.91574319258336
+F4  349.23 * 16 = 5587.68         183     (183.032)  .03
+F4# 369.99 * 16 = 5919.84         173     (172.762)  .24
+G4  392.00 * 16 = 6272.0          163     (163.062)  .06
+G4# 415.30 * 16 = 6644.8          154     (153.913)  .09
+A4  440.00 * 16 = 7040.0          145     (145.273)  .27
+A4# 466.16 * 16 = 7458.56         137     (137.121)  .12
+B4  493.88 * 16 = 7902.08         129     (129.425)  .43
+
+C6  1046.50 * 16 = 16744          1022727.14285714 / 61 = 16766.018
+C6# 1108.73 * 16 = 17739.68       1022727.14285714 / 58 = 17633.226
+D6  1174.66 * 16 = 18794.56       1022727.14285714 / 54 = 18939.391
+D6# 1244.51 * 16 = 
+E6  1318.51 * 16 = 
+F6  1396.91 * 16 = 
+F6# 1479.98 * 16 = 
+G6  1567.98 * 16 = 
+G6# 1661.22 * 16 = 
+A6  1760    * 16 = 28160          1022727.14285714 / 36 = 28409.087
+A6# 1864.66 * 16 = 29834.56       1022727.14285714 / 34 = 30080.210
+B6  1975.53 * 16 = 31608.48       1022727.14285714 / 32 = 31960.223
+
+PAL 14.31818 MHz Crystal
+NTSC 17.73447 MHz Crystal
+
+Maybe can do something here to reduce to an 8-bit note, like:
+• 3-bit first-stage divider by 1-8
+• 2-bit second-stage counter, delays 5-bit divider by 4 (fixed function)
+• 5-bit third-stage divider, divide by 5-36
+

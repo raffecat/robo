@@ -1,0 +1,322 @@
+Gate Array
+
+https://www.ariat-tech.com/blog/what-is-gal(generic-array-logic)-basic-structure,features,advantages.html
+
+ZX81 1981 has Ferranti ULA, 7805 5V regulator (jelly-bean part)
+5000 series: 11x11 x4 = 484 cells (1 cell = 2 NOR gates; 2 cells = Gated S-R Latch; 3 cells = D-Latch)
+
+ZX8301 ULA: VIDP + DRAM refresh.
+ZX8302 ULA: address decode, bus arbitration.
+
+GAL 16v8: Generic Array Logic, uses EECMOS (Electrically Eraseable)
+AND stage (programmable): matrix of 32 columns: 8 inputs & 8 outputs + complements
+OR stage (fixed): 8-input ORs, grid of 64 rows.
+2048 nodes in total.
+
+CPLD: https://www.microchip.com/en-us/product/atf1502as  32 cells  (ATF1504ASV-15JU44  64 cells)
+PLCC: chip carrier for CPLD: PLCC-68
+
+Altera MAX-V 5M-80Z-E64-C5N  QFP-64 1.8V  80 LE (64 Macrocell)  54 I/O 152 MHz  7.5 ns  $3.82/1     Quartus-II
+Altera MAX-V 5M160Z-E64-C5N  QFP-64 1.8V 160 LE (128 Macrocell) 54 I/O 16 LAB           $7.90/1     Quartus-II •••••
+Atmel  ATF1504ASV-15AU44    TQFP-44 3.3V         64 Macrocell   32 I/O 76.9 MHz 15 ns   $6.53/5.76  (20ns low-ish)
+       ATF1504AS-10JU44     PLCC-44 5V           64 Macrocell   32 I/O 125 MHz  10 ns   $6.94/1     (20ns low stock)
+
+8+6+8 = 22*8 = 176 bits just to store active sprites (or 112 bits + 64 spare I/Os)
+
+https://projectf.io/posts/video-timings-vga-720p-1080p/
+
+At the time I think it cost a few thousand bucks to get into PALs, the programming routines
+were proprietary and no normal EPROM burner could handle them. Mere mortals still used high-speed PROMs.
+TL866 Programmer.
+
+1983 Electron: "[The ULA] is by far the largest custom chip anyone has put in a micro, with over 2400 gates."
+Ferranti 68-pin ULA caused a lot of problems. (40-pin ULAs were common)
+
+BBC B: 28-pin Video ULA (Dec 1981)
+16MHz master clock to Video ULA; 4MHz DRAM BUS; 2MHz CPU (divider chain of flip-flops)
+Pixel clock: 16 MHz (in MODEs 0,3), 8 MHz (MODEs 1,4,6), 4 MHz (MODEs 2,5)
+fetches 40 or 80 bytes per line, shift reg, always looks up palette with 4 bits
+
+Lattice MachXO2-1200HC / 2560HC  5V tolerant  Lattice Diamond
+~1200–2500 LUTs: state machines, counters, sprite logic, DRAM control
+Internal block RAM (palette, sprite attributes)
+
+Best for true 1980s-style logic with modern parts:
+MachXO2-1200HC or 2560HC: Flash-based FPGA, 5V tolerant, ideal for RAM controller + pixel logic
+ATF1508AS: Use only if your logic is very simple (e.g. scanline counters + address muxing only)
+
+MachXO2-256: 256 LUTs, 2 kbit SRAM (256 bytes)
+MachXO2-640: 640 LUTs, 5 kbit SRAM (640 bytes), 18 kbits SRAM (2304 bytes)
+
+"The TMS 9918 was well established, and used eight 16Kx1 or two 16Kx4 DRAM chips"
+https://en.wikipedia.org/wiki/MOS_Technology_TED  (C16 1984, 120 colors, sound, no sprites)
+
+Speccy ULA has 40 pins
+
+TL866 Programmer.
+
+https://gitlab.com/DavidGriffith/minipro  TL866II+ programmer software
+https://github.com/wd5gnr/qtl866
+https://github.com/wd5gnr/minipro
+
+http://www.xgecu.com/MiniPro/TL866II_List.txt   AT28C256  AT27C256R
+
+Amazon 1Pcs 13000 ICS TL866CS Programmer USB 2.0 EPROM Flash BIOS 6 Adapter PLCC IC Universal Programmers TL866A High Speed
+https://www.amazon.com.au/TL866CS-Programmer-Adapter-Universal-Programmers/dp/B07RG578XK/ref=sr_1_7
+
+C:\Users\Kris\Documents\MiniPro\minipro>makeminipro.bat
+C:\Users\Kris\Documents\MiniPro\minipro>gcc -g -O0 -Wall -DSHARE_INSTDIR="." -c -o xml.o xml.c
+C:\Users\Kris\Documents\MiniPro\minipro>gcc -g -O0 -Wall -DSHARE_INSTDIR="." -c -o jedec.o jedec.c
+C:\Users\Kris\Documents\MiniPro\minipro>gcc -g -O0 -Wall -DSHARE_INSTDIR="." -c -o ihex.o ihex.c
+C:\Users\Kris\Documents\MiniPro\minipro>gcc -g -O0 -Wall -DSHARE_INSTDIR="." -c -o srec.o srec.c
+C:\Users\Kris\Documents\MiniPro\minipro>gcc -g -O0 -Wall -DSHARE_INSTDIR="." -c -o database.o database.c
+C:\Users\Kris\Documents\MiniPro\minipro>gcc -g -O0 -Wall -DSHARE_INSTDIR="." -c -o minipro.o minipro.c
+C:\Users\Kris\Documents\MiniPro\minipro>gcc -g -O0 -Wall -DSHARE_INSTDIR="." -c -o tl866a.o tl866a.c
+C:\Users\Kris\Documents\MiniPro\minipro>gcc -g -O0 -Wall -DSHARE_INSTDIR="." -c -o tl866iiplus.o tl866iiplus.c
+C:\Users\Kris\Documents\MiniPro\minipro>gcc -g -O0 -Wall -DSHARE_INSTDIR="." -c -o version.o version.c
+C:\Users\Kris\Documents\MiniPro\minipro>gcc -g -O0 -Wall -DSHARE_INSTDIR="." -c -o usb_win.o usb_win.c
+C:\Users\Kris\Documents\MiniPro\minipro>gcc -g -O0 -Wall -DSHARE_INSTDIR="." -c -o main.o main.c
+C:\Users\Kris\Documents\MiniPro\minipro>gcc xml.o jedec.o ihex.o srec.o database.o minipro.o tl866a.o tl866iiplus.o version.o usb_win.o main.o -lsetupapi -lwinusb -o minipro
+C:\Users\Kris\Documents\MiniPro\minipro>minipro.exe --presence_check tl866a: TL866CS
+
+https://www.cpcwiki.eu/index.php/Gate_Array
+
+Microchip IGLOO FPGA ?
+Microchip PolarFire SoC FPGAs (cost-optimized versions) ?
+
+
+4 x ATF1504ASL 64-cell 128-FF @ $9.823/100 = $39    WinCUPL / JTAG  + WinSim
+
+Mouser have 219 $8.98+GST (+52 week lead time)      [100-TQFP 239 stock,   44-TQFP 370 stock]
+Microchip direct 1,557 $5.30+GST (volume $4.89+GST) [100-TQFP 5,220 stock, 44-TQFP no stock]
+DigiKey 1,485 $6.22 44-J (2,123 $8.33 84-J)         [100-TQFP 222 stock,   44-TQFP 1,199 $7.20]
+
+"ATF1508 dev board with USB to JTAG connections"
+https://www.microchip.com/design-centers/fpgas-and-plds/splds-cplds/pld-design-resources
+https://www.qsl.net/bh1phl/CUPL_USERS_GUIDE.pdf
+https://groups.google.com/g/retro-comp/c/lzJNWaAx6jY  ATF Programming, Quartus 13, EPM7128S (obsolete)
+"I work with Quartus selecting the pin-to-pin compatible Altera part (EPM7128STC100 in this case)"
+Xilinx Coolrunner XPLA3 parts are still available and are 5v tolerant
+
+https://www.findchips.com/search/ATF1508ASL
+
+
+Lattice ispMACH4A5:
+XC2C64 and LC2064:
+
+
+CX9572XL CPLD 72 macrocells 1600 usable gates
+44-pin PLCC 34 IOs  (XC9572XL-10PCG44I)
+48-pin VQFP 34 IOs
+64-pin VQFP 52 IOs
+100-pin TQFP 72 IOs
+
+PLCC was common in 1984 (up to 48 pins)
+
+8 VRAM address/data (7 RAS/CAS + CS for 2x16K)
+3 VRAM RAS/CAS/WRITE
+5 RGB,Sync
+8 CPU Bus
+2 CPU WR,Sync
+1 Decode ZeroPage
+
+8+3+5+8+2+1 = 27
+
+The parts with Vpp.ParallelProgrammer, need a Universal Programmer, but the JTAG ISP ones can use just a JTAG link.
+(this needs 4 pins committed as JTAG)
+
+Software needed is WinCUPL, for Boolean Equation entry http://www.atmel.com/tools/WINCUPL.aspx
+programmer ATF16V8B
+
+Lattice ispMACH 4000V/Z 4032/4064/4128/4256/etc  (4 In + 32 I/O in 48-TQPF 7x7mm)
+
+ATF16V8BQL       8 Macrocell  8 FF                 Vpp  5V (PDIP-20)
+ATF22LV10CQZ    10 Macrocell 10 FF   12-in 10-out  Vpp  5V (PDIP-24)  (12 In 10 I/O)
+ATF750CL        10 Macrocell 20 FF   12-in 10-out  Vpp  5V (PDIP-24)                        $5.82/100 AUD +GST
+ATF2500C        24 Macrocell 48 FF                 Vpp  5V (PDIP-40)                       $13.12/100 AUD +GST
+ATF1502ASL      32 macrocell 64 FF                 JTAG 5V (PLCC-44)
+ATF1504ASL      64 macrocell 128 FF                JTAG 5V (PLCC-44)  ATF1504ASL-25JU44    $8.93/100 AUD +GST  [4x8.93=$36]
+ATF1508ASL     128 macrocell 256 FF                JTAG 5V (TQFP-110) ATF1508ASL-25AU100  $19.33/100 AUD +GST  [2x19.33=$39]
+
+ATF15xx "Independent Feedback Allows Double Latch Functions per Macrocell"
+
+ATF1504ASV-15JU44  PLCC-44, 64 macrocell 128 FF CPLD, 32 I/O, 15ns, EEPROM $6.43/108 ••
+
+ATF22V10C DIP-24, 10 Macrocells, 12 In, 10 IO, 10 F/F                      (PLD)
+ATF750C   DIP-24, 10 Macrocells, 12 In, 10 IO, 20 F/F, 171 product, 20 sum (improved 22V10)
+ATF2500C  DIP-40, 24 Macrocells, 13 In, 24 IO, 48 F/F, 72 sum terms        (PLCC-44)
+
+Lattice LC4064V https://au.mouser.com/c/?q=LC4064V
+LCMXO256C-3TN100I MachXO 256 Cells 130nm 3.3V 100-Pin TQFP Tray 17,702 stock $15.32 AUD
+
+5M160ZE64C5N      QFP-64   160 LE 16 LAB  (160 FF)  54 I/O  3.3V  $7.90 ea     Altera CPLD
+ATF1504ASV-15AU44 TQFP-64   64 Macrocells (128 FF)  32 I/O  3.3V  $5.73 /100   Microchip CPLD
+LCMXO256E-3TN100C TQFP-100 256 LE        (2048 FF)  78 I/O  1.2V  $14.56 /90   Lattice MachXO FPGA  (No Stock)
+LCMXO256C-4TN100C TQFP-100 256 LE        ()         78 I/O  3.3V  $15.32 /100  Lattice MachXO FPGA
+LC4064ZE-7TN48C   TQFP-44   64 Macrocells (64 FF?)                $6.60 /100   Lattice ispMach 4000
+
+LCMXO256C has 16 PFU and 16 PFF.
+Each PFU can be configured as 16x2 = 32-bit RAM (no logic function)
+Each PFU/PFF contains 8 FF (256 in total)
+
+OK hold the phone. RAM 16x2=32 costs one SLICE; 4x32=128 bits per CELL!
+16 PFU cells x 128 bits = 2048 bits as claimed.
+
+Registers are the problem: they cost a whole cell.
+Each 8-bit 2:1 MUX also costs 1 cell (the LUT part)
+
+LCMXO2-256HC-4SG32C 32 ? 256 LE 21 IO QFN-5x5 $6.06 /100
+
+LCMXO640 has 48 PFU and 32 PFF (80 cells, 64 used so far, 3/4 of the chip)
+LCMXO2-640HC-4TG100C TQFP-100 78 IO 3.3 V  482 stock             $12.43 /100 ✔
+LCMXO2-640HC-4SG48C  QFN-48   40 IO 3.3 V 1025 stock             $8.35 /100 ✔    (cost-reduced)
+
+In LCMXO2-640, 16x4-bit (64-bit) RAM costs 3/4 Cell, leaving 1 slice available.
+• 128*8/64 = 16 cells (sprite RAM)
+• 64*8/64 = 8 cells  (palette)
+• 8*2*8/64 = 2 cells (second-half sprite gfx)
+
+CPLD/FPGA                                                                 Prototype HW
+We need 8 x 8-bit shift registers for sprites            (8 cells)
+We need 8 x 8-bit latch for 'next' sprite gfx •          (8 cells)
+We need 8 x 5-bit palette,priority,opaque                (5 cells)        34 8-bit shift registers
+We need 8 x 9-bit counters for sprites                   (9 cells)        16 4-bit counters + 8 F/F
+We need 16 x 8-bit for sprites graphics (g2,g3)          (2 cells)        10 4-bit counters
+We need 4 x 8-bit, 2 x 4-bit counters (video)            (5 cells)        32 8-bit latches          // 34 x 8-bit shifters (G)
+We need 1 x 8-bit latch for output pixel                 (1 cell)                 
+We need 2 x 8-bit Row and Column latches                 (2 cells)
+We need 2 x 8-bit BG shift registers                     (2 cells)
+We need 2 x 3-bit registers for fine scroll              (1 cell)         32 x 8 SRAM               // 26 x 4-bit counters
+We need 1 x 8-bit name table address                     (1 cell)          6 x 8-bit latches        //  8 x F/F
+We need 1 x 8-bit latch for Y-Ref                        (1 cell)          2 x 4-bit latches        //  8 x 8-bit latches (A)
+We need 6 x 8-bit DMA src,dst,bank,count,latch           (7 cells)         1 x 4-bit latch          //  1 x SRAM 32x8
+We need 2 x 8-bit DMA mode,jumptab                       (2 cell)
+We need 8 x 4-bit tile bank registers                    (4 cells)         8 x 4-bit latches        // 11 x 4-bit latches
+We need 2 x 4-bit bank select registers                  (1 cell)
+We need 4 x 10-bit counters for pitch                    (5 cells)
+We need 4 x 10-bit latches for pitch                     (5 cells)
+We need 4 x 3-bit counters for tone                      (2 cells)
+We need 4 x 4-bit latches for volume                     (2 cells)
+We need 4 x 8-bit latches for tone                       (4 cells)
+
+TOTAL                                                    (77 cells) [out of 80]
+We use EBR block 0 for 128-byte Sprite RAM               (1024x8)
+We use EBR block 1 for 64-byte Palette RAM               (1024x8)
+
+8+8+5+9+2+5+1+2+2+1+1+1+7+2+4+1+5+5+2+2+4 = 77
+32 cells on Sprites
+13 cells on Video
+9 cells on DMA
+5 cells on Banking
+18 cells on Audio
+
+• loaded from "sprites graphics" RAM, one sprite per clock (load into shift registers when empty)
+
+
+The C64 stored 24 bits per sprite, that's only 12 pixels in multicolor mode.
+So storing 32 bits per sprite is beyond the C64 capabilities.
+But reducing the sprite width only saves 4 cells!
+
+https://retrocomputing.stackexchange.com/questions/6739/vic-ii-transistor-count
+
+VIC-II (1981) buffers 40 bytes of char data, loaded every 8th line.
+It also must buffer 8*3=24 bytes of sprite data each line.
+Seems to have a 240-bit RAM in the die shot (30 bytes).
+4 x devices, one has 8x8x3=192 6-transistor units (8 x 24-bit sprites)
+Al Charpentier (the designer of the VIC 2) said it has double the number of
+transistors of the 6502, which he estimated to be 10K, and arrived at 20K.
+NMOS 6502 contains 4,528 transistors.
+
+20000/6 = 3333 SRAM cells in CMOS.
+I need 34*8 + 26*4 + 8 + 8*8 + 32*6 + 11*4 + 4*8 = 716 F/F,
+which we can assume to be 4 NAND gates (gated latch)
+which each cost 2 CMOS transistors; 4*2=8 * 716 = 5728 transistors,
+less in dynamic NMOS logic. Target 9000 transisotrs.
+NMOS: 3 transistors per NOR, 3 per bit in a dynamic shift register,
+3 per transmission-gate latch (can only be clocked out once)
+• 34*8*3 = 816 shift-chain transistors
+
+Dynamic Logic: precharge "ON" outputs high. Budget for coupling noise;
+make adjacent lines switch during precharge (when gate is driven)
+NMOS AND-by-default logic (wired-AND)
+Keepers on long-held latches, or refresh clocking.
+
+MONOTONICITY rule: all inputs to dynamic gates MUST make only low to high transitions
+while the gates are evaluating. Inputs must be “monotonically rising,” meaning they
+can stay low, stay high, or may rise, but may not fall.
+An easy way to achieve this condition is to insert an inverting static gate between each
+dynamic gate.
+
+CHARGE SHARING is one important dynamic gate failure mode. When a dynamic gate drives a
+small load, the internal diffusion capacitances may become comparable to the load
+capacitance. If the diffusion capacitances are low when evaluation begins, they may share
+charge with the load capacitance, causing the output voltage to droop from the capacitive
+voltage divider. Large fanout avoids it; small precharge transistors (every 2nd node)
+Caused by internal nodes (NOR has none, hence NOR logic?)
+
+
+8 sprites 6 bytes = 384 FF
+8 sprites 4 bytes = 256 FF
+palette 32 x 6-bit = 192 FF
+384 + 192 + 8+8+9+8+4 = 613 FF
+
+
+https://github.com/amb5l
+https://github.com/hneemann/Digital
+
+
+LSI Logic – LCA (Low-Cost Array) 1981 Bipolar/CMOS - fixed array of transistors, custom metal layers
+VLSI Technology Inc. – VL Series Gate Array, standard-cell ASIC - design services, silicon
+Ferranti – ULA (Uncommitted Logic Array) - NMOS/CMOS - custom metal layer (mostly UK)
+NEC – Gate Array Families (uPD55xxx) - NMOS/CMOS (mostly Japan)
+Texas Instruments – TILINE / GATEARRAY - NMOS/CMOS - internal/large customers
+National Semiconductor – ArrayBLOX library/cell - custom metal layers
+Signetics / Philips – GALA (Gate Array Logic Array) - Bipolar/CMOS 
+Fujitsu, Hitachi, Toshiba – Hitachi HG Series gate arrays (mostly Japan)
+
+
+Spectrum Ferranti ULA "approximately 480 configurable cells (depending on the model)"
+
+
+https://www.youtube.com/watch?v=caXwuuXSB-A  Design Chip
+https://www.youtube.com/watch?v=1h1JIbQqwUI  ChipIgnite
+
+Qflow is an open-source, end-to-end digital synthesis toolchain for VLSI ASIC designs,
+incorporating various open-source tools such as Yosys, Graywolf, qrouter, and Magic.
+Qrouter is the detailed router within the Qflow suite, performing over-the-cell routing
+on a placed standard-cell layout to generate the final metal layers and vias.
+It reads and writes industry-standard LEF and DEF files and is recommended to be used
+with Qflow but can also function as a standalone router.
+
+https://fossi-foundation.org/blog/2020-06-30-skywater-pdk
+https://www.skywatertechnology.com/
+https://github.com/google/skywater-pdk  FOSS 130nm PDK "SKY130"
+https://openram.org/                    OpenRAM on Skywater 130nm
+https://theopenroadproject.org/         Layout Finishing (12nm)
+http://opencircuitdesign.com/qflow/
+https://vlsitechnology.org/
+https://efabless.com/
+https://clifford.at/  (Yosys)
+https://www.youtube.com/watch?v=rP-5nzbhmjg  (NMOS inverter delay)
+
+U.S.-based Skywater: "One example of how we can engage with you through our
+design partner network is offering a long-term supply for legacy chips."
+
+It's possible to run Windows XP inside a virtual machine using UTM on M1 Mac.
+
+
+
+PCB Design
+
+https://jlcpcb.com/raspberry-pi-rp2350?from=rpio
+https://www.pcbway.com/
+Centronic
+
+Saturn PCB Toolkit! (EEVBlog)
+https://saturnpcb.com/saturn-pcb-toolkit/
+
+330 uF Bulk decoupling (supply ripple)
+0.1 uF (100 nF) high frequency decoupling (switching noise/ringing) [104]
+2.2 nF can combine with 0.1 uF for higher frequencies [222]
+Minimize loop area for high-frequency traces
+

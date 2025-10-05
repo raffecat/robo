@@ -1,0 +1,85 @@
+
+; Code    = SRCL   ; BASIC code ptr low  (DMA source)
+; CodeH   = SRCL+1 ; BASIC code ptr high (DMA source)
+
+MACRO _LDA_DMA
+  JSR dma_lda     ; debugger, no HW
+ENDM
+MACRO _LDX_DMA
+  JSR dma_ldx     ; debugger, no HW
+ENDM
+MACRO _LDY_DMA
+  JSR dma_ldy     ; debugger, no HW
+ENDM
+MACRO _DISPATCH
+    JMP dma_jmpt  ; debugger, no HW
+ENDM
+
+; ; Simulates "LDA DDRW" (DMA read)
+; dma_lda:
+;     STY YSave
+;     LDY #0
+;     LDA (Code),Y
+;     LDY YSave
+;     INC Code
+;     BCS dma_rd_adv
+;     RTS
+; dma_rd_adv:
+;     INC Code+1
+;     RTS
+; 
+; ; Simulates "LDX DDRW" (DMA read)
+; dma_ldx:
+;     STY YSave
+;     LDY #0
+;     LDX (Code),Y
+;     LDY YSave
+;     INC Code
+;     BCS dma_rd_adv
+;     RTS
+; 
+; ; Simulates "LDY DDRW" (DMA read)
+; dma_ldy:
+;     STA YSave
+;     LDY #0
+;     LDA (Code),Y
+;     TAY
+;     LDA YSave
+;     INC Code
+;     BCS dma_rd_adv
+;     RTS
+; 
+; ; Simulates DMA jump-table hardware
+; dma_jmpt:
+;     JSR dma_lda
+;     LDA bas_jump,X
+;     STA JtA
+;     LDA bas_jump+1,X
+;     STA JtA+1
+;     JMP (JtA)
+
+
+  LDA #DMA_M2V|DMA_Fill  ; [2] DMA mode (M2M,Fill)
+  STA DCTL               ; [3] set fill mode
+  ; zero page
+  LDX #2                 ; [2] skip the first two bytes of zero-page for pointer use  [26 bytes]
+  STX DSTL               ; [3] set DMA dest low (=2)
+  STX $00                ; [3] set pointer low (=2)
+  LDX #$00               ; page byte = zero page
+  LDA #$55               ; fill byte
+  LDY #$BE               ; $C0-2 bytes below IO area
+  JSR @memcheck          ; fill and compare with $55 (preserves A,X)
+  LDA #$AA               ; fill byte
+  LDY #$BE               ; $C0-2 bytes below IO area
+  JSR @memcheck          ; fill and compare with $AA (preserves A,X)
+  STX DSTL               ; set DMA dest low (=0)
+  STX $00                ; set pointer low (=0)
+  ; stack page
+  INX                    ; page byte = page 1
+  LDA #$55               ; fill byte
+  LDY #$FC               ; $FF-4 bytes below stack in use (2 calls)
+  JSR @memcheck          ; fill and compare with $55 (preserves A,X)
+  LDA #$AA               ; fill byte
+  LDY #$FC               ; $FF-4 bytes below stack in use (2 calls)
+  JSR @memcheck          ; fill and compare with $AA (preserves A,X)
+  ; remaining pages
