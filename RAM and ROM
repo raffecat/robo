@@ -248,3 +248,15 @@ Ali Express "SD Card 1GB 2GB 4GB 8GB 16GB 32GB 64GB Secure Digital Flash Memory 
 
 Omron Tactile Switches $0.25/1500 ($0.50)
 
+
+By 1984, 16K×4 devices were already volume parts from:
+Texas Instruments – TMS4416
+Hitachi – HM50416P
+NEC – μPD41416C
+Fujitsu – MB81416
+Mostek – MK4516 / MK4164-4 (naming overlap)
+They were used in:
+Video RAM banks in late-generation arcade boards (e.g., Namco, Sega pre-’85)
+16-bit VRAM → 4 chips (32K)
+Available in 1K lots, not as cheaply as 64K×1
+

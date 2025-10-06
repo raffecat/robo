@@ -13,7 +13,7 @@ mode 6 flat 160 x 120 / 2 = 9,600          ; 10K mode 160 x 120 with 16 colors (
 9,600 is 8K + 1408 which is 88 chars out of the 4K char RAM, leaving 168 available,
 although this complicates the design: 8.8 lines come from the char RAM.
 
-Sprites are 8x8/8x16/16x8/16x16 at 4bpp (Opaque, 8 palettes, H/V-flip, Priority, High-bit)
+Sprites are 8x8/8x16/16x8/16x16 at 2bpp (Opaque, 8 palettes, H/V-flip, Priority, High-bit)
 
 APA modes, with a 32 x 16 border:
 512*192/8 = 12K at 1bpp (plus 4K sprites) half-wide   (3.2x color clock)
@@ -172,12 +172,28 @@ The competition:
 81    : VIC-20       5K $299
 82 Apr: ZX Spectrum 48K £175     (16K £125, 256×192, 15 colours, low production until Nov 82) Ferranti ULA
 82 Aug: Commodore 64 64K $595    (issues, slow sales, "took off in mid-1983")
-83 Jan: Apple IIe 64K, IBM XT    <-- Robo 48 launch here
+83 Jan: Apple IIe 64K, IBM XT    <-- Robo 48 at CES here $399
 83 ?  : CoCo 2 64K $159          (6-bit DAC!)
+83 Jun: C64 @ $300, VIC20 @ $199 <-- Robo 48 $349 Christmas bundle (in Aug/Sep)
 83 Nov: ZX Spectrum [USA] 48K
+83 Late: Amiga Inc rumours       "super 68000 game machine"
 84 Jan: Atari 800XL ~64K?
-84 Apr: CPC464 64K [UK]          (came with screen and casette player!)
-89 ?  : Sam Coupe (10,000 gate ASIC)
+84 Apr: CPC464 64K £199/£299     (came with Monitor and Casette player!)
+84 May: Amiga/Atari finance!
+84 Jul: Jack Tramiel buys Atari  (Atari ST starts dev)
+84 Jul: Commodore buys Amiga     "widely reported" <-- Robo 96 development starts
+84 Sep:                          <-- Robo 48+ Christmas bundle $299
+84 ~Oct: Amiga demos to press    Boing Ball demo
+85 Jan: Amiga HW at CES          appeared in BYTE,Compute!,Popular
+85 Jan: Atari 520ST at CES       <-- Robo 96 at CES here $349
+"By early 1985 the C64's price was $149; with an estimated production cost of $35–50"
+85 ?  : Commodore 128K $299
+85 Jun: Atari ST 512K $799/$999  (high end)
+85 Jul: Amiga 1000, 256K $1285   (too expensive)
+85 Sep:                          <-- Robo 96+ at retail $349
+87 May: Amiga 500, 512K $699 £499
+88 mid: Amiga 500, 512K £399     "Batman Pack"
+89 ?  : Sam Coupe                (10,000 gate ASIC)
 
 48K generation: Apple II+, Atari 800, ZX Spectrum (1982–83)
 64K generation: Commodore 64, Apple IIe, Atari 600XL, CPC-464 (1983-84)
@@ -186,16 +202,11 @@ New FCC rules in 1980 relaxed RFI requirements (17 dB more power: -43 dBm/MHz)
 
 https://www.youtube.com/watch?v=RQeEO7d1DWw  Launch Pricing
 
-A 16K RAM cartridge is available from day one.
-
-Rev.B includes unpopulated space on the board to install another 16K DRAM,
-bringing total internal memory up to 64K.
-
 CPC 464: 16MHz master clock, like BBC micro.
 
 "By 1982, the TI-99/4A and the Atari 400 were both at $349, the TRS-80 Color Computer
 sold at $379, and Commodore International had just reduced the price of the VIC-20
-to $199 and the Commodore 64 to $499."
+to $199 and the Commodore 64 to $499." (from $595)
 
 1982 price war between Commodore and TI, computers became as inexpensive as video-game
 consoles; Commodore cut the retail price of the C64 to $300 in June 1983.
@@ -215,26 +226,38 @@ gain a strong foothold in 1983 and beyond." [UK: rise of computer games in 1984]
 were growing in popularity in Japan while home computers were surging across Europe."
 
 
-Design Points:
+Design Goals:
 • "Next-generation features at last-generation prices."
-• Low entry price @ 48K       (64K 4164s were still more expensive)
+• Low entry price @ 48K       (64K 4164s were still more expensive in 82/83)
 • Expandable and upgradeable  (users desire this; devs target lowest common..)
-• Targeting home games market (Tile Gfx, HW Sprites, HW Scrolling)
+• Targeting home games market (Tile BG, HW Sprites, HW Scrolling)
 • Productivity support        (expected by users: word processing, printing)
-• Powerful BASIC              (procedures, graphics and sounds [beeb])
+• Powerful BASIC              (procedures, graphics, sounds [beeb])
 • Approachable, easy to use   (friendly commands [1980s style])
 • Can make games on it        (bedroom coders)
 
 Technical Goals
-• Tiled graphics, as an extension of tiled text modes
+• Tiled graphics (2bpp/4bpp) an extension of tiled text modes
   • Like the HW palette, these enable very fast changes to the screen
 • Sprites, for the same reason
   • HW blitter is likely too slow at 2 mem-cycles per pixel (or 2/4px)
 • Very simple custom HW (one 40-pin custom IC)
   • Every 80s home computer had one, or more (~2 exceptions)
+  • Augment the 6502, cut redundant features, simplify to cost
+
+Influences:
+• TMS9918 (1979) tiled background + 32 sprites; 1bpp (MSX)
+• BBC Micro (1981) constant bitrate 640/1bpp 320/2bpp 160/4bpp
+• IBM CGA (1981) text modes with 4:4bit colour attributes
+• NES (1983) similar 2bpp background + 64 sprites (similar timeline)
+
+Timeline:
+• Mid 1982: hardware design, prototype, software        [started ~12 July]
+• Jan 1983: CES to show off the prototype to the press
+• Sep 1983: first manufacturing run available for Christmas
 
 
-"Robo 48" has 32K RAM + 16K VRAM + 16K ROM, 2 MHz 6502, released Oct 1982.
+"Robo 48" has 32K RAM + 16K VRAM + 16K ROM, 2 MHz 6502, released Jan 1983.
 A cost-optimised home computer for 1983 (using 24 16Kx1 4116 DRAMs)
 320 x 240, using tile map (40 x 30 visible of 64x32 pattern-table)
 256 x 192, using tile map (32 x 24 visible of 32x32 pattern-table)?
@@ -274,29 +297,34 @@ These accelerator features are designed to be small extensions to the
 existing DMA function, adding minimal chip area.
 
 
-"Robo 64+" is the 1983 Christmas edition, with a pack-in 16K RAM cartridge
-and a pack-in game on tape. Designed to compete with the Commodore 64.
-The Robo 48 is still available as an entry-level option.
+"Robo 48" 1983 Christmas bundle with a pack-in game.
 
 Rev-B 1984 cost-reduced version using 8 half-working 64Kx1 DRAMs for main
-memory (32K) [if they're still a thing] and 2 x 16Kx4 DRAMs for VRAM,
-reduced board size, simplified +5V-only design.
+memory (32K) and 2 x 16Kx4 (64K) DRAMs for VRAM, reduced board size,
+simplified +5V-only design.
+
+"Robo 48+" 1984 Christmas edition, with a pack-in 16K RAM Cart and
+pack-in game. Designed to compete with the Commodore 64.
+The Robo 48 is still available as an entry-level option.
 
 Rev-D 2025 Christmas edition, 62256/62128 SRAM, SDCard slot.
 Crystal edition: transparent case, gold-plated white board, DIP parts.
 Value edition: all SMD parts, single component side.
 
 
-"Robo 2000" has 128K RAM + 64K VRAM + 32K ROM, 4 MHz 65C816, released Oct 1987 maybe (ST/Amiga)
+"Robo 96+" has 64K RAM + 32K VRAM + 32K ROM, 4 MHz R65C02P4, released Sep 1985 (ST/Amiga)
 95% compatible with Robo 48 software, but this can be a curse (switch to 68000?)
-16-bit, 16-color tiles, faster, more RAM, 3-4 layers, 4096 colors, DMA sampled sounds, 3½" disk drive?
-Faster BASIC uses 16-bit instructions; can directly access all RAM/ROM banks.
+16-bit VDP, 16-color tiles, faster, more RAM, 3-4 layers, 4096 colors,
+DMA sampled sounds, 3½" disk drive?
 Include a 16x16 booth multiplier taking 8 cycles (4x8=32 cycles for a planar matrix)
-Include an 8.8 scalar interpolator DMA mode (for sprite/texture scaling)
-Can slow the 65C816 speed to 1.79 MHz; low half of the ROM is exactly the '48 ROM.
-In compatibility mode, the extra RAM emulates a 96K RAM Cart.
-64K and 128K RAM carts are popular (for a total of 192K and 256K)
-"Requires +64K RAM Cart" / "Requires +128K RAM Cart" on games.
+Include an 8.8 scaler interpolator DMA mode (for sprite/texture scaling)
+Can slow the speed to 2 MHz; low half of the ROM is exactly the '48 ROM.
+In compatibility mode, the extra RAM emulates a 32K RAM Cart.
++64K RAM carts are popular (for a total 128K RAM) "Requires +64K" on games.
+
+W65C02S launched 1983
+"Early versions used 40-pin DIP packaging, and were available in 1, 2 and 4 MHz versions"
+"Production OEM: $2–$6 each (per-k pricing commonly sat in the low single-dollars)" [1985]
 
 Three-layer:
 512*32   = 16K  512 tiles @ 4-bpp (16-colour tiles and sprites)

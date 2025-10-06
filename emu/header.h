@@ -8,7 +8,7 @@ extern uint8_t MainRAM_1[16*1024];
 extern uint8_t CartRAM[16*1024];
 extern uint8_t VRAM[VRAM_SIZE];
 extern uint8_t PAL_RAM[64];
-extern uint8_t SPR_RAM[128];
+extern uint8_t SPR_RAM[160];
 
 // Fake6502
 void reset6502();

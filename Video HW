@@ -1,5 +1,24 @@
 Video HW
 
+An 80-column mode is highly desirable:
+• use the 4 memory accesses per tile to load [chr0][chr1][gfx0][gfx1]
+• render 1bpp gfx0 then gfx1 at 640 clock rate (1x multiplier)
+• can the chip technology shift at twice the pixel rate?
+
+80-column color text is just possible:
+• reuse sprite RAM to hold the attribute byte for each character on a line
+• expand sprite RAM to 160 bytes (+32), so we can store 80 x 2 bytes
+• upload 10 bytes (20 mem cycles) per HBlank -> 10*8 = 80 bytes
+• chase the beam, on each text line, upload colour data for the next line
+
+However, consider the goal for the machine:
+• a home games machine to hook up to the TV, or composite display
+• a home productivity machine [goal or non-goal?]
+• we already support a TV-compatible 60 column mode, at lower design cost
+• we can offer an 80-column "CGA compatible" expansion later
+• but consider total cost: 2x pixel clock + 32 bytes of SRAM (to tick a fairly large box)
+• the Beeb (monitor) and CPC464 (custom monitor) both support 640 modes
+
 https://en.wikipedia.org/wiki/Composite_artifact_colors
 https://retrocomputing.stackexchange.com/questions/2205/ideal-resolution-for-color-computer-on-ntsc
 https://forums.nesdev.org/viewtopic.php?t=14394 Why Doesn't the NES Show Artifact Colors?
@@ -55,9 +74,9 @@ In both cases, the visible area is around 80% of the line (181),
 but most home computers had a much bigger border than that:
   — Acorn machines paint for 40µs/320 = 125ns, which is 62.5% of the line (PAL)  142,284?
   - 48K Spectrum paints for 36.57µs (128/224ths), which is around 57%   (PAL)  128,256
-  - Atari 2600 paints for close to 70% of a line              (NTSC)
+  - Atari 2600 paints for close to 70% of a line ~44.8µs  (NTSC)
   - if we paint at 44.698µs/320 = 139.68ns per pixel, 279.36ns per 2px [280/300 = 93.3%]
-  - C64 paints for 46µs/320 = 143.75ns per pixel, 287.5ns per 2px [290-300ns MAX]  6.9565217391304 MHz PCLK
+  - C64 paints for 46µs/320 = 143.75ns per pixel, 287.5ns per 2px [300ns MAX]  6.9565217391304 MHz PCLK
   - C64 bitmap mode "320 pixels in 40µs" 40µs/320 = 125ns per pixel, 250ns per 2px
   - if we paint at 48µs/320 = 150ns per pixel, 300ns per 2px [320ns is 6.6% over]
   - if we paint at 52µs/320 = 325ns per 2px (but we're in overscan)

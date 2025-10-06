@@ -189,12 +189,12 @@ void advance_vdp() {
             }
             // shift left (out <- [msb<-lsb][msb<-lsb][msb<-lsb] <- load)
             bg_shift = bg_shift << 2;
-            // load high byte of shift register every 8 clk
+            // load low byte of shift register every 8 clk
             // must load a byte every 4 pixels and shift twice, or use two planes
             if (vdp_hsub == 0) {
-                bg_shift |= bg_ld_low; // set high byte of 24-bit
+                bg_shift |= bg_ld_low; // set low byte of 24-bit
             } else if (vdp_hsub == 4) {
-                bg_shift |= bg_ld_high; // set high byte of 24-bit
+                bg_shift |= bg_ld_high; // set low byte of 24-bit
             }
             // falling edge:
             // clock out a pixel every Nth clk (N=bpp)

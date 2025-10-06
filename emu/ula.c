@@ -86,7 +86,7 @@ uint8_t MainRAM_1[16*1024];
 uint8_t CartRAM[16*1024];
 uint8_t VRAM[VRAM_SIZE];
 uint8_t PAL_RAM[64];
-uint8_t SPR_RAM[128];
+uint8_t SPR_RAM[160];                // 160 for 80-col color mode
 
 /*vid*/ uint8_t  VidYCmp  = 0xE8;    // 8-bit Y-line compare register
 /*vid*/ uint8_t  VidScrH  = 0x2F;    // 3-bit horizontal tile scroll
@@ -99,7 +99,7 @@ uint8_t SPR_RAM[128];
 /*vid*/ uint8_t  NameSize = 0x07;    // 4-bit name table size (2:2 width 32,64,128,256; height 32,64,128,256)
 /*vid*/ uint8_t  NameBase = 0x18;    // 6-bit name table page address (high 6 bits)
 static uint8_t  PalAddr  = 0x2C;     // 6-bit register (0-63)
-static uint8_t  SprAddr  = 0x61;     // 7-bit register (0-127)
+static uint8_t  SprAddr  = 0x61;     // 8-bit register (0-159)
 
 static uint16_t DMA_Src  = 0x1111;   // 16-bit counter
 static uint16_t DMA_Dst  = 0x2222;   // 16-bit counter
@@ -311,8 +311,10 @@ static uint8_t ula_io_read(uint16_t address) {
             value = SprAddr;
             break;
         case IO_SPRD:                     // $FF: sprite data R/W
-            value = SPR_RAM[SprAddr];
-            SprAddr = (SprAddr+1) & 127;  // 7-bit register
+            if (SprAddr < 160) {
+                value = SPR_RAM[SprAddr];
+            }
+            SprAddr++;                    // 8-bit register
             break;        
     }
     // printf("IO Read: [$%02X] -> $%02X\n", address, value);
@@ -507,11 +509,13 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             PalAddr = (PalAddr+1) & 63;  // 6-bit register
             break;
         case IO_SPRA:                    // $FE: sprite address
-            SprAddr = value & 127;
+            SprAddr = value;
             break;
         case IO_SPRD:                     // $FF: sprite data R/W
-            SPR_RAM[SprAddr] = value;
-            SprAddr = (SprAddr+1) & 127;  // 7-bit register
+            if (SprAddr < 160) {
+                SPR_RAM[SprAddr] = value;
+            }
+            SprAddr++;                    // 8-bit register
             break;
     }
     // printf("IO Write: [$%02X] <- $%02X\n", address, value);

@@ -251,7 +251,7 @@ robologo:
 robologo2:
   DB 10,12,12,11,0
 welcome_1:
-  DB "Robo 48 Computer", 13, 13, "Robo BASIC", 13, 0
+  DB "Robo BASIC 1.0", 13, 0
 welcome_2:
   DB "31744 bytes free", 13, 0
 ready:
@@ -564,59 +564,17 @@ shiftab:
   DB  $6B, $6C, $3A, $22, $00, $00, $0D, $8A     ;     k l : "     RET DOWN
   DB  $6D, $2C, $3C, $3E, $3F, $20, $88, $89     ;     m < > ? RSh SPC LEFT RIGHT
 
-; @@ keyscan
-; scan the keyboard and write characters to the keyboard buffer
+; @@ key_scan
+; scan the keyboard matrix for a keypress
 ; [..ABCDE....]
 ;    ^hd  ^tl    ; empty when hd==tl, full when tl+1==hd
 keyscan:
-  LDA #0
-  STA Tmp        ; keyscan column
-  LDY KeyTl      ; keyboard buffer write offset
-  LDX #0         ; scantab offset
-@col_lp:
-  STA IO_KEYB    ; set keyscan column (0-7)
-  LDA IO_KEYB    ; read key state bitmap
-@bit_lp:
-  ASL A          ; CF <- next key bit
-  BCC @nodown    ; CC if key is up
-  LDA scantab,X  ; get ascii code
-  STA KeyBuf,Y   ; store in keyboard buffer
-  INY
-  TYA
-  AND #31        ; wrap around circular buffer
-  TAY
-  CPY KeyTl
-  BEQ @full
-@nodown:
-  INX
-  TXA
-  AND #7         ; stop if a multiple of 8 (result is 0)
-  BNE @bit_lp
-  INC Tmp
-  LDA Tmp
-  CMP #8
-  BNE @col_lp
-
-  INX
-  CPX #8
-  BNE @cols
-
-  STA KeyHd
-  STA KeyTl
-  RTS
-
-
-; @@ key_scan
-; scan the keyboard matrix for a keypress
-; N-key rollover is complicated..
-key_scan:
   LDY #0         ; first key column
   LDX #0         ; scantab index
 @col_lp:
   STY IO_KEYB    ; set keyscan column (0-7)
   LDA IO_KEYB    ; read key state bitmap
   BNE @bsf_lp    ; -> one or more keys pressed
-@resume:
   INY            ; next key column
   CPY #8         ; have we scanned 8 columns?
   BNE @col_lp    ; go again
@@ -633,13 +591,17 @@ key_scan:
   LDA scantab,X  ; get ascii code
   STA LastKey    ; save last key pressed, for auto-repeat
 ; append to keyboard buffer
-
-
+  LDY KeyTl      ; keyboard buffer write offset
+  INY
+  TYA
+  AND #31        ; wrap around circular buffer
+  CMP KeyHd      ; Tl+1 == Hd -> @full
+  BEQ @full
+  STA KeyTl      ; update tail pointer
+  DEY
+  STA KeyBuf,Y   ; store in keyboard buffer
+@full:
   RTS
-
-
-
-
 
 
 ; @@ clear_sprites
