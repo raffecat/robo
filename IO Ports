@@ -11,15 +11,21 @@ Considerations:
   • DMA fastload: LDA #zp; STA IO_DFLD; loads 6 bytes from zero-page in 6 cycles (8-aligned)
 
 How do you draw lines?
-• use APA-mode; keep the destination pointer in DSTL,DSTH
-• increment by 1 (X-basis) or by screen width (Y-basis)
-• conditionally add screen width (X-basis) or 1 (Y-basis)
-• store color into DDRW after updating coordinates
+• use APA-mode; write pointer in DSTL,DSTH [saves 5+5+2 = 12 cycles]
+• increment DSTL by 1 (X-basis) or by screen width [expensive] (Y-basis)
+• conditionally add screen width [expensive] (X-basis) or 1 (Y-basis)
+• store color into DDRW after updating address
 
 How do you fill scanlines of a triangle/rectangle?
 • use fill-mode to fill complete bytes (pixel divisor depends on BPP)
-• switch to APA-mode to draw partial endpoints?
-• addressing is incompatible: need to shift down fill-mode address
+• switch to APA-mode to draw part-byte endpoints?
+• fill-mode needs byte address: shift down (truncate) fill-mode address
+
+How would you emulate Raster OPs without ROP HW?
+• APA mode, VRAM to VRAM
+• TXA color [2] AND|OR|EOR DDRW [3] STA DDRW [3] total [8] per px
+• (hspan:) decrement [2] and loop [3] -> 8+5 = 13 cycles (vs DMA 1 cycle!) per px
+• (line:) uses an APA loop already -> extra 8-3 = [5] cycles per px
 
 
 IO Registers
@@ -130,11 +136,91 @@ Can use HDMA to play samples (need to unpack 64 samples per frame: 64*4=256 byte
 every 4th line. Can unpack 1-bit delata modulation with ASL;ADC;STA loop. Too much work.
 
 
-How would you emulate Raster OPs without ROP HW?
-• enable APA mode for pixel addressing
-• load from DMA source
-• and/or/xor the current color
-• store to DMA dest
-• decrement and loop: 15 cycles per pixel
 
-Is it worth considering a Blitter (expanded DMA) instead of Sprites?
+DMA APA/ROP Modes
+
+APA mode:
+Configure VRAM -> VRAM mode
+Mask isolates one pixel, indexed by low bits of address.
+Trigger mode: CPU writes FILL byte, triggers one DMA cycle (varying FILL or Address)
+Counted mode: CPU presets FILL byte, then sets RUN count (very limited usefulness)
+Read cycle -> DL
+Write cycle <- DL & ~mask | FILL & mask
+Write cycle <- DL & ~mask | (ROP-result) & mask
+(trigger e.g. line draw, dashed line, graphics scaling)
+(counted e.g. last few partial-byte pixels on a span)
+[write replaces DL bits with 1/2/4 quarters of ROP-result (AND-OR)]
+^ 8x 2-way AND-OR selector ~24 gates, well worth it for line/edge accel,
+  especially combined with a color-latching video mode
+
+ROP mode:
+Configure VRAM -> VRAM mode
+Trigger mode: CPU writes FILL byte, triggers one DMA cycle (varying FILL byte)
+Counted mode: CPU presets FILL byte, then sets RUN count (constant FILL byte)
+Read cycle -> DL
+Write cycle <- (DL NOP|AND|OR|XOR FILL)
+(trigger e.g. xor cursor draw)
+(counted e.g. filled spans drawn with ROPs [demos])
+[ROP-result selects (DL)|(DL-AND-FILL)|(DL-OR-FILL)|(DL-XOR-FILL) result (AND-OR)]
+^ this is a lot of gates: 3*8+4*8+8 = 64, may not be worth it,
+  could better spend these gates on a color-latching video mode
+
+It may be worth including 8 XOR gates (DL XOR FILL) to provide "Invert" mode,
+since that's the most common use for ROPs (cursor, selection rect)
+
+APA bit: when set, apply APA mask (and chop 3 bits off addresses)
+Trigger bit: when set, trigger one DMA cycle per FILL write.
+ROP mode: COPY=0, AND=1, OR=2, XOR=3
+
+FILL byte is shared with JTAB byte to keep register count low.
+
+Outcome:
+• implement Triggered APA as a DMA mode
+• ditch ROP modes, the ROP register, and the Trigger bit
+• implement a color-latching video mode instead
+
+
+Selection Rect:
+Horizontal: LDA DDRW; XOR $FF; STA DDRW; DEY; BNE [13 cycles/byte, 6.5 cycles/px at 4bpp]
+Vertical: mask = $03 (2bpp) or $0F (4bpp) pre-shifted to pixel column.
+Vertical: LDA DDRW; XOR mask; STA DDRW; DEY; BEQ done; TXA; ADC DSTL; STA DSTL; BCC loop [24 cycles/px]
+
+Line Draw:
+loop: STX DDRW; [C=0] ADC dy2; BCS step; DEC dx; BNE loop [14]  ; X steps (X=color)   step+9
+step: [C=1] SBC dx2; TAY; LDA #64; CLC; ADC DSTL; STA DSTL; LDA #1; ADC DSTH; STA DSTH; TYA; DEC dx; BNE loop [33+9=42] ; Y step
+
+(This doesn't include Y-clipping, i.e. stopping at the top/bottom edge.)
+
+This would benefit from a fast way to increment DST by 160 or 320,
+which wouldn't take a full adder: 160=128+32; 320=256+64.
+Both of these can be implemented as extra increment cycles applied to
+higher bits of the DST counter (b7,b5; b8,b6), manually triggered
+by a CPU write (using screen mode to select the bits)
+
+Fast-Inc Line Draw:
+loop: STX DDRW; [C=0] ADC dy2; BCS step; DEY; BNE loop [13]  ; X steps (X=color)  step+9
+step: STA DINC; [C=1] SBC dx2; DEY; BNE loop      [9+11=20]  ; Y step (Y=dx; DINC ignores A)
+
+This routine only works for short lines, up to 63 in each of dx and dy,
+assuming the classic 2*dx, 2*dy approach.
+
+The midpoint formulation will work up to 127 in each of dx, dy:
+D = dx/2;
+for (x = x0; x <= x1; x++) {
+    plot(x, y);
+    D -= dy;
+    if (D < 0) { y++; D += dx; }
+}
+
+Fast-Inc Line Draw:
+LDA dx; ASR; SEC
+loop: STX DDRW; [C=1] SBC dy; BCC step; DEY; BNE loop [13]  ; X steps, while D>=0 (X=color)
+step: STA DINC; [C=0] ADC dx; DEY; BNE loop      [9+11=20]  ; Y step (Y=dx; DINC ignores A)
+
+Fast-Inc 16-bit Line Draw:
+LDA dxh; CMP #$80; ROR A; STA ehi; LDA dxl; ROR A; STA elo                                      ; CMP #$80 sets C=sign-bit
+loop: STX DDRW; SEC; LDA elo; SBC dyl; STA elo; LDA ehi; SBC dyh; STA ehi; DEY; BPL loop [26]   ; X steps, while D>=0 (X=color)
+step: STA DINC; CLC; LDA elo; ADC dxl; STA elo; LDA ehi; ADC dxh; STA ehi; DEY; BNE loop [+28]  ; Y step (DINC ignores A)
+
+
+LDA elo; SBC dyl; STA elo; LDA ehi; SBC dyh; STA ehi;
