@@ -8,14 +8,21 @@ extern uint8_t MainRAM_1[16*1024];
 extern uint8_t CartRAM[16*1024];
 extern uint8_t VRAM[VRAM_SIZE];
 extern uint8_t PAL_RAM[64];
-extern uint8_t SPR_RAM[160];
+extern uint8_t SPR_RAM[160]; // 160 for 80-col color mode
 
 // Fake6502
 void reset6502();
 void exec6502(uint32_t tickcount);
+void step6502();
 void nmi6502();
 void irq6502();
+void dbg_decode_next_op(uint16_t pc);
 extern uint32_t clockticks6502;
+extern uint16_t pc;
+extern uint8_t sp, a, x, y, status;
+extern uint8_t dbg_mode;
+extern uint16_t dbg_break;
+
 
 // ULA
 uint8_t read6502(uint16_t address);

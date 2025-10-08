@@ -38,6 +38,11 @@ int main(int argc, char *argv[]) {
     // start the CPU.
     reset6502();
 
+    // DEBUGGER
+    dbg_mode = 1;
+    dbg_break = 0x0;
+    Uint32 held_time = 0;
+
     // run the simulator.
     SDL_Event event;
     int running = 1;
@@ -50,14 +55,40 @@ int main(int argc, char *argv[]) {
         }    
 
         // run the CPU.
-        exec6502(one_scanline);
+        if (!dbg_mode) {
+            exec6502(one_scanline);
+        } else {
+            // debugger
+            if (pc != dbg_break) {
+                // run until we hit the breakpoint.
+                exec6502(one_scanline);
+            } else {
+                // stopped on the breakpoint.
+                if (keys[SDL_SCANCODE_RSHIFT]) {
+                    if (dbg_mode == 1) { // waiting
+                        dbg_mode = 2; // single step held down
+                        held_time = SDL_GetTicks() + 300;
+                        step6502();
+                        dbg_break = pc; // advance the breakpoint
+                    } else if (SDL_GetTicks() > held_time) {
+                        // auto-repeat
+                        held_time = SDL_GetTicks() + 80;
+                        step6502();
+                        dbg_break = pc; // advance the breakpoint
+                    }
+                } else {
+                    dbg_mode = 1; // back to waiting
+                }
+                advance_vdp();
+                render();
+            }
+        }
 
         // make render progress.
         advance_vdp();
     }
 
     final_render();
-
     return 0;
 }
 
@@ -67,6 +98,7 @@ uint8_t scanKeyCol(uint8_t col) {
     //  Caps A S D F G H J  K L ; '     RET LEFT  (14)
     // Ctl LSh Z X C V B N  M , . / RSh SPC RIGHT (15)
     switch (col) {
+        // left side
         case 0:
             return (keys[SDL_SCANCODE_ESCAPE]<<7) |
                    (keys[SDL_SCANCODE_GRAVE]<<6) |
@@ -104,6 +136,7 @@ uint8_t scanKeyCol(uint8_t col) {
                    (keys[SDL_SCANCODE_B]<<1) |
                    (keys[SDL_SCANCODE_N]<<0);
 
+        // right side
         case 4:
             return (keys[SDL_SCANCODE_7]<<7) |
                    (keys[SDL_SCANCODE_8]<<6) |
@@ -111,8 +144,8 @@ uint8_t scanKeyCol(uint8_t col) {
                    (keys[SDL_SCANCODE_0]<<4) |
                    (keys[SDL_SCANCODE_MINUS]<<3) |
                    (keys[SDL_SCANCODE_EQUALS]<<2) |
-                   (keys[SDL_SCANCODE_BACKSPACE]<<1) |
-                   (keys[SDL_SCANCODE_UP]<<0);
+                   (0<<1) |
+                   (keys[SDL_SCANCODE_BACKSPACE]<<0);
         case 5:
             return (keys[SDL_SCANCODE_I]<<7) |
                    (keys[SDL_SCANCODE_O]<<6) |
@@ -121,7 +154,7 @@ uint8_t scanKeyCol(uint8_t col) {
                    (keys[SDL_SCANCODE_RIGHTBRACKET]<<3) |
                    (keys[SDL_SCANCODE_BACKSLASH]<<2) |
                    (0<<1) |
-                   (keys[SDL_SCANCODE_DOWN]<<0);
+                   (keys[SDL_SCANCODE_UP]<<0);
         case 6:
             return (keys[SDL_SCANCODE_K]<<7) |
                    (keys[SDL_SCANCODE_L]<<6) |
@@ -130,15 +163,15 @@ uint8_t scanKeyCol(uint8_t col) {
                    (0<<3) |
                    (0<<2) |
                    (keys[SDL_SCANCODE_RETURN]<<1) |
-                   (keys[SDL_SCANCODE_LEFT]<<0);
+                   (keys[SDL_SCANCODE_DOWN]<<0);
         case 7:
             return (keys[SDL_SCANCODE_M]<<7) |
                    (keys[SDL_SCANCODE_COMMA]<<6) |
                    (keys[SDL_SCANCODE_PERIOD]<<5) |
                    (keys[SDL_SCANCODE_SLASH]<<4) |
                    (keys[SDL_SCANCODE_RSHIFT]<<3) |
-                   (0<<2) |
-                   (keys[SDL_SCANCODE_SPACE]<<1) |
+                   (keys[SDL_SCANCODE_SPACE]<<2) |
+                   (keys[SDL_SCANCODE_LEFT]<<1);
                    (keys[SDL_SCANCODE_RIGHT]<<0);
     }
     return 0;

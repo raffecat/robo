@@ -184,6 +184,10 @@ uint32_t clockticks6502 = 0, clockgoal6502 = 0;
 uint16_t oldpc, ea, reladdr, value, result;
 uint8_t opcode, oldstatus;
 
+// debugger state
+uint8_t dbg_mode = 0;
+uint16_t dbg_break = 0;
+
 //externally supplied functions
 extern uint8_t read6502(uint16_t address);
 extern void write6502(uint16_t address, uint8_t value);
@@ -987,78 +991,85 @@ void irq6502() {
 
 #ifdef DEBUGGER
 void dbg_decode_next_op(uint16_t pc) {
+    char regs[32]; // PIC "A=xx X=xx Y=xx [CVNZID]" // 24
+    // register state
+    sprintf(regs, "A=%02X X=%02X Y=%02X [%c%c%c%c%c%c]", a, x, y, 
+        (status&FLAG_CARRY)?'C':'-', (status&FLAG_OVERFLOW)?'V':'-',
+        (status&FLAG_SIGN)?'N':'-', (status&FLAG_ZERO)?'Z':'-',
+        (status&FLAG_INTERRUPT)?'I':'-', (status&FLAG_DECIMAL)?'D':'-');
+    // decode instruction
     uint8_t op = read6502(pc);
     const char* mne = dbg_mnemonictable[op];
     const dbg_eam mode = dbg_addrmode[op];
     switch (mode) {
         case ea_imp: {
-            printf("%04X %s\n", pc, mne);
+            printf("%04X %s                \t\t%s\n", pc, mne, regs);
             break;
         }
         case ea_acc: {
-            printf("%04X %s A\n", pc, mne);
+            printf("%04X %s A              \t\t%s\n", pc, mne, regs);
             break;
         }
         case ea_imm: {
             uint8_t val = read6502(pc+1);
-            printf("%04X %s #$%02X\n", pc, mne, (int)(val));
+            printf("%04X %s #$%02X            \t\t%s\n", pc, mne, (int)(val), regs);
             break;
         }
         case ea_rel: {
             int8_t val = read6502(pc+1); // NB signed int8
             uint16_t to = pc+2+val;
-            printf("%04X %s %+d -> $%04X\n", pc, mne, val, (int)(to));
+            printf("%04X %s %+d -> $%04X    \t\t%s\n", pc, mne, val, (int)(to), regs);
             break;
         }
         case ea_zp: {
             uint8_t val = read6502(pc+1);
-            printf("%04X %s $%02X\n", pc, mne, (int)(val));
+            printf("%04X %s $%02X            \t\t%s\n", pc, mne, (int)(val), regs);
             break;
         }
         case ea_zpx: {
             uint8_t val = read6502(pc+1);
-            printf("%04X %s $%02X,X\n", pc, mne, (int)(val));
+            printf("%04X %s $%02X,X          \t\t%s\n", pc, mne, (int)(val), regs);
             break;
         }
         case ea_zpy: {
             uint8_t val = read6502(pc+1);
-            printf("%04X %s $%02X,Y\n", pc, mne, (int)(val));
+            printf("%04X %s $%02X,Y          \t\t%s\n", pc, mne, (int)(val), regs);
             break;
         }
         case ea_abs: {
             uint8_t lo = read6502(pc+1);
             uint8_t hi = read6502(pc+2);
             uint16_t to = (hi<<8)|lo;
-            printf("%04X %s $%04X\n", pc, mne, (int)(to));
+            printf("%04X %s $%04X          \t\t%s\n", pc, mne, (int)(to), regs);
             break;
         }
         case ea_absx: {
             uint8_t lo = read6502(pc+1);
             uint8_t hi = read6502(pc+2);
             uint16_t to = (hi<<8)|lo;
-            printf("%04X %s $%04X,X\n", pc, mne, (int)(to));
+            printf("%04X %s $%04X,X        \t\t%s\n", pc, mne, (int)(to), regs);
             break;
         }
         case ea_absy: {
             uint8_t lo = read6502(pc+1);
             uint8_t hi = read6502(pc+2);
             uint16_t to = (hi<<8)|lo;
-            printf("%04X %s $%04X,Y\n", pc, mne, (int)(to));
+            printf("%04X %s $%04X,Y        \t\t%s\n", pc, mne, (int)(to), regs);
             break;
         }
         case ea_ind: {
             uint8_t val = read6502(pc+1);
-            printf("%04X %s ($%02X)\n", pc, mne, (int)(val));
+            printf("%04X %s ($%02X)          \t\t%s\n", pc, mne, (int)(val), regs);
             break;
         }
         case ea_indx: {
             uint8_t val = read6502(pc+1);
-            printf("%04X %s (%02X,X)\n", pc, mne, (int)(val));
+            printf("%04X %s (%02X,X)         \t\t%s\n", pc, mne, (int)(val), regs);
             break;
         }
         case ea_indy: {
             uint8_t val = read6502(pc+1);
-            printf("%04X %s ($%02X),Y\n", pc, mne, (int)(val));
+            printf("%04X %s ($%02X),Y        \t\t%s\n", pc, mne, (int)(val), regs);
             break;
         }
         default:
@@ -1068,17 +1079,15 @@ void dbg_decode_next_op(uint16_t pc) {
 #endif
 
 void exec6502(uint32_t tickcount) {
-    uint16_t stop = 0x0C074;
+    uint16_t old_pc;
     clockgoal6502 += tickcount;
-   
-    while (clockticks6502 < clockgoal6502) {
 
-#ifdef DEBUGGER
-        dbg_decode_next_op(pc);
-        if (pc == stop) {
-            int x=1; (void)x; // breakpoint
+    while (clockticks6502 < clockgoal6502) {
+        old_pc = pc;
+        if (dbg_mode && pc == dbg_break) {
+            printf("%04X breakpoint\n", pc);
+            return;
         }
-#endif
 
         opcode = read6502(pc++);
         if (opcode == 0x60) {
@@ -1095,10 +1104,18 @@ void exec6502(uint32_t tickcount) {
         if (penaltyop && penaltyaddr) clockticks6502++;
 
         instructions++;
+
+#ifdef DEBUGGER
+        if (dbg_mode) {
+            dbg_decode_next_op(old_pc);
+        }
+#endif
     }
 }
 
 void step6502() {
+    uint16_t old_pc = pc;
+
     opcode = read6502(pc++);
     status |= FLAG_CONSTANT;
 
@@ -1112,4 +1129,10 @@ void step6502() {
     clockgoal6502 = clockticks6502;
 
     instructions++;
+
+#ifdef DEBUGGER
+        if (dbg_mode) {
+            dbg_decode_next_op(old_pc);
+        }
+#endif
 }

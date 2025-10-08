@@ -308,10 +308,10 @@ static uint8_t ula_io_read(uint16_t address) {
             PalAddr = (PalAddr+1) & 63;   // 6-bit register
             break;
         case IO_SPRA:                     // $FE: sprite address
-            value = SprAddr;
+            value = SprAddr; // was &127
             break;
         case IO_SPRD:                     // $FF: sprite data R/W
-            if (SprAddr < 160) {
+            if (SprAddr < 160) { // 160 for 80-col color mode (was &127)
                 value = SPR_RAM[SprAddr];
             }
             SprAddr++;                    // 8-bit register
@@ -509,10 +509,10 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             PalAddr = (PalAddr+1) & 63;  // 6-bit register
             break;
         case IO_SPRA:                    // $FE: sprite address
-            SprAddr = value;
+            SprAddr = value; // was &127
             break;
         case IO_SPRD:                     // $FF: sprite data R/W
-            if (SprAddr < 160) {
+            if (SprAddr < 160) { // 160 for 80-col color mode (was &127)
                 SPR_RAM[SprAddr] = value;
             }
             SprAddr++;                    // 8-bit register
