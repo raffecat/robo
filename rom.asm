@@ -503,7 +503,7 @@ cls:                     ; clear tilemap
   STA IO_DDRW            ; [3] write tile
   STX IO_DDRW            ; [3] write attribute
   DEY                    ; [2] decrement column count
-  BPL @col               ; [3] until Y<0
+  BPL @col               ; [3] until Y=0        (BUG: out by one, FIX: BNE)
 ; advance VRAM address by map width (64) - WinW
   LDA #64
   SEC
@@ -1117,13 +1117,13 @@ parse_n16:       ; from (Src),Y returning Y=end, X=len (+Tmp)
   CMP #10        ; [2]
   BCS @done      ; [2] >= 10 -> done (CF=1)
   STA Tmp        ; [3] save digit 0-9  [15]
-  JSR n16_mul_10 ; [116] uses A (+Acc,+Term)
+  JSR n16_mul_10 ; [116] uses A, preserves X,Y (+Acc,+Term)
   CLC            ; [2]
   LDA Acc0       ; [3]
   ADC Tmp        ; [3] add digit 0-9   (acc_add_byte)
   STA Acc0       ; [3]
   LDA Acc1       ; [3]
-  ADC #0         ; [2]
+  ADC #0         ; [2] add carry
   STA Acc1       ; [3]
   BCS e_range    ; [2] -> unsigned overflow
   INY            ; [2] advance source
@@ -1133,7 +1133,7 @@ parse_n16:       ; from (Src),Y returning Y=end, X=len (+Tmp)
   RTS            ; [6] return Y=end, X=len
 
 ; multiply Acc by 10 (uses Term)
-n16_mul_10:     ; Uses A (+Term)
+n16_mul_10:     ; Uses A, preserves X,Y (+Term)
   LDA Acc0      ; [3] Term = Val * 2
   ASL           ; [2]
   STA Term0     ; [3]
@@ -1152,8 +1152,8 @@ n16_mul_10:     ; Uses A (+Term)
   ADC Term1     ; [3]
   STA Acc1      ; [3]
   BCS e_range   ; [2] -> unsigned overflow
-  ASL Term0     ; [5] Acc = Acc * 2 = Val * 10
-  ROL Term1     ; [5]
+  ASL Acc0      ; [5] Acc = Acc * 2 = Val * 10
+  ROL Acc1      ; [5]
   BCS e_range   ; [2] -> unsigned overflow
   RTS           ; [6] -> [116]
 
@@ -1192,7 +1192,7 @@ bas_line_ins:
 
 
 msg_range:
-  DB 7, "Too big"
+  DB 8, "Bad line"
 
 
 ORG CHROM        ; 256 x 8 = 2K char rom
