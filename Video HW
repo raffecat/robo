@@ -9,12 +9,12 @@ An 80-column mode is highly desirable:
 • reuse sprite RAM to hold the attribute byte for each character on a line
 • expand sprite RAM to 160 bytes (+32), so we can store 80 x 2 bytes
 • upload 10 bytes (20 mem cycles) per HBlank -> 10*8 = 80 bytes
-• chase the beam, on each text line, upload colour data for the next line
+• during each line of text, upload colour data for the next line
 
 However, consider the goal for the machine:
 • a home games machine to hook up to the TV, or composite display
-• a home productivity machine [goal or non-goal?]
-• we already support a TV-compatible 60 column mode, at lower design cost
+• some home productivity capabilities (marketing requirement)
+• we already support a TV-compatible 64 column mode, at lower design cost
 • we can offer an 80-column "CGA compatible" expansion later
 • but consider total cost: 2x pixel clock + 32 bytes of SRAM (to tick a fairly large box)
 • the Beeb (monitor) and CPC464 (custom monitor) both support 640 modes

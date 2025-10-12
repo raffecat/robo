@@ -54,13 +54,13 @@ however for double-buffering (e.g. render then scroll)
 tile map 64*32*2 = 4K
 planar tiles: STA &8n00,Y; STA &9n00,Y; STA &An00,Y (map at $B000)
 32 tiles per tile page: n = &0 to &F
-map attribs: xVHIPPPT where VH=flip I=priority P=palette (8*4=32) T=top-bit of tile
+map attribs: HVIOPPPT where HV=flip O=opaque I=priority P=palette (8*4=32) T=top-bit of tile
 
 https://en.wikipedia.org/wiki/Master_System  256x192 16K VRAM  bitplane:4bpp(4 bytes per row)
 
 we need to support multicoloured text:
-Text Mode: 40x28, attribute is 16:16 foreground and background colors (using 32 colors)
-Tile Mode: 40x28, attribute is [HVIOpppT] selecting one of 8 palettes
+Text Mode: 40x28, attribute is 16:16 background:foreground colors (high 16 via bit-1 of gfx)
+Tile Mode: 40x28, attribute is [hvioPPPt] selecting one of 8 palettes
 
 Text mode is useful for terminal emulation, BBS dialup.
 
@@ -174,26 +174,26 @@ The competition:
 82 Aug: Commodore 64 64K $595    (issues, slow sales, "took off in mid-1983")
 83 Jan: Apple IIe 64K, IBM XT    <-- Robo 48 at CES here $399
 83 ?  : CoCo 2 64K $159          (6-bit DAC!)
-83 Jun: C64 @ $300, VIC20 @ $199 <-- Robo 48 $349 Christmas bundle (in Aug/Sep)
+83 Jun: C64 @ $300, VIC20 @ $199 <-- Robo 48 $349 Christmas bundle (in Aug)
 83 Nov: ZX Spectrum [USA] 48K
 83 Late: Amiga Inc rumours       "super 68000 game machine"
 84 Jan: Atari 800XL ~64K?
 84 Apr: CPC464 64K £199/£299     (came with Monitor and Casette player!)
 84 May: Amiga/Atari finance!
 84 Jul: Jack Tramiel buys Atari  (Atari ST starts dev)
-84 Jul: Commodore buys Amiga     "widely reported" <-- Robo 96 development starts
-84 Sep:                          <-- Robo 48+ Christmas bundle $299
+84 Jul: Commodore buys Amiga     "widely reported"
+84 Sep:                          <-- Robo 48+ Christmas bundle $249
 84 ~Oct: Amiga demos to press    Boing Ball demo
 85 Jan: Amiga HW at CES          appeared in BYTE,Compute!,Popular
-85 Jan: Atari 520ST at CES       <-- Robo 96 at CES here $349
+85 Jan: Atari 520ST at CES       <- Start designing Robo 128
 "By early 1985 the C64's price was $149; with an estimated production cost of $35–50"
 85 ?  : Commodore 128K $299
 85 Jun: Atari ST 512K $799/$999  (high end)
 85 Jul: Amiga 1000, 256K $1285   (too expensive)
-85 Sep:                          <-- Robo 96+ at retail $349
 87 May: Amiga 500, 512K $699 £499
-88 mid: Amiga 500, 512K £399     "Batman Pack"
-89 ?  : Sam Coupe                (10,000 gate ASIC)
+88 mid: Amiga 500, 512K £399     "Batman Pack"  (16-bit systems are now affordable)
+89 ?  : Sam Coupe                (10,000 gate ASIC, too late to market)
+89    :                          (games are still published for 8-bit systems up to ~92)
 
 48K generation: Apple II+, Atari 800, ZX Spectrum (1982–83)
 64K generation: Commodore 64, Apple IIe, Atari 600XL, CPC-464 (1983-84)
@@ -312,7 +312,7 @@ Crystal edition: transparent case, gold-plated white board, DIP parts.
 Value edition: all SMD parts, single component side.
 
 
-"Robo 96+" has 64K RAM + 32K VRAM + 32K ROM, 4 MHz R65C02P4, released Sep 1985 (ST/Amiga)
+"Robo 128" has 128K RAM + 64K VRAM + 32K ROM, 4 MHz R65C02P4, released Jan 1986 (ST/Amiga)
 95% compatible with Robo 48 software, but this can be a curse (switch to 68000?)
 16-bit VDP, 16-color tiles, faster, more RAM, 3-4 layers, 4096 colors,
 DMA sampled sounds, 3½" disk drive?
@@ -322,10 +322,6 @@ Can slow the speed to 2 MHz; low half of the ROM is exactly the '48 ROM.
 In compatibility mode, the extra RAM emulates a 32K RAM Cart.
 +64K RAM carts are popular (for a total 128K RAM) "Requires +64K" on games.
 
-W65C02S launched 1983
-"Early versions used 40-pin DIP packaging, and were available in 1, 2 and 4 MHz versions"
-"Production OEM: $2–$6 each (per-k pricing commonly sat in the low single-dollars)" [1985]
-
 Three-layer:
 512*32   = 16K  512 tiles @ 4-bpp (16-colour tiles and sprites)
 512*32   = 16K  512 tiles @ 4-bpp (16-colour animation tiles)
@@ -333,6 +329,16 @@ Three-layer:
 64*64*2  = 8K   2 screens layer 2
 64*64*2  = 8K   2 screens layer 3
 512*16   = 8K   512 tiles @ 2-bpp (4-colour tiles)
+
+W65C02S launched 1983
+"Early versions used 40-pin DIP packaging, and were available in 1, 2 and 4 MHz versions"
+"Production OEM: $2–$6 each (per-k pricing commonly sat in the low single-dollars)" [1985]
+
+R65C02P4 4MHz
+"Available in 1985, broadly available in 1986."
+
+W65C816 was available for design-in around early 1986 (late though)
+Apple IIgs released September 1986 used a 2.8 MHz part.
 
 
 Hardware
@@ -909,10 +915,10 @@ end
 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8
 
 ; Multiply by 10
-  ASL       ; v*4
-  ASL
-  ADC orig  ; v*4 + v = times 5
-  ASL       ; v*5 * 2 = times 10
+  ASL       ; T = v*2
+  ASL       ; T = T*2 = v*4
+  ADC Term  ; A = A+T = v*5
+  ASL       ; A = A*2 = v*10
 
 ; Divide by 10  [30 cycles, 17 bytes]
   LSR

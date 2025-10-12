@@ -45,7 +45,7 @@ BNKC    = $DB    ; Bank switch $C000   (low 4 bits)
 HDML    = $DC    ; HDMA src low        (enabled in VENA)
 HDMH    = $DD    ; HDMA src high
 KEYB    = $DE    ; Keyboard scan (write: set row; read: scan column)
-MULW    = $DF    ; Booth multiplier (write {AL,AH,BL,BH} read {RL,RH})
+(MULW    = $DF   ; Booth multiplier (write {AL,AH,BL,BH} read {RL,RH}))
 
 DCTL direction:                        [implementation: drives different chip-enables]
     0 = mem -> mem                     

@@ -14,7 +14,7 @@ const uint8_t VCTL_V200      = 0x04;   // 200 visible lines per frame
 const uint8_t VCTL_V192      = 0x00;   // 192 visible lines per frame
 const uint8_t VCTL_H320      = 0x02;   // 320 visible pixel-clocks per line (shift rate)
 const uint8_t VCTL_H256      = 0x00;   // 256 visible pixel-clocks per line (shift rate)
-const uint8_t VCTL_4BPP      = 0x01;   // divide by 4, use 4 bits per pixel
+const uint8_t VCTL_4BPP      = 0x01;   // divide by 4, use 4 bits per pixel (MUST be 0x01)
 const uint8_t VCTL_2BPP      = 0x00;   // divide by 2, use 2 bits per pixel
 
 const int fb_hbord = 32; // border width in FB
@@ -29,12 +29,17 @@ static SDL_Renderer* renderer = 0;
 static SDL_Texture* texture = 0;
 static uint64_t vdp_clk = 0;
 
+// 2.2.2.2.2.2.2.2 = 8 scroll positions (16 bits)
+// 4--.4--.4--.4-- = 4 scroll positions (16 bits)
+
 // background layer
 static uint8_t bg_ld_tl = 0; // 8-bit tile latch
-static uint8_t bg_ld_al = 0; // 8-bit attribute latch
-static uint8_t bg_ld_low  = 0xCC; // 8-bit pending load
-static uint8_t bg_ld_high = 0xCC; // 8-bit pending high
-static uint32_t bg_shift  = 0; // 24-bit shift register
+static uint8_t bg_ld_al = 0; // 8-bit pending attribs
+static uint8_t bg_ld_gfx0 = 0xCC; // 8-bit pending gfx0
+static uint8_t bg_ld_gfx1 = 0xCC; // 8-bit pending gfx1
+static uint32_t bg_shift  = 0; // 24-bit BG shift register (NEED 16-bit scroll + 8-bit load)
+static uint8_t bg_attr_del = 0; // 8-bit BG attribte latch (delay)
+static uint8_t bg_attr     = 0; // 8-bit BG attribte latch
 static uint8_t bg_pixel   = 0; // 4-bit pixel latch
 static uint16_t vdp_hcount = 0; // 9-bit horizontal count
 static uint8_t vdp_hsub = 0; // 3-bit horizontal sub-tile counter
@@ -159,52 +164,60 @@ void advance_vdp() {
     // VCTL (1-0) Divider (DD) is 0=512 (2bpp) 1=320 (2bpp) 2=160 (4bpp)
     uint16_t bpp = (VidCtl & VCTL_4BPP); // 0=2bpp 1=4bpp
     uint32_t bpp_shift = 24 - (2 << bpp); // shift down from bit 24 (22 or 20)
-    uint32_t bpp_mask = (1 << (2 << bpp))-1; // (3 or 15)
+    // uint32_t bpp_mask = (1 << (2 << bpp))-1; // (3 or 15)
     while (vdp_clk < vdp_target) {
         // start early, two tiles from the end of the previous line.
         if (vdp_vearly && vdp_hearly) {
             // rising edge:
             // load next background tile every 8 clk
             if (vdp_hsub == 0) {
-                int Vshift = 6+(NameSize>>2); // 1 + 5-8 bits (32,64,128,256)
+                int Vshift = 6+(NameSize>>2); // 1 + 5-8 bits (32,64,128,256) (top 2 bits of NameSize are width)
                 uint16_t addr = (NameBase<<8)|(vdp_vtile<<Vshift)|(vdp_htile<<1)|0;
-                bg_ld_tl = VRAM[addr];
+                bg_ld_tl = VRAM[addr]; // TILE
             }
             if (vdp_hsub == 2) {
-                int Vshift = 6+(NameSize>>2); // 1 + 5-8 bits (32,64,128,256)
+                int Vshift = 6+(NameSize>>2); // 1 + 5-8 bits (32,64,128,256) (top 2 bits of NameSize are width)
                 uint16_t addr = (NameBase<<8)|(vdp_vtile<<Vshift)|(vdp_htile<<1)|1;
-                bg_ld_al = VRAM[addr];
-                //printf("%04x text %02x %02x\n", addr-1, bg_ld_tl, bg_ld_al);
+                bg_ld_al = VRAM[addr]; // ATTRIBS
             }
             if (vdp_hsub == 4) {
                 // XXX assumes tiles begin at $0000
-                uint16_t addr = ((bg_ld_al&1) << 12) | (bg_ld_tl<<4) | (vdp_vsub << 1) | 0;
-                bg_ld_low = VRAM[addr];
+                uint16_t addr = (bg_ld_tl<<4) | (vdp_vsub << 1) | 0;
+                if (!(VidCtl & VCTL_16COL)) addr |= (bg_ld_al&1) << 12; // only in 4-color mode
+                bg_ld_gfx0 = VRAM[addr]; // GFX0
             }
             if (vdp_hsub == 6) {
                 // XXX assumes tiles begin at $0000
-                uint16_t addr = ((bg_ld_al&1) << 12) | (bg_ld_tl<<4) | (vdp_vsub << 1) | 1;
-                bg_ld_high = VRAM[addr];
-                //printf("%04x gfx  %02x %02x\n", addr-1, bg_ld_low, bg_ld_high);
+                uint16_t addr = (bg_ld_tl<<4) | (vdp_vsub << 1) | 1;
+                if (!(VidCtl & VCTL_16COL)) addr |= (bg_ld_al&1) << 12; // only in 4-color mode
+                bg_ld_gfx1 = VRAM[addr]; // GFX1
             }
+            // shift up the last pixel
             // shift left (out <- [msb<-lsb][msb<-lsb][msb<-lsb] <- load)
             bg_shift = bg_shift << 2;
-            // load low byte of shift register every 8 clk
-            // must load a byte every 4 pixels and shift twice, or use two planes
+            // load a byte into shift register every 4 pixels, because we shift twice (2bpp)
             if (vdp_hsub == 0) {
-                bg_shift |= bg_ld_low; // set low byte of 24-bit
+                bg_shift |= bg_ld_gfx0; // set low byte of 24-bit
+                bg_attr = bg_attr_del;  // move delayed attrs to active attrs (every 8th)
+                bg_attr_del = bg_ld_al; // latch current BG attrs (every 8th)
             } else if (vdp_hsub == 4) {
-                bg_shift |= bg_ld_high; // set low byte of 24-bit
+                bg_shift |= bg_ld_gfx1; // set low byte of 24-bit
             }
             // falling edge:
             // clock out a pixel every Nth clk (N=bpp)
-            if ((vdp_hsub & bpp) == 0) {
+            if ((vdp_hsub & bpp) == 0) { // h&0 (always) or H&1 (every 2nd)
                 //bg_pixel = bg_shift & (bpp_mask << (VidFinH << 1));
-                bg_pixel = (bg_shift >> bpp_shift) & bpp_mask; // take `bpp` top bits of 24-bit
+                bg_pixel = (bg_shift >> bpp_shift); // take `bpp` top bits of 24-bit
             }
             if (vdp_vborder == 0 && vdp_hborder == 0) {
                 // pixel output
-                uint8_t px = PAL_RAM[bg_pixel]; // [IIRRGGBB]
+                uint8_t text_col;
+                if (VidCtl & VCTL_16COL) {
+                    text_col = ((bg_pixel&2)<<3) | ((bg_pixel&1) ? (bg_attr&15) : (bg_attr>>4)); // 16-color mode.
+                } else {
+                    text_col = ((bg_attr&14)<<1) | bg_pixel; // 4-color mode (8-palettes)
+                }
+                uint8_t px = PAL_RAM[text_col]; // [IIRRGGBB]
                 if (FBrow < fb_height && FBcol < fb_width) { // safety check
                     static uint8_t chroma[4] = {0x00,0x60,0xB0,0xF0}; // 0.....6....B...F
                     static uint8_t luma[4] = {0x05,0x09,0x0C,0x0F};   // .....5...9..C..F
@@ -263,8 +276,8 @@ void advance_vdp() {
                 uint16_t Hmask = (1 << (5+(NameSize>>2))) - 1; // 5-8 bits (32,64,128,256)
                 vdp_htile = VidScrH & Hmask; // reload horizontal tile counter
                 FBcol = 0; // reset framebuffer column
-                bg_shift = 0x00FFFF; // XXX debugging
-                bg_ld_low = bg_ld_high = 0xFF; // XXX leaking in on the left side
+                bg_shift = 0xFFFF; // XXX debugging
+                bg_attr = bg_ld_gfx0 = bg_ld_gfx1 = 0xFF; // XXX leaking in on the left side
             }
             if (vdp_hcount == 40+9+13+9) { // 71*8=568
                 // end of the scanline
@@ -290,6 +303,7 @@ void advance_vdp() {
                 }
                 if (vdp_vcount == 224+32+24+32) { // 312
                     // start of next frame
+                    vdp_hsub = 0;
                     vdp_vcount = 0;      // reset vcount
                     vdp_vborder = 0;     // start display output
                     // printf("+++ flip %d\n", FBrow);

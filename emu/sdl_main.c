@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
 
     // DEBUGGER
     dbg_mode = 0;
-    dbg_break = 0x0;
+    dbg_break = 0x0C577;
     Uint32 held_time = 0;
 
     // run the simulator.
