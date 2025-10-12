@@ -83,3 +83,75 @@ ENDM
   LDY #$FC               ; $FF-4 bytes below stack in use (2 calls)
   JSR @memcheck          ; fill and compare with $AA (preserves A,X)
   ; remaining pages
+
+
+
+parse_num:       ; from (Src),Y returning Y=end, X=len
+  LDX #0         ; [2] clear Acc
+  STX Acc0       ; [3]
+  STX Acc1       ; [3]
+  STX Acc2       ; [3]
+  STX Acc3       ; [3] [14]
+@loop:           ; -> 15+122+40 [177]
+  LDA (Src),Y    ; [4] get char
+  SEC            ; [2]
+  SBC #48        ; [2] make '0' be 0 (CF -> 0|1)
+  CMP #10        ; [2]
+  BCS @done      ; [2] >= 10 -> done
+  STA Tmp        ; [3] save digit 0-9  [15]
+  JSR acc_mul_10 ; [116] uses A (+Acc,+Term)
+  CLC            ; [2]
+  LDA Acc0       ; [3]
+  ADC Tmp        ; [3] add digit 0-9   (acc_add_byte)
+  STA Acc0       ; [3]
+  LDA Acc1       ; [3]
+  ADC #0         ; [2]
+  STA Acc1       ; [3]
+  LDA Acc2       ; [3]
+  ADC #0         ; [2]
+  STA Acc2       ; [3]
+  LDA Acc3       ; [3]
+  ADC #0         ; [2]
+  STA Acc3       ; [3]
+  INX            ; [2]
+  JMP @loop      ; [3] [40]
+@done:
+  RTS
+
+; multiply Acc by 10 (uses Term)
+acc_mul_10:     ; Uses A (+Term)
+  LDA Acc0      ; [3] Term = Val * 2
+  ASL           ; [2]
+  STA Term0     ; [3]
+  LDA Acc1      ; [3]
+  ROL           ; [2]
+  STA Term1     ; [3]
+  LDA Acc2      ; [3]
+  ROL           ; [2]
+  STA Term2     ; [3]
+  LDA Acc3      ; [3]
+  ROL           ; [2]
+  STA Term3     ; [3] 32
+  ASL Term0     ; [5] Term = Term * 2 = Val * 4
+  ROL Term1     ; [5]
+  ROL Term2     ; [5]
+  ROL Term3     ; [5] 20
+  CLC           ; [2]
+  LDA Acc0      ; [3] Acc = Acc + Term = Val * 5   (acc_add_term)
+  ADC Term0     ; [3]
+  STA Acc0      ; [3]
+  LDA Acc1      ; [3]
+  ADC Term1     ; [3]
+  STA Acc1      ; [3]
+  LDA Acc2      ; [3]
+  ADC Term2     ; [3]
+  STA Acc2      ; [3]
+  LDA Acc3      ; [3]
+  ADC Term3     ; [3]
+  STA Acc3      ; [3] 12*3+2 38
+  ASL Term0     ; [5] Acc = Acc * 2 = Val * 10
+  ROL Term1     ; [5]
+  ROL Term2     ; [5]
+  ROL Term3     ; [5] 20
+  RTS           ; [6] -> [116]
+

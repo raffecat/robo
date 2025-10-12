@@ -24,15 +24,19 @@ LOMEM    = $0400  ; bottom of BASIC memory
 HIMEM    = $8000  ; top of BASIC memory
 FREEMEM  = HIMEM-LOMEM
 
+; ------------------------------------------------------------------------------
+; Zero Page
+
 Src      = $00    ; source pointer
 SrcH     = $01    ; source pointer high
-Ptr      = $02    ; second pointer        XX
-PtrH     = $03    ; second pointer high   XX
+Ptr      = $02    ; second pointer
+PtrH     = $03    ; second pointer high
 Tmp      = $04    ; temp
-Tmp2     = $05    ; temp                  XX
+Tmp2     = $05    ; temp
 KeyHd    = $06    ; keyboard buffer head
 KeyTl    = $07    ; keyboard buffer tial
-LastKey  = $08    ; keyboard last key pressed, for auto-repeat
+ModKeys  = $08    ; modifier keys: Shf Ctl Fn Caps Left Rght Down Up
+LastKey  = $09    ; keyboard last key pressed, for auto-repeat
 
 ; BASIC vars
 
@@ -42,25 +46,42 @@ Acc1     = $12    ; Accumulator byte 1
 Acc2     = $13    ; Accumulator byte 2
 Acc3     = $14    ; Accumulator high byte
 
-; Text Mode vars
+TermE     = $15    ; Term exponent
+Term0     = $16    ; Term low byte
+Term1     = $17    ; Term byte 1
+Term2     = $18    ; Term byte 2
+Term3     = $19    ; Term high byte
 
-CurX     = $20    ; text cursor X                   XXX need these?
-CurY     = $21    ; text cursor Y                   XXX need these?
-WinL     = $22    ; text window left
-WinT     = $23    ; text window top
-; WinR     = $24    ; text window right (exclusive)   XXX can do without
-; WinB     = $25    ; text window bottom (exclusive)  XXX can do without
-WinW     = $26    ; text window width
-WinH     = $27    ; text window height
-CurP     = $28    ; text write address low  (saved DSTL)
-CurH     = $29    ; text write address high (saved DSTH)
-ScrX     = $2A    ; text scroll X position (modulo 64) of left edge
-ScrY     = $2B    ; text scroll Y position (modulo 32) of top edge
-WinRem   = $2C    ; remaining horizontal space in text window
-MapST    = $2D    ; text mode map stride (64,128,256,512)
-MapSZH   = $2E    ; 
+Code     = $1C    ; saved BASIC code address
+CodeH    = $1D
+Line     = $1E    ; current line number
+LineH    = $1F
 
-YSave    = $30    ; saved Y in leaf code
+; Video vars
+
+WinRem   = $20    ; remaining horizontal space in text window
+WinL     = $21    ; text window left
+WinT     = $22    ; text window top
+WinW     = $23    ; text window width
+WinH     = $24    ; text window height
+CurX     = $25    ; text cursor X                   XXX need these?
+CurY     = $26    ; text cursor Y                   XXX need these?
+Dstl     = $27    ; text write address low  (saved DSTL)
+Dsth     = $28    ; text write address high (saved DSTH)
+Color    = $29    ; text color (bg-col : fg-col)
+
+
+; ------------------------------------------------------------------------------
+; Defines
+
+ModShift = $80    ; Shift is down
+ModCtrl  = $40    ; Ctrl is down
+ModFn    = $20    ; Fn is down
+ModCaps  = $10    ; Caps lock is down
+ModLeft  = $08    ; Left Arrow is down
+ModRight = $04    ; Right Arrow is down
+ModDown  = $02    ; Down Arrow is down
+ModUp    = $01    ; Up Arrow is down
 
 ; IO Registers
 
@@ -188,82 +209,80 @@ ORG ROM
 ; ROM entry table     ; public entry points
   DB  10              ; version 1.0
   DB  11              ; length of table:
-  DW  reset_soft      ; $C000
+  DW  reset           ; $C000
   DW  basic           ; $C002
-  DW  readline        ; $C004
-  DW  print           ; $C006
-  DW  mode            ; $C008
-  DW  cls             ; $C00A
-  DW  home            ; $C00C
-  DW  tab             ; $C00E
-  DW  clear_sprites   ; $C010  (sub-optimal)
-  DW  reset_gfx_remap ; $C012
+  DW  print           ; $C004
+  DW  writechar       ; $C006
+  DW  readline        ; $C008
+  DW  mode            ; $C00A
+  DW  cls             ; $C00C
+  DW  home            ; $C00E
+  DW  tab             ; $C010
+  DW  clear_sprites   ; $C012
+  DW  reset_gfx_remap ; $C014
 
-reset_soft:
+reset:
   SEI            ; disable interrupts
   CLD            ; disable BCD mode
   LDX #$FF
   TXS            ; stack init
   JSR chrcpy     ; copy tileset to VRAM
-  LDX #4         ; screen mode 4 (40x25 text, 4 color, 2+2x16)
-  JSR mode       ; set mode (+ clear screen)
-  LDX #34
-  LDY #1
-  JSR tab
-  LDX #>robologo
-  LDY #<robologo
-  JSR print
-  LDX #34
-  LDY #2
-  JSR tab
-  LDX #>robologo2
-  LDY #<robologo2
-  JSR print
-  JSR home
+  LDX #4         ; screen mode 4 (40x25 text, 16 color)
+  JSR mode       ; set mode, clear screen
+  LDX #$1F       ; blue BG white FG
+  STX Color      ; set text color
+;  LDX #34
+;  LDY #1
+;  JSR tab
+;  LDX #>robologo
+;  LDY #<robologo
+;  JSR print
+;  LDX #34
+;  LDY #2
+;  JSR tab
+;  LDX #>robologo2
+;  LDY #<robologo2
+;  JSR print
+;  JSR home
   LDX #>welcome_1
   LDY #<welcome_1
-  JSR print
+  JSR println
   LDX #>welcome_2
   LDY #<welcome_2
-  JSR print
+  JSR println
   ; +++ fall through to @@ basic +++
 
 ; @@ basic
 ; enter the basic command-line interface
 basic:
-  LDA #>bas_jump
+  LDA #>bas_jump ; high byte
   STA IO_JTBL    ; set up BASIC jump table
   LDX #>ready
   LDY #<ready
-  JSR print
+  JSR println
   LDA #0         ; clear keyboard buffer
   STA KeyHd
   STA KeyTl
-@repl:
+repl:
   LDX #>prompt
   LDY #<prompt
   JSR print
-  JSR readline
-  JSR newline
-  ; echo the command
-  LDX #>LineBuf
-  LDY #<LineBuf
-  JSR print
-  JSR newline
-  STA IO_YLIN    ; wait for vblank
-  JMP @repl
+  JSR readline   ; returns Y=length
+  JSR newline    ; preserves X,Y
+  JSR parse_cmd
+  JMP repl
 
 ; 31488 leaves 5 pages (zero-page, stack, input-buffer, basic-loops, basic-misc)
-robologo:
-  DB 4, 8,12,12,9
-robologo2:
-  DB 4, 10,12,12,11
+;robologo:
+;  DB 4, 8,12,12,9
+;robologo2:
+;  DB 4, 10,12,12,11
 welcome_1:
-  DB 16, "Robo BASIC 1.0",13,13
+  DB 14, "Robo BASIC 1.0"
 welcome_2:
   DB 17, "31744 bytes free",13
 ready:
-  DB 6, "READY",13
+  DB 5, "READY"
 prompt:
   DB 1, ">"
 
@@ -276,6 +295,7 @@ print:           ; X=high Y=low
   STY Src        ; src low
   LDY #0         ; string offset, counts up
   LDA (Src),Y    ; load string length
+  BEQ @ret       ; -> nothing to print
   TAX            ; length, counts down
   INY            ; advance to first char
 @loop:
@@ -284,7 +304,7 @@ print:           ; X=high Y=low
   CMP #13        ; [2] is it RETURN?
   BEQ @nl        ; [2] if so -> @nl
   STA IO_DDRW    ; [3] write tile byte to VRAM
-  LDA #0         ; [2] white=15 (in 16-color mode)
+  LDA Color      ; [2] current text color (16-color mode)
   STA IO_DDRW    ; [3] write attribte byte to VRAM
   DEC WinRem     ; [5] at right edge of window?
   BEQ @nl        ; [2] if so -> @nl
@@ -293,6 +313,7 @@ print:           ; X=high Y=low
   INY            ; [2] advance string offset
   DEX            ; [2] decrement length
   BNE @loop      ; [3] not at end -> @loop
+@ret
   RTS            ; [6] done
 @nl:             ; wrap onto the next line and keep printing
   JSR newline    ; [6] uses A, preserves X,Y
@@ -305,6 +326,9 @@ print:           ; X=high Y=low
 ;   BEQ backspc    ; [2]
 ;   BNE @incr      ; [3] always (opposite test above)
 
+println:
+  JSR print
+  JMP newline
 
 ; @@ writechar
 ; write a single character to the screen
@@ -313,7 +337,7 @@ writechar:       ; A=char; preserves X,Y
   CMP #13        ; is it RETURN?
   BEQ newline    ; uses A, preserves X,Y -> will RTS
   STA IO_DDRW    ; [3] write tile byte to VRAM
-  LDA #0         ; [2] white=15 (in 16-color mode)
+  LDA Color      ; [2] current text color (16-color mode)
   STA IO_DDRW    ; [3] write attribte byte to VRAM
   DEC WinRem     ; [5] at right edge of window?
   BNE ret        ; [3] if not -> RTS
@@ -343,17 +367,13 @@ ret:
   RTS
 
 
-; halt:
-;   STA IO_YLIN    ; wait for vblank
-;   JMP halt
-
-
 ; ------------------------------------------------------------------------------
 ; PAGE 1
 
 ; @@ readline
 ; read a single line of input into the line buffer
-readline:        ; uses A,X,Y
+; stores the length of the line in the first byte of the buffer (length-prefix)
+readline:        ; uses A,X,Y, returns Y=length (Z=1 if zero)
   LDA #1
   STA Tmp        ; init line offset [3] not [4]
 @wait:
@@ -376,7 +396,7 @@ readline:        ; uses A,X,Y
   LDY Tmp        ; get line offset  [extra +9]
   DEY            ; started at 1
   STY LineBuf    ; write string length in first byte
-  RTS
+  RTS            ; returns Y=length (Z=1 if zero)
 @backsp:
   DEY            ; go back one place
   STY Tmp        ; save line offset [3] not [4]
@@ -400,11 +420,11 @@ beep:            ; XXX start beep playing
 modetab:
   .byte VCTL_APA+VCTL_H320+VCTL_V200+VCTL_2BPP                         ; mode 0, graphics,    4 color (320x200) 4
   .byte VCTL_APA+VCTL_H320+VCTL_V200+VCTL_4BPP                         ; mode 1, graphics,   16 color (160x200) 16
-  .byte VCTL_H320+VCTL_V200+VCTL_2BPP                                  ; mode 2, 40x25 text,  4 color (320x200) 4x8
-  .byte VCTL_H320+VCTL_V200+VCTL_4BPP                                  ; mode 3, 20x25 text, 16 color (160x200) 16x2
-  .byte VCTL_H320+VCTL_V200+VCTL_2BPP+VCTL_16COL                       ; mode 4, 40x25 text,  4 color (320x200) 2+2x16
-  .byte VCTL_H320+VCTL_V200+VCTL_2BPP+VCTL_16COL+VCTL_NARROW           ; mode 5, 64x25 text,  4 color (320x200) 2+2x16
-  .byte VCTL_H320+VCTL_V200+VCTL_2BPP+VCTL_16COL+VCTL_NARROW+VCTL_GREY ; mode 6, 64x25 text,  4 shade (320x200) 2+2x16
+  .byte VCTL_H320+VCTL_V200+VCTL_2BPP                                  ; mode 2, 40x25 tile,  4 color (320x200) 4x8=32
+  .byte VCTL_H320+VCTL_V200+VCTL_4BPP                                  ; mode 3, 20x25 tile, 16 color (160x200) 16x2=32
+  .byte VCTL_H320+VCTL_V200+VCTL_2BPP+VCTL_16COL                       ; mode 4, 40x25 text, 16 color (320x200) 16+16=32
+  .byte VCTL_H320+VCTL_V200+VCTL_2BPP+VCTL_16COL+VCTL_NARROW           ; mode 5, 64x25 text, 16 color (320x200) 16+16=32
+  .byte VCTL_H320+VCTL_V200+VCTL_2BPP+VCTL_16COL+VCTL_NARROW+VCTL_GREY ; mode 6, 64x25 text, 16 shade (320x200) 16+16=32
 
 text_palette:
   ;       IIRRGGBB
@@ -431,7 +451,7 @@ text_palette:
 ; modes 0-3 are linear APA modes, 1/2/4/8 bpp
 ; modes 4-7 are tiled "text" modes, 1/2/4/8 bpp
 ; modes 8-15 are greyscale versions of the above (no colorburst)
-mode:            ; set screen mode
+mode:            ; set screen mode, X=mode
   CPX #7         ; range-check mode number
   BCS ret        ; if >= 7
   LDA modetab,X  ; screen mode config
@@ -470,20 +490,33 @@ mode:            ; set screen mode
 ; clear the text window
 ; 64-40=24 wasted cycles: fill_rect saves 7 cycles per row
 cls:                     ; clear tilemap
-  LDA #32                ; [2] fill with $20 (space)
-  STA IO_FILL            ; [3] DMA fill byte
   LDX WinL               ; [3] text window left
   LDY WinT               ; [3] text window top
   JSR text_addr_xy       ; [6] calculate DSTH,DSTL at X,Y
-  LDA WinW               ; [3] text window width
-  CLC                    ; [2]
-  ASL A                  ; [2] text window width * 2 for (tile,attr)
-  TAX                    ; [2] X = rect width param
-  LDY WinH               ; [3] Y = rect height param
-  LDA #128               ; [2] A = stride, always 128 bytes (64 tiles) in "text mode"
-  JSR dma_fill_rect      ; [6] A=stride X=width Y=height (changes DMA mode!)
-  LDA #DMA_M2V|DMA_Copy  ; [2] switch back to BASIC mode
-  STA IO_DCTL            ; [3] set copy-mem-to-vram mode
+  LDY WinH               ; [3] number of rows to fill
+  STY Tmp                ; [3] row counter
+  LDX Color              ; [3] fill attribute
+@row:
+  LDA #32                ; [2] fill tile (space)
+  LDY WinW               ; [3] number of columns to fill
+@col:
+  STA IO_DDRW            ; [3] write tile
+  STX IO_DDRW            ; [3] write attribute
+  DEY                    ; [2] decrement column count
+  BPL @col               ; [3] until Y<0
+; advance VRAM address by map width (64) - WinW
+  LDA #64
+  SEC
+  SBC WinW               ; XXX keep this in a var?
+  ASL                    ; 2x this width (safe: was <= 64)
+  CLC
+  ADC IO_DSTL
+  STA IO_DSTL
+  BCC @low_ok            ; [3] C=1 when DSTL wraps around
+  INC IO_DSTH            ; [5] address high += 1
+@low_ok:
+  DEC Tmp                ; [5] decrement row count
+  BNE @row               ; [3] until row=0
   ; +++ fall through to @@ home +++
 
 ; @@ home
@@ -568,80 +601,99 @@ text_addr_xy:
 ; keymap tables
 ; must be page-aligned (uses 2x64 = 128 bytes)
 ORG ROM+$200
-;   Esc 1 2 3 4 5 6 7 (0)  8 9 0 - = `   Del (4)
-;   Tab Q W E R T Y U (1)  I O P [ ] \       (5)
-;       A S D F G H J (2)  K L ; '       Ret (6)
-;       Z X C V B N M (3)  , . /         Spc (7)
-;          Caps Ctl Fn Shf Left Rght Down Up (8)
+;   Esc 1 2 3 4 5 6 7 (0)  8 9 0 - = ` Del Up    (4)
+;   Tab Q W E R T Y U (1)  I O P [ ] \     Down  (5)
+;  Caps A S D F G H J (2)  K L ; '     Ret Left  (6)
+;       Z X C V B N M (3)  , . /       Spc Right (7)
+;   Shf Ctl Fn                                   (8)
 scantab:
   DB  $1B, $31, $32, $33, $34, $35, $36, $37     ;   Esc 1 2 3 4 5 6 7
-  DB  $09, $51, $57, $45, $52, $54, $59, $55     ;   Tab Q W E R T Y U
-  DB  $00, $41, $53, $44, $46, $47, $48, $4A     ;       A S D F G H J
-  DB  $00, $5A, $58, $43, $56, $42, $4E, $4D     ;       Z X C V B N M
-  DB  $38, $39, $30, $2D, $3D, $60, $00, $1A     ;     8 9 0 - = `   Del
-  DB  $49, $4F, $50, $5B, $5D, $5C, $00, $00     ;     I O P [ ] \   
-  DB  $4B, $4C, $3B, $27, $00, $00, $00, $0D     ;     K L ; '       Ret
-  DB  $2C, $2E, $2F, $00, $00, $00, $00, $20     ;     , . /         Spc
-  DB  $0E, $00, $00, $00, $88, $89, $8A, $8B     ;   Cap Lft Rgt Dwn Up
-
-shiftab:
-  DB  $1B, $40, $22, $23, $24, $25, $5E, $26     ;   Esc ! @ # $ % ^ &
   DB  $09, $71, $77, $65, $72, $74, $79, $75     ;   Tab q w e r t y u
-  DB  $00, $61, $73, $64, $66, $67, $68, $6A     ;       a s d f g h j
+  DB  $00, $61, $73, $64, $66, $67, $68, $6A     ;  Caps a s d f g h j
   DB  $00, $7A, $78, $63, $76, $62, $6E, $6D     ;       z x c v b n m
-  DB  $2A, $28, $29, $5F, $2B, $7E, $00, $1A     ;     * ( ) _ + ~   Del
-  DB  $69, $6F, $71, $7B, $7D, $7C, $00, $00     ;     i o p { } |   
-  DB  $6B, $6C, $3A, $22, $00, $00, $00, $0D     ;     k l : "       Ret
-  DB  $3C, $3E, $3F, $00, $00, $00, $00, $20     ;     < > ?         Spc
-  DB  $0E, $00, $00, $00, $88, $89, $8A, $8B     ;   Cap Lft Rgt Dwn Up
+  DB  $38, $39, $30, $2D, $3D, $60, $1A, $8B     ;     8 9 0 - = ` Del Up
+  DB  $69, $6F, $70, $5B, $5D, $5C, $00, $8A     ;     i o p [ ] \     Down
+  DB  $6B, $6C, $3B, $27, $00, $00, $0D, $88     ;     k l ; '     Ret Left
+  DB  $2C, $2E, $2F, $00, $00, $00, $20, $89     ;     , . /       Spc Right
+scanshf:
+  DB  $1B, $21, $40, $23, $24, $25, $5E, $26     ;   Esc ! @ # $ % ^ &
+  DB  $09, $51, $57, $45, $52, $54, $59, $55     ;   Tab Q W E R T Y U
+  DB  $0E, $41, $53, $44, $46, $47, $48, $4A     ;  Caps A S D F G H J
+  DB  $00, $5A, $58, $43, $56, $42, $4E, $4D     ;       Z X C V B N M
+  DB  $2A, $28, $29, $5F, $2B, $7E, $00, $1A     ;     * ( ) _ + ~ Del Up
+  DB  $49, $4F, $50, $7B, $7D, $7C, $00, $00     ;     I O P { } |     Down
+  DB  $4B, $4C, $3A, $22, $00, $00, $00, $0D     ;     K L : "     Ret Left
+  DB  $3C, $3E, $3F, $00, $00, $00, $00, $20     ;     < > ?       Spc Right
 
 ; @@ key_scan
 ; scan the keyboard matrix for a keypress
 ; [..ABCDE....]
-;    ^hd  ^tl    ; empty when hd==tl, full when tl+1==hd
-keyscan:         ; uses A,X,Y returns nothing (!Tmp)
-  LDY #8         ; [2] last key column
-@col_lp:         ; -> [13] cycles
-  STY IO_KEYB    ; [3] set keyscan column (0-7)
-  LDX IO_KEYB    ; [3] read key state bitmap
-  BNE @key_hit   ; [2] -> one or more keys pressed
-  DEY            ; [2] prev key column
-  BPL @col_lp    ; [3] go again, until Y<0
-  STY LastKey    ; [3] no keys pressed: clear last key pressed
-  RTS            ; [6] TOTAL Scan 2+13*8-1+6 = [111] cycles
-@key_hit:
-  TYA            ; [2] active keyscan column
-  ASL            ; [2] column * 8
-  ASL            ; [2] 
-  ASL            ; [2] 
-  TAY            ; [2] scantab offset = col*8
+;    ^hd  ^tl     ; empty when hd==tl, full when tl+1==hd
+keyscan:          ; uses A,X,Y returns nothing (!Tmp,+Tmp2)
+  LDY #8          ; [2] last key column
+  STY IO_KEYB     ; [3] set keyscan column (0-7)
+  LDX IO_KEYB     ; [3] read key state bitmap
+  STX ModKeys     ; [3] update modifier keys
+  DEY             ; [2] prev column
+; debounce check
+  CPX IO_KEYB     ; [3] check if stable (3+2+3)/2MHz=4µs later
+  BNE keyscan     ; [2] if not -> try again
+@col_lp:          ; -> [13] cycles
+  STY IO_KEYB     ; [3] set keyscan column (0-7)
+  LDX IO_KEYB     ; [3] read key state bitmap
+  BNE @key_hit    ; [2] -> one or more keys pressed
+  DEY             ; [2] prev column
+  BPL @col_lp     ; [3] go again, until Y<0
+  STY LastKey     ; [3] no keys pressed: clear last key pressed (to $FF)
+  RTS             ; [6] TOTAL Scan 2+13*8-1+6 = [111] cycles
+@key_hit:         ; X=bitmap Y=column
+  STY Tmp2        ; [2] save keyscan column for resuming later
+  TYA             ; [2] active keyscan column
+  ASL             ; [2] column * 8
+  ASL             ; [2] 
+  ASL             ; [2] 
 ; debounce check 
-  CPX IO_KEYB    ; [3] check if stable (3+5*2+3)/2Mhz = 8µs later
-  BNE keyscan    ; [2] if not -> start over
-  TXA            ; [2] key state bitmap
+  CPX IO_KEYB     ; [3] check if stable (3+4*2+3)/2Mhz = 7µs later
+  BNE @col_lp     ; [2] if not -> try again
+  TAY             ; [2] scantab offset = col*8
+  TXA             ; [2] key state bitmap
 ; find first bit set
 ; loop WILL terminate because A is non-zero!
-@bsf_lp:         ; -> [7] cycles
-  INY            ; [2] count number of shifts
-  ASL A          ; [2] shift keys bits left into CF
-  BCC @bsf_lp    ; [3] until CF=1
+@bsf_lp:          ; A=bitmap Y=scantab -> [7] cycles
+  INY             ; [2] count number of shifts
+  ASL A           ; [2] shift keys bits left into CF
+  BCC @bsf_lp     ; [3] until CF=1
 ; translate to ascii
-  DEY            ; went one too far: [1..8]->[0..7]
-  LDA scantab,Y  ; translate to ASCII
-  CMP LastKey    ; debounce
-  BEQ @done      ; XXX auto-repeat
-  STA LastKey    ; save last key pressed, for auto-repeat
+  BIT ModKeys     ; [3] test shift key [Shf][Ctl]
+  BMI @shift      ; [2] -> shift is down
+  TAX             ; [2] save remaining bitmap
+  LDA scantab-1,Y ; [4] translate to ASCII (Y is off by +1)
+@shft_ret:
+  CMP LastKey     ; [3] debounce
+  BEQ @cont_scan  ; [2] keep scanning
+  STA LastKey     ; [3] save last key pressed, for auto-repeat
 ; append to keyboard buffer
-  LDY KeyTl      ; keyboard buffer write offset
-  STA KeyBuf,Y   ; always safe to write at KeyTl
-  INY            ; increment
-  TYA
-  AND #31        ; modulo circular buffer
-  CMP KeyHd      ; Tl+1 == Hd -> @full (don't increment)
-  BEQ @done
-  STA KeyTl      ; update Tl = Tl+1 % 32
-@done:
-  RTS
+  LDY KeyTl       ; [3] keyboard buffer write offset
+  STA KeyBuf,Y    ; [4] always safe to write at KeyTl
+  INY             ; [2] increment
+  TYA             ; [2]
+  AND #31         ; [2] modulo circular buffer
+  CMP KeyHd       ; [3] is Tl+1 == Hd ?
+  BEQ @full       ; [2] -> key buffer is full (don't update KeyTl)
+  STA KeyTl       ; [3] update Tl = Tl+1 % 32
+@full:
+  RTS             ; [6] done
+@shift:
+  LDA scanshf-1,Y ; [4] translate to ASCII (Y is off by +1)
+  BPL @shft_ret   ; [3] top bit is never set!!
+@cont_scan:
+  RTS             ; XXXXX debug
+  TXA             ; [2] restore bitmap
+  BNE @bsf_lp     ; [3] -> continue bsf loop
+  LDY Tmp2        ; [3] restore keyscan column
+  BNE @col_lp     ; [3] -> continue scanning key columns
+  STY LastKey     ; [3] no keys pressed: clear last key pressed (to $00)
+  RTS             ; [6] done
 
 
 ; @@ readchar
@@ -664,34 +716,6 @@ readchar:        ; uses A,X,Y returns ASCII or zero (!Tmp)
 @nokey:
   LDA #0         ; [2] return 0
   RTS            ; [6]
-
-
-; @@ clear_sprites
-; reset all 32 sprites to an offscreen (invisible) position
-; sprites are [Y-coord][X-coord][attribs][tile-idx]
-; YYY it would be useful (and faster) to have a DMA fill-sprites mode
-clear_sprites:
-  LDA #$80       ; sprite Y-coord ptr (first SBC takes us to $7C, the last sprite)
-  LDX #$FF       ; offscreen Y coord
-@sprloop:
-  SEC
-  SBC #4         ; [2] previous sprite Y coord
-  STA IO_SPRA    ; [3] set sprite address
-  STX IO_SPRD    ; [3] set Y coord to $FF (offscreen)
-  BNE @sprloop   ; [3] until A=0  [[ 11*32 = 352 cycles | DMA: 32 cycles! ]]
-  RTS
-
-
-; @@ reset_gfx_remap
-; reset all tile bank-switching to the default 1:1 mapping
-reset_gfx_remap:
-  LDA #$00       ; map slot 0 to address-region 0
-  CLC
-@banklp:
-  STA IO_VBNK    ; [3] bank slot,addr [ssssaaaa]
-  ADC #$11       ; [2] 00 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF ..
-  BCC @banklp    ; [3] .. 110 (C=1)  [[ 16*8 = 128 cycles ]]
-  RTS
 
 
 ; @@ FREE SPACE ~ 36 bytes free
@@ -792,7 +816,7 @@ ar_i4const:      ; load 4-byte signed integer constant
 
 ; LOAD VARIABLE
 
-ar_ivar:         ; read an integer variable
+ar_ivar:         ; read an integer variable  (XXX unify these, always copy 5 bytes)
   LDX_DMA        ; [3] var pointer low
   LDA_DMA        ; [3] var pointer high
   ; fall
@@ -967,11 +991,11 @@ overflow:
 ; PUSH / POP - INTEGER
 
 ar_ipush:        ; push acc (begin sub-expr)
-  LDA Acc0       ; [3]
+  LDA Acc3       ; [3]
   PHA            ; [3] push low byte
-  LDA Acc0       ; [3]
+  LDA Acc2       ; [3]
   PHA            ; [3] push byte 1
-  LDA Acc0       ; [3]
+  LDA Acc1       ; [3]
   PHA            ; [3] push byte 2
   LDA Acc0       ; [3]
   PHA            ; [3] push high byte   (24 CYCLES)
@@ -1042,6 +1066,135 @@ bas_print:
 
 
 
+
+; ------------------------------------------------------------------------------
+; PAGE 5
+
+; BASIC Parser
+
+parse_cmd:
+  LDA #>LineBuf  ; high byte
+  STA SrcH
+  LDY #0         ; low byte
+  STY Src
+  INY            ; skip length byte
+  ; check for line number
+  JSR parse_n16  ; parse number at Src,Y -> Acc (CF=NaN)
+  CPX #0         ; check length
+  BEQ @no_line
+  JSR print_hex
+  JSR newline
+  ; set current BASIC line number
+  LDA Acc0
+  STA Line
+  LDA Acc1
+  BMI e_range
+  STA LineH
+@no_line
+;  LDX #>LineBuf
+;  LDY #<LineBuf
+;  JSR println
+  RTS
+
+
+; @@ e_range
+; report a range error (return to repl)
+e_range:
+  LDX #>msg_range
+  LDY #<msg_range
+  JSR println
+  JMP repl
+
+
+parse_n16:       ; from (Src),Y returning Y=end, X=len (+Tmp)
+  LDX #0         ; [2] length of num
+  STX Acc0       ; [3] clear result
+  STX Acc1       ; [3]
+@loop:           ; -> 15+122+40 [177]
+  LDA (Src),Y    ; [4] get char
+  SEC            ; [2]
+  SBC #48        ; [2] make '0' be 0 (CF -> 0|1)
+  CMP #10        ; [2]
+  BCS @done      ; [2] >= 10 -> done (CF=1)
+  STA Tmp        ; [3] save digit 0-9  [15]
+  JSR n16_mul_10 ; [116] uses A (+Acc,+Term)
+  CLC            ; [2]
+  LDA Acc0       ; [3]
+  ADC Tmp        ; [3] add digit 0-9   (acc_add_byte)
+  STA Acc0       ; [3]
+  LDA Acc1       ; [3]
+  ADC #0         ; [2]
+  STA Acc1       ; [3]
+  BCS e_range    ; [2] -> unsigned overflow
+  INY            ; [2] advance source
+  INX            ; [2] increase length
+  JMP @loop      ; [3] [40]
+@done:
+  RTS            ; [6] return Y=end, X=len
+
+; multiply Acc by 10 (uses Term)
+n16_mul_10:     ; Uses A (+Term)
+  LDA Acc0      ; [3] Term = Val * 2
+  ASL           ; [2]
+  STA Term0     ; [3]
+  LDA Acc1      ; [3]
+  ROL           ; [2]
+  STA Term1     ; [3]
+  BCS e_range   ; [2] -> unsigned overflow
+  ASL Term0     ; [5] Term = Term * 2 = Val * 4
+  ROL Term1     ; [5]
+  BCS e_range   ; [2] -> unsigned overflow
+  CLC           ; [2]
+  LDA Acc0      ; [3] Acc = Acc + Term = Val * 5   (acc_add_term)
+  ADC Term0     ; [3]
+  STA Acc0      ; [3]
+  LDA Acc1      ; [3]
+  ADC Term1     ; [3]
+  STA Acc1      ; [3]
+  BCS e_range   ; [2] -> unsigned overflow
+  ASL Term0     ; [5] Acc = Acc * 2 = Val * 10
+  ROL Term1     ; [5]
+  BCS e_range   ; [2] -> unsigned overflow
+  RTS           ; [6] -> [116]
+
+
+print_hex:      ; print 16-bit Acc1,Acc0 in hex
+  LDA Acc1      ; high byte
+  JSR out_hex
+  LDA Acc0
+  ; fall through
+out_hex:
+  TAX
+  CLC
+  LSR           ; 0 -> Acc -> C
+  LSR
+  LSR
+  LSR
+  CMP #10
+  BCC ok1       ; if < 10 -> skip (C=0)
+  ADC #6        ; 'A'-10-48-(C=1)
+ok1:
+  ADC #48       ; add '0'
+  JSR writechar
+  TXA
+  AND #15
+  CMP #10
+  BCC ok2       ; if < 10 -> skip (C=0)
+  ADC #6        ; 'A'-10-48-(C=1)
+ok2:
+  ADC #48       ; add '0'
+  JMP writechar
+
+
+; insert a line 
+bas_line_ins:
+  RTS
+
+
+msg_range:
+  DB 7, "Too big"
+
+
 ORG CHROM        ; 256 x 8 = 2K char rom
   INCLUDE "font/font.txt"
 
@@ -1105,7 +1258,7 @@ reset_hard:
   INX                    ; [2] next page
   BPL @pg_lp             ; stop when X=128 (32K)
 ; all tests pass
-  JMP reset_soft         ; all tests passed
+  JMP reset              ; all tests passed
 
 ; @@ zptest
 ; relies on $1FE-$1FF (will crash otherwise)
@@ -1199,10 +1352,43 @@ dma_fill_vram:           ; A=byte X=base.pg Y=count
   RTS                    ; [6]
 
 
+; @@ clear_sprites
+; reset all 32 sprites to an offscreen (invisible) position
+; sprites are [Y-coord][X-coord][attribs][tile-idx]
+; YYY it would be useful (and faster) to have a DMA fill-sprites mode
+clear_sprites:
+  LDA #$80       ; sprite Y-coord ptr (first SBC takes us to $7C, the last sprite)
+  LDX #$FF       ; offscreen Y coord
+@sprloop:
+  SEC
+  SBC #4         ; [2] previous sprite Y coord
+  STA IO_SPRA    ; [3] set sprite address
+  STX IO_SPRD    ; [3] set Y coord to $FF (offscreen)
+  BNE @sprloop   ; [3] until A=0  [[ 11*32 = 352 cycles | DMA: 32 cycles! ]]
+  RTS
+
+
+; @@ reset_gfx_remap
+; reset all tile bank-switching to the default 1:1 mapping
+reset_gfx_remap:
+  LDA #$00       ; map slot 0 to address-region 0
+  CLC
+@banklp:
+  STA IO_VBNK    ; [3] bank slot,addr [ssssaaaa]
+  ADC #$11       ; [2] 00 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF ..
+  BCC @banklp    ; [3] .. 110 (C=1)  [[ 16*8 = 128 cycles ]]
+  RTS
+
+
+; halt:
+;   STA IO_YLIN    ; wait for vblank
+;   JMP halt
+
+
 intv:
   RTI
 
 ORG VEC
 DW intv          ; $FFFA, $FFFB ... NMI (Non-Maskable Interrupt) vector
-DW reset_soft    ; $FFFC, $FFFD ... RES (Reset) vector
+DW reset         ; $FFFC, $FFFD ... RES (Reset) vector (reset_hard)
 DW intv          ; $FFFE, $FFFF ... IRQ (Interrupt Request) vector
