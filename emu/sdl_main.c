@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
     reset6502();
 
     // DEBUGGER
-    dbg_mode = 1;
+    dbg_mode = 0;
     dbg_break = 0x0;
     Uint32 held_time = 0;
 
@@ -93,21 +93,22 @@ int main(int argc, char *argv[]) {
 }
 
 uint8_t scanKeyCol(uint8_t col) {
-    //   Esc ` 1 2 3 4 5 6  7 8 9 0 - = DEL UP    (16)
-    //   Tab Q W E R T Y U  I O P [ ] \     DOWN  (15)
-    //  Caps A S D F G H J  K L ; '     RET LEFT  (14)
-    // Ctl LSh Z X C V B N  M , . / RSh SPC RIGHT (15)
+    //   Esc 1 2 3 4 5 6 7  8 9 0 - = ` Del Up
+    //   Tab Q W E R T Y U  I O P [ ] \     Down
+    //  Caps A S D F G H J  K L ; '     Ret Left
+    //       Z X C V B N M  , . /       Spc Right
+    //    Shf Ctl Fn
     switch (col) {
         // left side
         case 0:
             return (keys[SDL_SCANCODE_ESCAPE]<<7) |
-                   (keys[SDL_SCANCODE_GRAVE]<<6) |
-                   (keys[SDL_SCANCODE_1]<<5) |
-                   (keys[SDL_SCANCODE_2]<<4) |
-                   (keys[SDL_SCANCODE_3]<<3) |
-                   (keys[SDL_SCANCODE_4]<<2) |
-                   (keys[SDL_SCANCODE_5]<<1) |
-                   (keys[SDL_SCANCODE_6]<<0);
+                   (keys[SDL_SCANCODE_1]<<6) |
+                   (keys[SDL_SCANCODE_2]<<5) |
+                   (keys[SDL_SCANCODE_3]<<4) |
+                   (keys[SDL_SCANCODE_4]<<3) |
+                   (keys[SDL_SCANCODE_5]<<2) |
+                   (keys[SDL_SCANCODE_6]<<1) |
+                   (keys[SDL_SCANCODE_7]<<0);
         case 1:
             return (keys[SDL_SCANCODE_TAB]<<7) |
                    (keys[SDL_SCANCODE_Q]<<6) |
@@ -127,25 +128,25 @@ uint8_t scanKeyCol(uint8_t col) {
                    (keys[SDL_SCANCODE_H]<<1) |
                    (keys[SDL_SCANCODE_J]<<0);
         case 3:
-            return (keys[SDL_SCANCODE_LCTRL]<<7) |
-                   (keys[SDL_SCANCODE_LSHIFT]<<6) |
-                   (keys[SDL_SCANCODE_Z]<<5) |
-                   (keys[SDL_SCANCODE_X]<<4) |
-                   (keys[SDL_SCANCODE_C]<<3) |
-                   (keys[SDL_SCANCODE_V]<<2) |
-                   (keys[SDL_SCANCODE_B]<<1) |
-                   (keys[SDL_SCANCODE_N]<<0);
+            return (0<<7) |
+                   (keys[SDL_SCANCODE_Z]<<6) |
+                   (keys[SDL_SCANCODE_X]<<5) |
+                   (keys[SDL_SCANCODE_C]<<4) |
+                   (keys[SDL_SCANCODE_V]<<3) |
+                   (keys[SDL_SCANCODE_B]<<2) |
+                   (keys[SDL_SCANCODE_N]<<1) |
+                   (keys[SDL_SCANCODE_M]<<0);
 
         // right side
         case 4:
-            return (keys[SDL_SCANCODE_7]<<7) |
-                   (keys[SDL_SCANCODE_8]<<6) |
-                   (keys[SDL_SCANCODE_9]<<5) |
-                   (keys[SDL_SCANCODE_0]<<4) |
-                   (keys[SDL_SCANCODE_MINUS]<<3) |
-                   (keys[SDL_SCANCODE_EQUALS]<<2) |
-                   (0<<1) |
-                   (keys[SDL_SCANCODE_BACKSPACE]<<0);
+            return (keys[SDL_SCANCODE_8]<<7) |
+                   (keys[SDL_SCANCODE_9]<<6) |
+                   (keys[SDL_SCANCODE_0]<<5) |
+                   (keys[SDL_SCANCODE_MINUS]<<4) |
+                   (keys[SDL_SCANCODE_EQUALS]<<3) |
+                   (keys[SDL_SCANCODE_GRAVE]<<2) |
+                   (keys[SDL_SCANCODE_BACKSPACE]<<1) |
+                   (keys[SDL_SCANCODE_UP]<<0);
         case 5:
             return (keys[SDL_SCANCODE_I]<<7) |
                    (keys[SDL_SCANCODE_O]<<6) |
@@ -154,7 +155,7 @@ uint8_t scanKeyCol(uint8_t col) {
                    (keys[SDL_SCANCODE_RIGHTBRACKET]<<3) |
                    (keys[SDL_SCANCODE_BACKSLASH]<<2) |
                    (0<<1) |
-                   (keys[SDL_SCANCODE_UP]<<0);
+                   (keys[SDL_SCANCODE_DOWN]<<0);
         case 6:
             return (keys[SDL_SCANCODE_K]<<7) |
                    (keys[SDL_SCANCODE_L]<<6) |
@@ -163,16 +164,28 @@ uint8_t scanKeyCol(uint8_t col) {
                    (0<<3) |
                    (0<<2) |
                    (keys[SDL_SCANCODE_RETURN]<<1) |
-                   (keys[SDL_SCANCODE_DOWN]<<0);
+                   (keys[SDL_SCANCODE_LEFT]<<0);
         case 7:
-            return (keys[SDL_SCANCODE_M]<<7) |
-                   (keys[SDL_SCANCODE_COMMA]<<6) |
-                   (keys[SDL_SCANCODE_PERIOD]<<5) |
-                   (keys[SDL_SCANCODE_SLASH]<<4) |
-                   (keys[SDL_SCANCODE_RSHIFT]<<3) |
-                   (keys[SDL_SCANCODE_SPACE]<<2) |
-                   (keys[SDL_SCANCODE_LEFT]<<1);
+            return (keys[SDL_SCANCODE_COMMA]<<7) |
+                   (keys[SDL_SCANCODE_PERIOD]<<6) |
+                   (keys[SDL_SCANCODE_SLASH]<<5) |
+                   (0<<4) |
+                   (0<<3) |
+                   (0<<2) |
+                   (keys[SDL_SCANCODE_SPACE]<<1) |
                    (keys[SDL_SCANCODE_RIGHT]<<0);
+
+        // modifiers
+        case 8:
+            // Shf Ctl Fn
+            return ((keys[SDL_SCANCODE_LSHIFT]|keys[SDL_SCANCODE_RSHIFT])<<7) |
+                   ((keys[SDL_SCANCODE_LCTRL]|keys[SDL_SCANCODE_RCTRL])<<6) |
+                   (keys[SDL_SCANCODE_LGUI]<<5) |
+                   (0<<4) |
+                   (0<<3) |
+                   (0<<2) |
+                   (0<<1) |
+                   (0<<0);
     }
     return 0;
 }

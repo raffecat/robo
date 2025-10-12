@@ -251,11 +251,6 @@ basic:
   JSR print
   JSR newline
   STA IO_YLIN    ; wait for vblank
-  STA IO_YLIN    ; wait for vblank
-  STA IO_YLIN    ; wait for vblank
-  STA IO_YLIN    ; wait for vblank
-  STA IO_YLIN    ; wait for vblank
-  STA IO_YLIN    ; wait for vblank
   JMP @repl
 
 ; 31488 leaves 5 pages (zero-page, stack, input-buffer, basic-loops, basic-misc)
@@ -573,35 +568,39 @@ text_addr_xy:
 ; keymap tables
 ; must be page-aligned (uses 2x64 = 128 bytes)
 ORG ROM+$200
-;   Esc ` 1 2 3 4 5 6  7 8 9 0 - = DEL UP    (16)
-;   Tab Q W E R T Y U  I O P [ ] \     DOWN  (15)
-;  Caps A S D F G H J  K L ; '     RET LEFT  (14)
-; Ctl LSh Z X C V B N  M , . / RSh SPC RIGHT (15)
+;   Esc 1 2 3 4 5 6 7 (0)  8 9 0 - = `   Del (4)
+;   Tab Q W E R T Y U (1)  I O P [ ] \       (5)
+;       A S D F G H J (2)  K L ; '       Ret (6)
+;       Z X C V B N M (3)  , . /         Spc (7)
+;          Caps Ctl Fn Shf Left Rght Down Up (8)
 scantab:
-  DB  $1B, $60, $31, $32, $33, $34, $35, $36     ;   Esc ` 1 2 3 4 5 6
+  DB  $1B, $31, $32, $33, $34, $35, $36, $37     ;   Esc 1 2 3 4 5 6 7
   DB  $09, $51, $57, $45, $52, $54, $59, $55     ;   Tab Q W E R T Y U
-  DB  $00, $41, $53, $44, $46, $47, $48, $4A     ;  Caps A S D F G H J
-  DB  $00, $00, $5A, $58, $43, $56, $42, $4E     ; Ctl LSh Z X C V B N
-  DB  $37, $38, $39, $30, $2D, $3D, $00, $18     ;     7 8 9 0 - =     DEL
-  DB  $49, $4F, $50, $5B, $5D, $5C, $00, $8B     ;     I O P [ ] \     UP
-  DB  $4B, $4C, $3B, $27, $00, $00, $0D, $8A     ;     K L ; '     RET DOWN
-  DB  $4D, $2C, $2E, $2F, $00, $20, $88, $89     ;     M , . / RSh SPC LEFT RIGHT
+  DB  $00, $41, $53, $44, $46, $47, $48, $4A     ;       A S D F G H J
+  DB  $00, $5A, $58, $43, $56, $42, $4E, $4D     ;       Z X C V B N M
+  DB  $38, $39, $30, $2D, $3D, $60, $00, $1A     ;     8 9 0 - = `   Del
+  DB  $49, $4F, $50, $5B, $5D, $5C, $00, $00     ;     I O P [ ] \   
+  DB  $4B, $4C, $3B, $27, $00, $00, $00, $0D     ;     K L ; '       Ret
+  DB  $2C, $2E, $2F, $00, $00, $00, $00, $20     ;     , . /         Spc
+  DB  $0E, $00, $00, $00, $88, $89, $8A, $8B     ;   Cap Lft Rgt Dwn Up
+
 shiftab:
-  DB  $1B, $7E, $40, $22, $23, $24, $25, $5E     ;   Esc ~ ! @ # $ % ^
+  DB  $1B, $40, $22, $23, $24, $25, $5E, $26     ;   Esc ! @ # $ % ^ &
   DB  $09, $71, $77, $65, $72, $74, $79, $75     ;   Tab q w e r t y u
-  DB  $00, $61, $73, $64, $66, $67, $68, $6A     ;  Caps a s d f g h j
-  DB  $00, $00, $7A, $78, $63, $76, $62, $6E     ; Ctl LSh z x c v b n
-  DB  $26, $2A, $28, $29, $5F, $2B, $00, $18     ;     & * ( ) _ +     DEL
-  DB  $69, $6F, $71, $7B, $7D, $7C, $00, $8B     ;     i o p { } |     UP
-  DB  $6B, $6C, $3A, $22, $00, $00, $0D, $8A     ;     k l : "     RET DOWN
-  DB  $6D, $3C, $3E, $3F, $00, $20, $88, $89     ;     m < > ? RSh SPC LEFT RIGHT
+  DB  $00, $61, $73, $64, $66, $67, $68, $6A     ;       a s d f g h j
+  DB  $00, $7A, $78, $63, $76, $62, $6E, $6D     ;       z x c v b n m
+  DB  $2A, $28, $29, $5F, $2B, $7E, $00, $1A     ;     * ( ) _ + ~   Del
+  DB  $69, $6F, $71, $7B, $7D, $7C, $00, $00     ;     i o p { } |   
+  DB  $6B, $6C, $3A, $22, $00, $00, $00, $0D     ;     k l : "       Ret
+  DB  $3C, $3E, $3F, $00, $00, $00, $00, $20     ;     < > ?         Spc
+  DB  $0E, $00, $00, $00, $88, $89, $8A, $8B     ;   Cap Lft Rgt Dwn Up
 
 ; @@ key_scan
 ; scan the keyboard matrix for a keypress
 ; [..ABCDE....]
 ;    ^hd  ^tl    ; empty when hd==tl, full when tl+1==hd
 keyscan:         ; uses A,X,Y returns nothing (!Tmp)
-  LDY #7         ; [2] last key column
+  LDY #8         ; [2] last key column
 @col_lp:         ; -> [13] cycles
   STY IO_KEYB    ; [3] set keyscan column (0-7)
   LDX IO_KEYB    ; [3] read key state bitmap
@@ -611,12 +610,15 @@ keyscan:         ; uses A,X,Y returns nothing (!Tmp)
   STY LastKey    ; [3] no keys pressed: clear last key pressed
   RTS            ; [6] TOTAL Scan 2+13*8-1+6 = [111] cycles
 @key_hit:
-  TYA            ; active keyscan column
-  ASL            ; column * 8
-  ASL
-  ASL
-  TAY            ; scantab offset = col*8
-  TXA            ; key state bitmap
+  TYA            ; [2] active keyscan column
+  ASL            ; [2] column * 8
+  ASL            ; [2] 
+  ASL            ; [2] 
+  TAY            ; [2] scantab offset = col*8
+; debounce check 
+  CPX IO_KEYB    ; [3] check if stable (3+5*2+3)/2Mhz = 8µs later
+  BNE keyscan    ; [2] if not -> start over
+  TXA            ; [2] key state bitmap
 ; find first bit set
 ; loop WILL terminate because A is non-zero!
 @bsf_lp:         ; -> [7] cycles

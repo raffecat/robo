@@ -908,21 +908,26 @@ end
 
 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8
 
-;Divide by 10
-;17 bytes, 30 cycles
-  lsr
-  sta  temp
-  lsr
-  adc  temp
-  ror
-  lsr
-  lsr
-  adc  temp
-  ror
-  adc  temp
-  ror
-  lsr
-  lsr
+; Multiply by 10
+  ASL       ; v*4
+  ASL
+  ADC orig  ; v*4 + v = times 5
+  ASL       ; v*5 * 2 = times 10
+
+; Divide by 10  [30 cycles, 17 bytes]
+  LSR
+  STA  temp
+  LSR
+  ADC  temp
+  ROR
+  LSR
+  LSR
+  ADC  temp
+  ROR
+  ADC  temp
+  ROR
+  LSR
+  LSR
 
 
 ; could do this once per LINE and insert an ADVANCE opcode in long lines?
