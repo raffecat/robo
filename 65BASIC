@@ -1240,3 +1240,89 @@ N-key rollover
 https://en.wikipedia.org/wiki/Key_rollover
 common sequences: beeb has we et dr uo op ax fy jk sc gh nl vb bm
 https://www.mechanical-keyboard.org/key-rollover-test/
+
+
+http://www.6502.org/users/mycorner/6502/shorts/asl.html
+
+CMP #$80    ; copy the sign bit to the carry bit    
+ROR A       ; perform ASR / sign extend
+
+
+In the editor, these make sense:
+
+  1 -                (^A)
+  2 - Bottom of File (^B)
+  3 - Copy Sel       (^C)
+  4 - Delete Sel     (^D)
+  5 - End of line    (^E)
+  6 - Find           (^F)
+  7 - Bell           (^G)
+  8 - BACKSPACE      (^H)
+  9 -                (^I)
+ 10 -                (^J)
+ 11 -                (^K)
+ 12 -                (^L)
+ 13 - RETURN         (^M)
+ 14 -                (^N)
+ 15 -                (^O)
+ 16 -                (^P)
+ 17 -                (^Q)
+ 18 -                (^R)
+ 19 - Start of Line  (^S)
+ 20 - Top of File    (^T)
+ 21 - Undo           (^U)  [obvious]
+ 22 - Move Sel       (^V)
+ 23 -                (^W)
+ 24 - Clear Sel      (^X)  [can't delete - no Cut]
+ 25 -                (^Y)
+ 26 - Undo           (^Z)
+ 27 - ESCAPE         (Clear Sel)
+ 28 - Up
+ 29 - Down
+ 30 - Left
+ 31 - Right
+
+ CTRL Up - Page Up
+ CTRL Down - Page Down
+ CTRL Left - Left one Word
+ CTRL Right - Right one Word
+
+ SHIFT - Select Text (for Copy, Move, Delete)
+ Moving the cursor doesn't clear the selection (press ESC or ^X)
+
+
+These would be useful in PRINT statements:
+
+  5 - end of line         (^E)
+  7 - bell                (^G)
+  8 - backspace           (^H)
+  9 - tab                 (^I)
+ 10 - start of line       (^J)
+ 11 - clear rest of line  (^K)
+ 12 - clear window        (^L)
+ 13 - new line            (^M)
+ 28 - cursor up
+ 29 - cursor down
+ 30 - cursor left
+ 31 - cursor right
+
+128 - 143  select foreground colour  &80-&8F
+144 - 159  select background colour  &90-9F
+
+PRINT #8195 "This is blue on yellow"
+
+Hash is followed by hex characters, which form a string literal.
+They print as a normal string, with control-codes interpreted.
+
+Hash strings can be assigned to variables:
+
+A$ = #8195+"Hello"
+
+There needs to be a way to PRINT RAW tile numbers.
+
+A$ = #A1B2C3D4
+PRINT RAW #03040506 TAB(0,1) #06070809 TAB(3,2) A$
+
+10 FOR I=0 TO 15
+20 PRINT CHR$(&80+I) "Foreground";I TAB(16) CHR$(&90+I) CHR$(&80+(15-I)) "Background";I
+30 NEXT
