@@ -22,30 +22,31 @@ How do you fill scanlines of a triangle/rectangle?
 • fill-mode needs byte address: shift down (truncate) fill-mode address
 
 How would you emulate Raster OPs without ROP HW?
-• APA mode, VRAM to VRAM
+• APA mode, VRAM to VRAM, same SRC and DST
 • TXA color [2] AND|OR|EOR DDRW [3] STA DDRW [3] total [8] per px
-• (hspan:) decrement [2] and loop [3] -> 8+5 = 13 cycles (vs DMA 1 cycle!) per px
-• (line:) uses an APA loop already -> extra 8-3 = [5] cycles per px
+• (hspan:) decrement [2] and loop [3] -> 8+5 = 13 cycles (vs DMA 2 cycles!) per px
+• (line:) uses an APA loop already -> extra [+5] cycles per px
 
 
 IO Registers
 
-SRCL    = $D0    ; DMA src low         (DMA uses current BNK8/BNKC mapping)
-SRCH    = $D1    ; DMA src high        (BASIC must handle bank-crossing due to non-contiguous RAM)
-DSTL    = $D2    ; DMA dest low
-DSTH    = $D3    ; DMA dest high
-DCTL    = $D4    ; DMA control         (7-6:direction 5:vertical 4:reverse 2-0:mode)
-DRUN    = $D5    ; DMA count           (writing starts DMA, 0=256)
-AROP    = $D6    ; DMA raster op       (2:rop_en 1-0:rop[0=NOT 1=OR 2=AND 3=XOR])
-DDRW    = $D7    ; DMA data R/W        (read: reads from src++; write: writes to dest++)
-DJMP    = $D8    ; DMA jump indirect   (read: indirect table jump; write: set jump table page)
-DFLD    = $D9    ; DMA fast load       (read: indirect jump high-byte; write: DMA fastload [load 5 bytes])
-BNK8    = $DA    ; Bank switch $8000   (low 4 bits)
-BNKC    = $DB    ; Bank switch $C000   (low 4 bits)
-HDML    = $DC    ; HDMA src low        (enabled in VENA)
-HDMH    = $DD    ; HDMA src high
-KEYB    = $DE    ; Keyboard scan (write: set row; read: scan column)
-(MULW    = $DF   ; Booth multiplier (write {AL,AH,BL,BH} read {RL,RH}))
+IO_SRCL    = $D0    ; DMA src low         (DMA uses current BNK8/BNKC mapping)
+IO_SRCH    = $D1    ; DMA src high        (BASIC must handle bank-crossing due to non-contiguous RAM)
+IO_DSTL    = $D2    ; DMA dest low
+IO_DSTH    = $D3    ; DMA dest high
+IO_DCTL    = $D4    ; DMA control         (7-6:direction 5:vertical 4:reverse 2-0:mode)
+IO_DRUN    = $D5    ; DMA count           (writing starts DMA, 0=256)
+-------    = $D6    ; (ROP removed)
+IO_DDRW    = $D7    ; DMA data R/W        (read: reads from src++; write: writes to dest++)
+IO_DJMP    = $D8    ; DMA jump indirect   (read-only: indirect table jump [stalls for +1 cycle])
+IO_APJP    = $D8    ; DMA APA / Jump Pg   (write-only: trigger APA write cycle, or set Jump Table page [page latch])
+IO_FILL    = $D9    ; DMA fill byte       (write-only: set FILL byte [data latch]; read: second byte of indirect jump)
+IO_BNK8    = $DA    ; Bank switch $8000   (low 6 bits)
+IO_BNKC    = $DB    ; Bank switch $C000   (low 6 bits)
+-------    = $DC    ; (HDMA removed)
+-------    = $DD    ; (HDMA removed)
+IO_KEYB    = $DE    ; Keyboard scan (write: set row; read: scan column)
+IO_MULW    = $DF   ; Booth multiplier (write {AL,AH,BL,BH} read {RL,RH})
 
 DCTL direction:                        [implementation: drives different chip-enables]
     0 = mem -> mem                     
@@ -56,17 +57,13 @@ DCTL vertical:                         (increments [Dest] by current map width i
 DCTL reverse:                          (derements src and dest addresses [memmove])
 DCTL mode:
     0 = copy                           (copy bytes)
-    1 = fill                           (using src low-byte)
+    1 = fill                           (using FILL byte [data latch])
     2 = copy transparent               (copy pixels, skip zero pixels; BPP from VCTL)
-    3 = APA/ROP mode (RMW)             (uses AROP; APA addressing: low 1-3 bits of address select pixel; BPP from VCTL)
+    3 = APA mode (RMW)                 (APA addressing: low 1-3 bits of address select pixel; BPP from VCTL)
     4 = expand                         (copy and expand 1bpp to 2bpp [1 byte to 2 bytes]) ... if cheap!
     5 = palette memory                 (read src / write dest is palette memory, low-byte only; ignores direction)
     6 = sprite memory                  (read src / write dest is sprite memory, low-byte only; ignores direction)
     7 = clear sprites                  (write $FF to the Y coords of sprites, low-byte only; ignores direction)
-
-AROP register [-----ERR] APA-mode Raster Op:
-(2) Enable Raster OP
-(1-0) 0=Invert 1=OR 2=AND 3=XOR
 
 TON0    = $E0    ; PSG Ch.0 tone
 PCH0    = $E1    ; PSG Ch.0 pitch
@@ -82,8 +79,8 @@ PCH3    = $EA    ; PSG Ch.3 pitch
 VOL3    = $EB    ; PSG Ch.3 volume
 GP0R    = $EC    ; Game port 0 read
 GP1R    = $ED    ; Game port 1 read
-GP2R    = $EE    ; Game port 2 read       (not fitted)
-GP3R    = $EF    ; Game port 3 read       (not fitted)
+----    = $EE
+----    = $EF
 
 YLIN    = $F0    ; current Y-line         (read: V-counter; write: wait for VBlank)
 YCMP    = $F1    ; compare Y-line         (read/write, $FF won't trigger)
@@ -92,7 +89,7 @@ SCRV    = $F3    ; vertical scroll        (row offset from 0, wraps)
 FINH    = $F4    ; horizontal fine scroll (top 3 bits)
 FINV    = $F5    ; vertical fine scroll   (top 3 bits)
 VCTL    = $F6    ; video control          (7:APA 6:Grey 5:Double 4:HCount 3-2:VCount 1-0:Divider) (see below)
-VENA    = $F7    ; interrupt enable       (7:VSync 6:VCmp 5:HSync 3:BG_En 2:Spr_En 1:HDMA_En)
+VENA    = $F7    ; interrupt enable       (7:VSync 6:VCmp 5:HSync 3:BG_En 2:Spr_En)
 VSTA    = $F8    ; interrupt status       (7:VSync 6:VCmp 5:HSync)  (read:status / write:clear)
 VMAP    = $F9    ; name table size        (4:4 width 32,64,128,256; height 32,64,128,256)
 VTAB    = $FA    ; name table base        (high byte)
@@ -102,7 +99,7 @@ PALD    = $FD    ; palette data R/W       (direct palette-memory data, increment
 PALA    = $FE    ; sprite address         (direct sprite-memory address)
 PALD    = $FF    ; sprite data R/W        (direct sprite-memory data, increments address)
 
-VCTL register [AGHUVVDD] set video mode:
+VCTL register [ANCGVVHD] set video mode:
 (7) APA mode (A) direct [non-tiled] VRAM addressing fixed at address 0
 (6) Narrow mode (N) render the left 5 pixels of each tile (64-column text mode)   [not APA]
 (5) 16 Color (C) attributes contain [BBBBFFFF] BG,FG colors (2x16 palettes)       [not APA]
@@ -111,19 +108,59 @@ VCTL register [AGHUVVDD] set video mode:
 (1) Horizontal (H) is 0=256 1=320 visible pixel-clocks per line (shift rate)
 (0) Divider (D) is 0=256|320 (2bpp) 1=128|160 (4bpp)
 
+VCTL_APA       = $80   ; linear framebuffer at address 0 (or linear 8x8 tiles?)
+VCTL_NARROW    = $40   ; 5x8 tiles at 2bpp only; left 5 pixels of each tile (64 columns)
+VCTL_16COL     = $20   ; attributes contain [BBBBFFFF] BG,FG colors (2+2x16 colours)
+VCTL_LATCH     = $20   ; in APA mode, latch color on zero (filled shapes mode)
+VCTL_GREY      = $10   ; disable Colorburst for text legibility
+VCTL_V240      = $0C   ; 240 visible lines per frame
+VCTL_V224      = $08   ; 224 visible lines per frame
+VCTL_V200      = $04   ; 200 visible lines per frame
+VCTL_V192      = $00   ; 192 visible lines per frame
+VCTL_H320      = $02   ; 320 visible pixels per line (shift rate)
+VCTL_H256      = $00   ; 256 visible pixels per line (shift rate)
+VCTL_4BPP      = $01   ; divide clock by 4, use 4 bits per pixel (double-width)
+VCTL_2BPP      = $00   ; divide clock by 2, use 2 bits per pixel (square pixels)
+
+
 Pixel latch rate is determined by divider (D)
 Pixel shift rate fixed, with 256/320 clocks per line (H)
-In 'APA' mode, (A) and (C) are ignored.
+In 'APA' mode, (N) is ignored and (C) is reinterpreted as Latch mode.
 In 'Narrow' mode (N) tiles are still 8x8x2 in memory, but only the left 5 columns are displayed.
-In '16 Color' mode, 0=BG 1=FG 2=alt-BG 3=alt-FG (2x16 alt-palettes)
+In '16 Color' mode, pixel values 0=BG 1=FG 2=16+BG 3=16+FG
 
-VENA register [VCH-BSD-] video enable:
+VENA register [VCH-PLSB] video enable:
 (7) VSync Interrupt enable (V)
 (6) VCmp Interrupt enable (C)
 (5) HSync Interrupt enable (H)
-(3) Background enable (B)
-(2) Sprites enable (S)
-(1) HDMA enable (D)
+(3) Power LED (P)
+(2) Caps Lock LED (L)
+(1) Sprite enable (S)
+(0) Background enable (B)
+
+
+DMA-APA Mode:
+
+Configure VRAM -> VRAM mode, same SRC and DST address.
+Mask isolates one pixel, indexed by low bits of address.
+Trigger mode: CPU writes FILL byte, triggers one DMA cycle (varying FILL or Address)
+[ Counted mode: CPU presets FILL byte, then sets RUN count (limited use vs DMA fill) - REMOVED ]
+Read cycle -> DL
+Write cycle <- DL & ~mask | FILL & mask
+Write replaces DL bits with 1/2/4 quarters of FILL byte.
+Trigger e.g. line draw, dashed line, graphics scaling.
+[ Counted e.g. last few partial-byte pixels on a span? - REMOVED ]
+[ Write cycle <- DL & ~mask | (ROP-result) & mask  [when ROP enabled] - REMOVED ]
+^ 8x 2-way AND-OR selector ~24 gates, well worth it for line/edge accel,
+  especially combined with a color-latching video mode
+APA writes are always triggered by writing to IO_APJP, which replaces the [page latch]
+
+FILL byte is shared with JTAB page to keep register count low.
+After using APA DMA-mode, the jump table page must be restored.
+
+
+
+HDMA REMOVED - YLIN and its Interrupt are enough.
 
 HDMA data format:
 00000000 nnnnnnnn  - wait for YLine 'n' (sets YCMP)
@@ -137,24 +174,15 @@ every 4th line. Can unpack 1-bit delata modulation with ASL;ADC;STA loop. Too mu
 
 
 
-DMA APA/ROP Modes
 
-APA mode:
-Configure VRAM -> VRAM mode
-Mask isolates one pixel, indexed by low bits of address.
-Trigger mode: CPU writes FILL byte, triggers one DMA cycle (varying FILL or Address)
-Counted mode: CPU presets FILL byte, then sets RUN count (very limited usefulness)
-Read cycle -> DL
-Write cycle <- DL & ~mask | FILL & mask
-Write cycle <- DL & ~mask | (ROP-result) & mask
-(trigger e.g. line draw, dashed line, graphics scaling)
-(counted e.g. last few partial-byte pixels on a span)
-[write replaces DL bits with 1/2/4 quarters of ROP-result (AND-OR)]
-^ 8x 2-way AND-OR selector ~24 gates, well worth it for line/edge accel,
-  especially combined with a color-latching video mode
+DMA ROP modes REMOVED - not worth the HW cost.
+
+AROP register [-----IRR] APA Raster Op:
+(2) Invert the result
+(1-0) Operator: 0=Nop 1=OR 2=AND 3=XOR
 
 ROP mode:
-Configure VRAM -> VRAM mode
+Configure VRAM -> VRAM mode, same SRC and DST address.
 Trigger mode: CPU writes FILL byte, triggers one DMA cycle (varying FILL byte)
 Counted mode: CPU presets FILL byte, then sets RUN count (constant FILL byte)
 Read cycle -> DL
@@ -167,39 +195,32 @@ Write cycle <- (DL NOP|AND|OR|XOR FILL)
 
 It may be worth including 8 XOR gates (DL XOR FILL) to provide "Invert" mode,
 since that's the most common use for ROPs (cursor, selection rect)
+~16 gates (8 x XOR + 8 x AND FILL to disable)
+OR just an invert bit: 8 x XOR only.
 
-APA bit: when set, apply APA mask (and chop 3 bits off addresses)
-Trigger bit: when set, trigger one DMA cycle per FILL write.
-ROP mode: COPY=0, AND=1, OR=2, XOR=3
 
-FILL byte is shared with JTAB byte to keep register count low.
-
-Outcome:
-• implement Triggered APA as a DMA mode
-• ditch ROP modes, the ROP register, and the Trigger bit
-• implement a color-latching video mode instead
-
+Without ROP HW:
 
 Selection Rect:
 Horizontal: LDA DDRW; XOR $FF; STA DDRW; DEY; BNE [13 cycles/byte, 6.5 cycles/px at 4bpp]
 Vertical: mask = $03 (2bpp) or $0F (4bpp) pre-shifted to pixel column.
-Vertical: LDA DDRW; XOR mask; STA DDRW; DEY; BEQ done; TXA; ADC DSTL; STA DSTL; BCC loop [24 cycles/px]
+Vertical: LDA DDRW; XOR mask; STA DDRW; DEY; BEQ done; TXA; ADC DSTL; STA DSTL; BCC loop; ... [24 cycles/px]
 
 Line Draw:
-loop: STX DDRW; [C=0] ADC dy2; BCS step; DEC dx; BNE loop [14]  ; X steps (X=color)   step+9
+loop: STX DDRW; [C=0] ADC dy2; BCS step; DEC dx; BNE loop [16]  ; X steps (A=error X=color Y=temp)   step+9
 step: [C=1] SBC dx2; TAY; LDA #64; CLC; ADC DSTL; STA DSTL; LDA #1; ADC DSTH; STA DSTH; TYA; DEC dx; BNE loop [33+9=42] ; Y step
 
 (This doesn't include Y-clipping, i.e. stopping at the top/bottom edge.)
 
-This would benefit from a fast way to increment DST by 160 or 320,
-which wouldn't take a full adder: 160=128+32; 320=256+64.
-Both of these can be implemented as extra increment cycles applied to
-higher bits of the DST counter (b7,b5; b8,b6), manually triggered
-by a CPU write (using screen mode to select the bits)
+These would benefit from a fast way to increment DST by 640 [even if it takes 2 clocks],
+which wouldn't take a full adder: 640=512+128 [in APA modes]
+This can be implemented as extra increment cycles applied to higher bits of
+the DST counter (b7,b5; b8,b6), manually triggered by a CPU write.
+(Text modes would benefit from an increment by map-width, resetting all bits below.)
 
-Fast-Inc Line Draw:
-loop: STX DDRW; [C=0] ADC dy2; BCS step; DEY; BNE loop [13]  ; X steps (X=color)  step+9
-step: STA DINC; [C=1] SBC dx2; DEY; BNE loop      [9+11=20]  ; Y step (Y=dx; DINC ignores A)
+Fast-Inc Line Draw:  (~2000 pixels per frame)
+loop: STX DDRW; [C=0] ADC dy2; BCS step; DEY; BNE loop [13]  ; X steps (X=color Y=dx)  step+9
+step: STA DINC; [C=1] SBC dx2; DEY; BNE loop      [9+11=20]  ; Y step (DINC ignores A)
 
 This routine only works for short lines, up to 63 in each of dx and dy,
 assuming the classic 2*dx, 2*dy approach.
@@ -222,5 +243,4 @@ LDA dxh; CMP #$80; ROR A; STA ehi; LDA dxl; ROR A; STA elo                      
 loop: STX DDRW; SEC; LDA elo; SBC dyl; STA elo; LDA ehi; SBC dyh; STA ehi; DEY; BPL loop [26]   ; X steps, while D>=0 (X=color)
 step: STA DINC; CLC; LDA elo; ADC dxl; STA elo; LDA ehi; ADC dxh; STA ehi; DEY; BNE loop [+28]  ; Y step (DINC ignores A)
 
-
-LDA elo; SBC dyl; STA elo; LDA ehi; SBC dyh; STA ehi;
+Better to break lines into 127-pixel segments.

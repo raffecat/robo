@@ -131,10 +131,10 @@ At 143ns per pixel, palette MUST be on-chip (static RAM is >=200ns)
 16K  HM4716A-2  150ns access 320ns cycle (300 may work)   ••  may work at 48µs (older gen)
 16K  HM4716A-1  120ns access 320ns cycle (300 may work)   ••  may work at 48µs (older gen)
 16K  HM4816A-7  150ns access 320ns cycle (300 may work)   ••  likely works at 48µs
-16K  HM4816A-4  120ns access 270ns cycle (287 is plenty!) ••  works at 44µs  (Robo 48)
-16K  HM4816A-3  100ns access 235ns cycle (287 is extra!)  ••  works at 44µs  (BBC Micro issue 3, replacement)
-16K  MB8118-12  120ns access 270ns cycle (287 is plenty!) ••  works at 44µs  (Robo 48)
-16K  MB8118-10  100ns access 235ns cycle (287 is extra!)  ••  works at 44µs  (BBC Micro issue 3, early 1982)
+16K  HM4816A-4  120ns access 270ns cycle (280 is plenty!) ••  works at 44µs  (Robo 48)
+16K  HM4816A-3  100ns access 235ns cycle (280 is extra!)  ••  works at 44µs  (BBC Micro issue 3, replacement)
+16K  MB8118-12  120ns access 270ns cycle (280 is plenty!) ••  works at 44µs  (Robo 48)
+16K  MB8118-10  100ns access 235ns cycle (280 is extra!)  ••  works at 44µs  (BBC Micro issue 3, early 1982)
 16K  HYB4116-2  150ns access 320ns cycle (300 may work)   ••  likely works at 48µs
 
 tRCD=20+tCAS=100+tCP=60+tCAS=100+tCRP=-20 = 260

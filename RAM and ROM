@@ -260,3 +260,9 @@ Video RAM banks in late-generation arcade boards (e.g., Namco, Sega pre-’85)
 16-bit VRAM → 4 chips (32K)
 Available in 1K lots, not as cheaply as 64K×1
 
+
+"TI TMS 4116-20 -> 200ns access, 375ns cycle time in 1977;
+Hitatchi 4716A-2 -> 200ns access, 320ns cycle in 1979;
+Mitsubishi M5K4116S-2 -> 120ns access, 280ns cycle in 1979.
+All access as average, cycle as maximum. I just picked some pre 1980 databooks from the shelf.
+Similar for 64k: Mitsubishi M5K4164 with 120ns/220ns in 1979 and INMOS as well." – Raffzahn

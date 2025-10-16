@@ -91,16 +91,15 @@ IO_DSTL     = $D2    ; DMA dest low
 IO_DSTH     = $D3    ; DMA dest high
 IO_DCTL     = $D4    ; DMA control         (7-6:direction 5:vertical 4:reverse 2-0:mode)
 IO_DRUN     = $D5    ; DMA count           (writing starts DMA, 0=256)
-IO_AROP     = $D6    ; APA raster op       (2:rop_en 1-0:rop[0=NOT 1=OR 2=AND 3=XOR])
+;------     = $D6    ; 
 IO_DDRW     = $D7    ; DMA data R/W        (read: reads from src++; write: writes to dest++)
 IO_DJMP     = $D8    ; DMA jump indirect   (read-only: indirect jump low byte)
-IO_FILL     = $D8    ; DMA fill byte       (write-only: set fill byte)
-IO_DJMH     = $D9    ; DMA jump indirect   (read-only: indirect jump high byte)
-IO_JTBL     = $D9    ; DMA jump table      (write-only: table-jump page register)
+IO_APJP     = $D8    ; DMA APA / Jump Pg   (write-only: trigger APA write cycle, or set Jump Table page [page latch])
+IO_FILL     = $D9    ; DMA fill byte       (write-only: set FILL byte [data latch]; read: second byte of indirect jump)
 IO_BNK8     = $DA    ; Bank switch $8000   (low 4 bits)
 IO_BNKC     = $DB    ; Bank switch $C000   (low 4 bits)
-IO_HDML     = $DC    ; HDMA src low        (enabled in VCTL)
-IO_HDMH     = $DD    ; HDMA src high
+;------     = $DC    ; 
+;------     = $DD    ; 
 IO_KEYB     = $DE    ; Keyboard scan (write: set row; read: scan column)
 IO_MULW     = $DF    ; Booth multiplier (write {AL,AH,BL,BH} read {RL,RH})
 
@@ -118,8 +117,8 @@ IO_PCH3     = $EA    ; PSG Ch.3 pitch
 IO_VOL3     = $EB    ; PSG Ch.3 volume
 IO_GP0R     = $EC    ; Game port 0 read
 IO_GP1R     = $ED    ; Game port 1 read
-IO_GP2R     = $EE    ; Game port 2 read       (not fitted)
-IO_GP3R     = $EF    ; Game port 3 read       (not fitted)
+;------     = $EE    ; 
+;------     = $EF    ; 
 
 IO_YLIN     = $F0    ; current Y-line         (read: V-counter; write: wait for VBlank)
 IO_YCMP     = $F1    ; compare Y-line         (read/write, $FF won't trigger)
@@ -128,16 +127,15 @@ IO_SCRV     = $F3    ; vertical scroll        (row offset from 0, wraps)  [in ma
 IO_FINH     = $F4    ; horizontal fine scroll (top 3 bits)                [in bit-space]
 IO_FINV     = $F5    ; vertical fine scroll   (top 3 bits)                [in bit-space]
 IO_VCTL     = $F6    ; video control          (7:APA 6:Grey 5:HCount 4:Double 3-2:VCount 1-0:Divider)
-IO_VENA     = $F7    ; interrupt enable       (7:VSync 6:VCmp 5:HSync 4:Power_LED 3:Caps_LED 2:BG_En 1:Spr_En 0:HDMA_En)
+IO_VENA     = $F7    ; interrupt enable       (7:VSync 6:VCmp 5:HSync 3:Power_LED 2:Caps_LED 1:Spr_En 0:BG_En)
 IO_VSTA     = $F8    ; interrupt status       (7:VSync 6:VCmp 5:HSync)  (read:status / write:clear)
 IO_VMAP     = $F9    ; name table size        (2:2 width 32,64,128,256; height 32,64,128,256)
-IO_VTAB     = $FA    ; name table base        (high byte)
-IO_VBNK     = $FB    ; tile bank R/W          (write: [aaaadddd] bank addr,data; read: [aaaa----] read data)
+IO_VTAB     = $FA    ; name table base        (page byte)
+IO_VBNK     = $FB    ; tile bank R/W          (write: [sssaaaa] set slot to addr*1K; read: [sss-----] read slot)
 IO_PALA     = $FC    ; palette address        (direct palette-memory address, top bit enables auto-increment)
 IO_PALD     = $FD    ; palette data R/W       (direct palette-memory data, increments address if enabled)
 IO_SPRA     = $FE    ; sprite address         (direct sprite-memory address)
 IO_SPRD     = $FF    ; sprite data R/W        (direct sprite-memory data, increments address)
-
 
 ; DCTL direction
 DMA_M2M        = $00
@@ -148,40 +146,35 @@ DMA_V2V        = $C0   ; can be used for windowed scrolling
 DMA_Vert       = $20   ; increments VRAM by current map width, from VMAP [column copy]
 DMA_Rev        = $10   ; derements src and dest addresses [memmove]
 ; DCTL mode
-DMA_Copy       = 0     ; copy bytes
-DMA_Fill       = 1     ; using src low-byte
-DMA_Masked     = 2     ; copy pixels, skip zero pixels; BPP from VCTL
-DMA_APA        = 3     ; uses AROP; APA addressing: low 1-3 bits of address select pixel; BPP from VCTL
-DMA_Palette    = 4     ; read src / write dest is palette memory, low-byte only; ignores direction
-DMA_Sprite     = 5     ; read src / write dest is sprite memory, low-byte only; ignores direction
-; ROP mode
-ROP_None       = 0
-ROP_Invert     = 4+0
-ROP_Or         = 4+1
-ROP_And        = 4+2
-ROP_Xor        = 4+3
-; VCTL flags [AGHUVVDD]
-VCTL_APA       = $80   ; direct VRAM addressing, fixed at address 0
-VCTL_NARROW    = $40   ; render the left 5 pixels of each tile (64 columns)
+DMA_Copy       = 0     ; copy from source to destinaton
+DMA_Fill       = 1     ; using fill byte (write IO_FILL)
+DMA_Masked     = 2     ; copy pixels, skip zero pixels (shares APA HW)
+DMA_APA        = 3     ; APA addressing: low 3 bits of address select pixel; BPP from VCTL
+DMA_Palette    = 4     ; read src / write dest is palette memory, SRCL/DSTL only; ignores direction
+DMA_Sprite     = 5     ; read src / write dest is sprite memory, SRCL/DSTL only; ignores direction
+DMA_SprClr     = 6     ; write $FF to Y coords of sprites (inc by 4), DSTL only; ignores direction
+; VCTL flags [ANCGVVHD]
+VCTL_APA       = $80   ; linear framebuffer at address 0 (or linear 8x8 tiles?)
+VCTL_NARROW    = $40   ; 5x8 tiles at 2bpp only; left 5 pixels of each tile (64 columns)
 VCTL_16COL     = $20   ; attributes contain [BBBBFFFF] BG,FG colors (2+2x16 colours)
-VCTL_GREY      = $10   ; disable Colorburst for improved text legibility
+VCTL_LATCH     = $20   ; in APA mode, latch color on zero (filled shapes mode)
+VCTL_GREY      = $10   ; disable Colorburst for text legibility
 VCTL_V240      = $0C   ; 240 visible lines per frame
 VCTL_V224      = $08   ; 224 visible lines per frame
 VCTL_V200      = $04   ; 200 visible lines per frame
 VCTL_V192      = $00   ; 192 visible lines per frame
-VCTL_H320      = $02   ; 320 visible pixel-clocks per line (shift rate)
-VCTL_H256      = $00   ; 256 visible pixel-clocks per line (shift rate)
-VCTL_4BPP      = $01   ; divide by 4, use 4 bits per pixel
-VCTL_2BPP      = $00   ; divide by 2, use 2 bits per pixel
+VCTL_H320      = $02   ; 320 visible pixels per line (shift rate)
+VCTL_H256      = $00   ; 256 visible pixels per line (shift rate)
+VCTL_4BPP      = $01   ; divide clock by 4, use 4 bits per pixel (double-width)
+VCTL_2BPP      = $00   ; divide clock by 2, use 2 bits per pixel (square pixels)
 ; VENA flags
 VENA_VSync     = $80
 VENA_VCmp      = $40
 VENA_HSync     = $20
-VENA_Pwr_LED   = $10
-VENA_Caps_LED  = $08
-VENA_BG_En     = $04
+VENA_Pwr_LED   = $08
+VENA_Caps_LED  = $04
 VENA_Spr_En    = $02
-VENA_HDMA_En   = $01
+VENA_BG_En     = $01
 
 
 ; DMA Acceleration
@@ -256,7 +249,7 @@ reset:
 ; enter the basic command-line interface
 basic:
   LDA #>bas_jump ; high byte
-  STA IO_JTBL    ; set up BASIC jump table
+  STA IO_APJP    ; set BASIC jump table page
   LDX #>ready
   LDY #<ready
   JSR println
@@ -1234,8 +1227,18 @@ reset_hard:
   LDX #$FF
   TXS                    ; stack init
 ; turn on power LED to help with troubleshooting
-  LDA #VENA_Pwr_LED      ; turn on Power LED
-  STA IO_VENA
+; also turn on video display for visual feedback
+  LDA #VENA_Pwr_LED|VENA_BG_En ; $14
+  STA IO_VENA    ; video enable
+  STA IO_VTAB    ; tilemap page ($1400 in VRAM)
+  STA IO_VMAP    ; tilemap size ($14=10100 w=64 h=32)
+  LDA #VCTL_H320+VCTL_V200+VCTL_2BPP+VCTL_16COL
+  STA IO_VCTL
+  LDA #0
+  STA IO_DSTL
+  STA IO_DSTH
+  LDA #DMA_M2V|DMA_Fill  ; DMA fill VRAM
+  STA IO_DCTL
 ; memory check: don't start up if RAM is bad.
 ; test zero page, without using zero-page indirect
   LDA #$55
@@ -1281,10 +1284,12 @@ reset_hard:
 
 ; @@ memchk
 ; relies on $1FE-$1FF (will crash otherwise)
-@memchk:                 ; A=fill X=page Y=bytes (preserves A,X returns Y=0)
+@memchk:                 ; A=fill X=page
+  STA IO_FILL            ; [3] also fill VRAM
   STX $01                ; [3] pointer high = page byte
 ; fill the page
   LDY $03                ; [3] load Y count (256 [=$00] except for stack page)
+  STY IO_DRUN            ; [3] start DMA fill (for visual feedback)
 @mmf_lp:
   DEY                    ; [2] pre-decrement
   STA ($00),Y            ; [6] write fill byte

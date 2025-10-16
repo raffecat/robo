@@ -9,16 +9,16 @@ enum io_reg {
     IO_DSTH    = 0xD3,   // DMA dest high
     IO_DCTL    = 0xD4,   // DMA control         (7-6:direction 5:vertical 4:reverse 2-0:mode)
     IO_DRUN    = 0xD5,   // DMA count           (writing starts DMA, 0=256)
-    IO_AROP    = 0xD6,   // DMA raster op       (2:rop_en 1-0:rop[0=NOT 1=OR 2=AND 3=XOR])
+    IO____1    = 0xD6,   // 
     IO_DDRW    = 0xD7,   // DMA data R/W        (read: reads from src++; write: writes to dest++)
-    IO_DJMP    = 0xD8,   // DMA jump indirect   (read-only: indirect jump low byte)
-    IO_FILL    = 0xD8,   // DMA fill byte       (write-only: set fill byte)
-    IO_DJMH    = 0xD9,   // DMA jump indirect   (read-only: indirect jump high byte)
-    IO_JTBL    = 0xD9,   // DMA jump table      (write-only: table-jump page register)
+    IO_DJMP    = 0xD8,   // DMA jump indirect   (read-only: indirect table jump [stalls for +1 cycle])
+    IO_APJP    = 0xD8,   // DMA APA / Jump Pg   (write-only: trigger APA write cycle, or set Jump Table page [page latch])
+    IO_FILL    = 0xD9,   // DMA fill byte       (write-only: set FILL byte [data latch])
+    IO_DJMH    = 0xD9,   // DMA jump 2nd byte   (read-only: second byte of indirect jump)
     IO_BNK8    = 0xDA,   // Bank switch 0x8000  (low 4 bits)
     IO_BNKC    = 0xDB,   // Bank switch 0xC000  (low 4 bits)
-    IO_HDML    = 0xDC,   // HDMA src low        (enabled in VENA)
-    IO_HDMH    = 0xDD,   // HDMA src high
+    IO____2    = 0xDC,   // 
+    IO____3    = 0xDD,   // 
     IO_KEYB    = 0xDE,   // Keyboard scan (write: set row; read: scan column) (0x80|zp: DMA fastload 5 bytes)
     IO_MULW    = 0xDF,   // Booth multiplier (write {AL,AH,BL,BH} read {RL,RH})
 
@@ -67,16 +67,39 @@ enum dma_ctl {
     dma_ctl_vertical = 0x20,
     dma_ctl_reverse = 0x10,
     // mode
-    dma_ctl_copy = 0x00,  // copy bytes
-    dma_ctl_fill = 0x01,  // using fill byte (write IO_DJMP)
-    dma_ctl_trans = 0x02,  // copy pixels, skip zero pixels; BPP from VCTL
-    dma_ctl_apa = 0x03,  // APA addressing: low 1-3 bits of address select pixel; BPP from VCTL
-    dma_ctl_expand = 0x04,  // (copy and expand 1bpp to 2bpp [1 byte to 2 bytes]) ... if cheap
-    dma_ctl_palette = 0x05,  // (read src / write dest is palette memory, low-byte only; ignores direction
-    dma_ctl_sprite = 0x06,  // (read src / write dest is sprite memory, low-byte only; ignores direction
-    dma_ctl_spr_clr = 0x07,  // (write $FF to the Y coords of sprites, low-byte only; ignores direction
+    DMA_Copy        = 0x00,  // copy bytes from source to destinaton
+    DMA_Fill        = 0x01,  // using fill byte (write IO_DJMP)
+    DMA_Masked      = 0x02,  // copy pixels, skip zero pixels (shares APA HW)
+    DMA_APA         = 0x03,  // APA addressing: low 3 bits of address select pixel; BPP from VCTL
+    DMA_Palette     = 0x04,  // read src / write dest is palette memory, SRCL/DSTL only; ignores direction
+    DMA_Sprite      = 0x05,  // read src / write dest is sprite memory, SRCL/DSTL only; ignores direction
+    DMA_SprClr      = 0x06,  // write $FF to Y coords of sprites (inc by 4), DSTL only; ignores direction
     // mode mask
-    dma_ctl_mode = 0x07,  // low 3 bits
+    dma_ctl_mode    = 0x07,  // low 3 bits
+};
+enum video_ctl {
+    VCTL_APA       = 0x80,  // linear framebuffer at address 0 (or linear 8x8 tiles?)
+    VCTL_NARROW    = 0x40,  // 5x8 tiles at 2bpp only; left 5 pixels of each tile (64 columns)
+    VCTL_16COL     = 0x20,  // attributes contain [BBBBFFFF] BG,FG colors (2+2x16 colours)
+    VCTL_LATCH     = 0x20,  // in APA mode, latch color on zero (filled shapes mode)
+    VCTL_GREY      = 0x10,  // disable Colorburst for text legibility
+    VCTL_V240      = 0x0C,  // 240 visible lines per frame
+    VCTL_V224      = 0x08,  // 224 visible lines per frame
+    VCTL_V200      = 0x04,  // 200 visible lines per frame
+    VCTL_V192      = 0x00,  // 192 visible lines per frame
+    VCTL_H320      = 0x02,  // 320 visible pixels per line (shift rate)
+    VCTL_H256      = 0x00,  // 256 visible pixels per line (shift rate)
+    VCTL_4BPP      = 0x01,  // divide clock by 4, use 4 bits per pixel (double-width)
+    VCTL_2BPP      = 0x00,  // divide clock by 2, use 2 bits per pixel (square pixels)
+};
+enum video_enable {
+    VENA_VSync     = 0x80,
+    VENA_VCmp      = 0x40,
+    VENA_HSync     = 0x20,
+    VENA_Pwr_LED   = 0x08,
+    VENA_Caps_LED  = 0x04,
+    VENA_Spr_En    = 0x02,
+    VENA_BG_En     = 0x01,
 };
 
 uint8_t OpenBus[16*1024] = { 0xE1 };
@@ -105,12 +128,10 @@ static uint16_t DMA_Src  = 0x1111;   // 16-bit counter
 static uint16_t DMA_Dst  = 0x2222;   // 16-bit counter
 static uint8_t  DMA_Ctl  = 0x33;     // 8-bit register
 static uint8_t  DMA_Run  = 0x00;     // 8-bit counter          -- reset to 0x00 (Stop DMA)
-static uint8_t  DMA_Rop  = 0x44;     // 4-bit register (0,4,5,6,7)
-static uint8_t  DMA_JTb  = 0x55;     // 8-bit jump table page address
+static uint8_t  DMA_Page = 0x55;     // 8-bit jump table page (and APA write latch)
 static uint8_t  DMA_DL   = 0x77;     // 8-bit DMA data latch (for DMA copy)
 static uint8_t  Bank8    = 0x05;     // 4-bit register (0-15)
 static uint8_t  BankC    = 0x00;     // 4-bit register (0-15)  -- reset to 0x00 (ROM bank 0)
-static uint16_t HDMA_Src = 0xE287;   // 16-bit HDMA source address
 static uint8_t  KbdCol   = 0x03;     // 4-bit register (0-15)
 
 static uint16_t DMA_sinc = 0x01;     // internal: DMA src increment
@@ -190,14 +211,13 @@ static uint8_t ula_io_read(uint16_t address) {
     // now read the IO port
     switch (address) {
         // D-page
-        case IO_SRCL: return DMA_Src & 0xFF; break; // $D0: DMA src low
-        case IO_SRCH: return DMA_Src >> 8;   break; // $D1: DMA src high
-        case IO_DSTL: return DMA_Dst & 0xFF; break; // $D2: DMA dest low
-        case IO_DSTH: return DMA_Dst >> 8;   break; // $D3: DMA dest high
-        case IO_DCTL: return DMA_Ctl;        break; // $D4: DMA control
-        case IO_DRUN: return value;          break; // $D5: not defined (DMA count)
-        case IO_AROP: return DMA_Rop;        break; // $D6: APA raster op
-        case IO_DDRW: {                             // $D7: DMA data R/W (read from DMA_Src)
+        case IO_SRCL: value = DMA_Src & 0xFF; break; // $D0: DMA src low
+        case IO_SRCH: value = DMA_Src >> 8;   break; // $D1: DMA src high
+        case IO_DSTL: value = DMA_Dst & 0xFF; break; // $D2: DMA dest low
+        case IO_DSTH: value = DMA_Dst >> 8;   break; // $D3: DMA dest high
+        case IO_DCTL: value = DMA_Ctl;        break; // $D4: DMA control
+        case IO_DRUN: break;                         // $D5: not defined (DMA count)
+        case IO_DDRW: {                              // $D7: DMA data R/W (read from DMA_Src)
             // read cycle
             if (DMA_Ctl & dma_ctl_from_vram) {
                 value = VRAM[DMA_Src & 0x3FFF];
@@ -214,26 +234,23 @@ static uint8_t ula_io_read(uint16_t address) {
             DMA_Src = (DMA_Src + DMA_sinc) & 0xFFFF;
             clockticks6502++;
             // read low byte from jump table
-            uint16_t entry = (DMA_JTb<<8)|DMA_DL;
+            uint16_t entry = (DMA_Page<<8)|DMA_DL;
             value = RAMView[entry >> 14][entry & 0x3FFF];
             break;
         }
         case IO_DJMH: {                            // $D9: DMA jump indirect (read high byte)
             // read high byte from jump table
-            uint16_t entry = (DMA_JTb<<8)|DMA_DL|1;
+            uint16_t entry = (DMA_Page<<8)|DMA_DL|1;
             value = RAMView[entry >> 14][entry & 0x3FFF];
             break;
         }   
         case IO_BNK8: value = Bank8; break;            // $DA: Bank switch 0x8000  (low 4 bits)
         case IO_BNKC: value = BankC; break;            // $DB: Bank switch 0xC000  (low 4 bits)
-        case IO_HDML: value = HDMA_Src & 0xFF; break;  // $DC: HDMA src low
-        case IO_HDMH: value = HDMA_Src >> 8; break;    // $DD: HDMA src high
         case IO_KEYB: {                                // $DE: Keyboard scan (read: scan column)
             value = scanKeyCol(KbdCol);
             break;
         }
-
-        case IO_MULW: break;                           // $DF: Booth multiplier (write {AL,AH,BL,BH} read {RL,RH})
+        case IO_MULW: break;                           // $DF: Booth multiplier? (write {AL,AH,BL,BH} read {RL,RH})
 
         // E-page
         case IO_TON0:       // $E0: PSG Ch.0 tone
@@ -298,7 +315,7 @@ static uint8_t ula_io_read(uint16_t address) {
             value = NameBase;
             break;
         case IO_VBNK:       // $FB: tile bank R/W          (write: [aaaadddd] bank addr,data; read: [aaaa----] read data)
-            // XXX
+            // XXX TODO
             break;
         case IO_PALA:                     // $FC: palette address
             value = PalAddr;
@@ -345,7 +362,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             break;
         case IO_DRUN: {     // $D5: DMA count
             DMA_Run = value; // 8-bit register
-            if ((DMA_Ctl & dma_ctl_mode) == dma_ctl_fill) {
+            if ((DMA_Ctl & dma_ctl_mode) == DMA_Fill) {
                 do {
                     // write cycle
                     if (DMA_Ctl & dma_ctl_to_vram) {
@@ -386,10 +403,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             }
             break;
         }
-        case IO_AROP:       // $D6: APA raster op
-            DMA_Rop = value & 0x7; // 3-bit register
-            break;
-        case IO_DDRW: {     // $D7: DMA data R/W (write to DMA_Dst)
+        case IO_DDRW: {                      // $D7: DMA data R/W (write to DMA_Dst)
             // write cycle
             if (DMA_Ctl & dma_ctl_to_vram) {
                 VRAM[DMA_Dst & 0x3FFF] = value;
@@ -401,8 +415,45 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
             break;
         }
-        case IO_FILL: DMA_DL = value; break;  // $D8: DMA set fill byte (write-only)
-        case IO_JTBL: DMA_JTb = value; break; // $D9: DMA set jump-table page (write-only)
+        case IO_APJP:                        // $D8: trigger APA write cycle, or set Jump Table page [page latch]
+            DMA_Page = value;                // 8-bit register [page latch]
+            if ((DMA_Ctl & dma_ctl_mode) == DMA_APA) {
+                // Trigger APA DMA cycle:
+                // APA address mapping (640x200 in all modes [or VV height])
+                uint16_t APA_Src = DMA_Src >> 3; // divide by 8 (8 pixels per byte at most: 640x200)
+                uint16_t APA_Dst = DMA_Dst >> 3; // divide by 8 (8 pixels per byte at most: 640x200)
+                uint8_t bit_mask; // HW uses AND-OR gates:
+                if (VidCtl & VCTL_4BPP) {
+                    bit_mask = 15 << ((DMA_Src&4)>>2); // position %1111 mask using bit %1xx
+                } else {
+                    bit_mask = 3 << ((DMA_Src&6)>>1); // position %11 mask using bits %11x
+                }
+                // read cycle.
+                if (DMA_Ctl & dma_ctl_from_vram) {
+                    DMA_DL = VRAM[APA_Src & 0x3FFF];
+                } else {
+                    DMA_DL = RAMView[APA_Src>>14][APA_Src & 0x3FFF];
+                }
+                DMA_Src = (DMA_Src + DMA_sinc) & 0xFFFF;
+                clockticks6502++;
+                // APA maked pixel replace.
+                DMA_DL = (DMA_DL & ~bit_mask) | (DMA_Page & bit_mask);
+                // write cycle.
+                if (DMA_Ctl & dma_ctl_to_vram) {
+                    VRAM[APA_Dst & 0x3FFF] = DMA_DL;
+                } else {
+                    if (RAMViewWR[APA_Dst>>14]) {
+                        RAMView[APA_Dst>>14][APA_Dst & 0x3FFF] = DMA_DL;
+                    }
+                }
+                DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
+                clockticks6502++;
+                advance_vdp();
+            }
+            break;
+        case IO_FILL:                        // $D9: set FILL byte [data latch]
+            DMA_DL = value;
+            break;
         case IO_BNK8:                        // $CE: Bank switch $8000
             Bank8 = value & 0xF;             // 4-bit register
             RAMView[2] = BankMap[Bank8];     // update active-bank table
@@ -413,16 +464,10 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             RAMView[3] = BankMap[Bank8];     // update active-bank table
             RAMViewWR[3] = BankMapWR[Bank8]; // [3] is the slot at $C000
             break;
-        case IO_HDML:                        // $DC: set HDMA src low
-            HDMA_Src = (DMA_Src & 0xFF00) | value;
-            break;
-        case IO_HDMH:                        // $DD: set HDMA src high
-            HDMA_Src = (DMA_Src & 0x00FF) | (value << 8);
-            break;
         case IO_KEYB:                        // $DE: set keyboard scan column (4-bit)
             KbdCol = value & 0xF;
             break;
-        case IO_MULW:       // $ED: Booth multiplier (write {AL,AH,BL,BH} read {RL,RH})
+        case IO_MULW:       // $ED: Booth multiplier? (write {AL,AH,BL,BH} read {RL,RH})
             break;
 
         // E-page
