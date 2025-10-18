@@ -12,6 +12,7 @@ const uint32_t one_scanline = 568*2/9; // PAL 568 pixels at 1/2 of 17.734475, CP
 // ^ should accumulate pixel clocks, derive whole cycles, permit negative count
 
 const Uint8 *keys = 0;
+static Uint8 dbg_mode = 1;
 
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
@@ -39,8 +40,8 @@ int main(int argc, char *argv[]) {
     reset6502();
 
     // DEBUGGER
-    dbg_mode = 0;
-    dbg_break = 0x0C577;
+    pend_irq = 8; // 8 = enable debug
+    dbg_break = 0x0C178;
     Uint32 held_time = 0;
 
     // run the simulator.
@@ -55,7 +56,7 @@ int main(int argc, char *argv[]) {
         }    
 
         // run the CPU.
-        if (!dbg_mode) {
+        if (!(pend_irq&8)) {
             exec6502(one_scanline);
         } else {
             // debugger
@@ -68,14 +69,20 @@ int main(int argc, char *argv[]) {
                     if (dbg_mode == 1) { // waiting
                         dbg_mode = 2; // single step held down
                         held_time = SDL_GetTicks() + 300;
+                        uint16_t old_pc = pc;
                         step6502();
+                        dbg_decode_next_op(old_pc);
                         dbg_break = pc; // advance the breakpoint
                     } else if (SDL_GetTicks() > held_time) {
                         // auto-repeat
                         held_time = SDL_GetTicks() + 80;
+                        uint16_t old_pc = pc;
                         step6502();
+                        dbg_decode_next_op(old_pc);
                         dbg_break = pc; // advance the breakpoint
                     }
+                } else if (keys[SDL_SCANCODE_RALT]) {
+                    dbg_break = 0; // continue
                 } else {
                     dbg_mode = 1; // back to waiting
                 }

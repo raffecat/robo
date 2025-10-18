@@ -4,19 +4,6 @@
 #include <string.h>
 #include "header.h"
 
-const uint8_t VCTL_APA       = 0x80;   // direct VRAM addressing, fixed at address 0
-const uint8_t VCTL_NARROW    = 0x40;   // render the left 5 pixels of each tile (64 columns)
-const uint8_t VCTL_16COL     = 0x20;   // attributes contain [BBBBFFFF] BG,FG colors (2+2x16 colours)
-const uint8_t VCTL_GREY      = 0x10;   // disable Colorburst for improved text legibility
-const uint8_t VCTL_V240      = 0x0C;   // 240 visible lines per frame
-const uint8_t VCTL_V224      = 0x08;   // 224 visible lines per frame
-const uint8_t VCTL_V200      = 0x04;   // 200 visible lines per frame
-const uint8_t VCTL_V192      = 0x00;   // 192 visible lines per frame
-const uint8_t VCTL_H320      = 0x02;   // 320 visible pixel-clocks per line (shift rate)
-const uint8_t VCTL_H256      = 0x00;   // 256 visible pixel-clocks per line (shift rate)
-const uint8_t VCTL_4BPP      = 0x01;   // divide by 4, use 4 bits per pixel (MUST be 0x01)
-const uint8_t VCTL_2BPP      = 0x00;   // divide by 2, use 2 bits per pixel
-
 const int fb_hbord = 32; // border width in FB
 const int fb_vbord = 32; // border height in FB
 const int fb_width = 320+(fb_hbord*2);
@@ -44,15 +31,16 @@ static uint8_t bg_pixel   = 0; // 4-bit pixel latch
 static uint16_t vdp_hcount = 0; // 9-bit horizontal count
 static uint8_t vdp_hsub = 0; // 3-bit horizontal sub-tile counter
 static uint8_t vdp_htile = 0; // 8-bit horizontal tile counter (0-39)
-static uint8_t vdp_hborder = 0;  // 1-bit latch
+static uint8_t vdp_hborder = 0;  // 1-bit latch (visible to ula.c)
 static uint8_t vdp_hblank = 0;  // 1-bit latch
-static uint8_t vdp_hearly = 0;  // 1-bit latch
+static uint8_t vdp_hbusy = 0;  // 1-bit latch (VDP reading VRAM on H cycle)
+uint8_t vdp_vbusy = 0;  // 1-bit latch (VDP reading VRAM on V cycle)
 uint16_t vdp_vcount = 0; // 9-bit vertical line count (visible to ula.c)
 static uint8_t vdp_vsub = 0; // 3-bit vertical sub-tile counter
 static uint8_t vdp_vtile = 0; // 8-bit vertical tile counter (0-24)
 static uint8_t vdp_vborder = 0;  // 1-bit latch
 uint8_t vdp_vblank = 0;  // 1-bit latch (visible to ula.c)
-static uint8_t vdp_vearly = 0;  // 1-bit latch
+uint8_t vdp_vram_lock = 0; // 1-bit latch (VDP is using VRAM)
 
 // [00000000][00000000][00000000] -- fetch tile         (load low)
 // [00000000][00000000][00000000]
@@ -166,8 +154,11 @@ void advance_vdp() {
     uint32_t bpp_shift = 24 - (2 << bpp); // shift down from bit 24 (22 or 20)
     // uint32_t bpp_mask = (1 << (2 << bpp))-1; // (3 or 15)
     while (vdp_clk < vdp_target) {
-        // start early, two tiles from the end of the previous line.
-        if (vdp_vearly && vdp_hearly) {
+        // start early, two tiles from the end of the previous line:
+        // tile 0: load 1st BG tile graphics.
+        // tile 1: shift 1st BG tile into pixel shift register; load 2nd BG tile graphics.
+        // tile 2: start drawing from pixel shift register; load 3rd BG tile graphics.
+        if (vdp_vbusy && vdp_hbusy) {
             // rising edge:
             // load next background tile every 8 clk
             if (vdp_hsub == 0) {
@@ -183,13 +174,13 @@ void advance_vdp() {
             if (vdp_hsub == 4) {
                 // XXX assumes tiles begin at $0000
                 uint16_t addr = (bg_ld_tl<<4) | (vdp_vsub << 1) | 0;
-                if (!(VidCtl & VCTL_16COL)) addr |= (bg_ld_al&1) << 12; // only in 4-color mode
+                if (!(VidCtl & VCTL_16COL)) addr |= (bg_ld_al&1) << 12; // extra bit in 4-color mode
                 bg_ld_gfx0 = VRAM[addr]; // GFX0
             }
             if (vdp_hsub == 6) {
                 // XXX assumes tiles begin at $0000
                 uint16_t addr = (bg_ld_tl<<4) | (vdp_vsub << 1) | 1;
-                if (!(VidCtl & VCTL_16COL)) addr |= (bg_ld_al&1) << 12; // only in 4-color mode
+                if (!(VidCtl & VCTL_16COL)) addr |= (bg_ld_al&1) << 12; // extra bit in 4-color mode
                 bg_ld_gfx1 = VRAM[addr]; // GFX1
             }
             // shift up the last pixel
@@ -240,18 +231,24 @@ void advance_vdp() {
             uint16_t Hmask = (1 << (5+(NameSize>>2))) - 1; // 5-8 bits (32,64,128,256)
             vdp_htile = (vdp_htile+1) & Hmask;
             vdp_hcount++;
+            if (vdp_hcount == 38) { // finish reading BG early (started early)
+                // MUST end TWO tiles early (becase we started TWO tiles early)
+                vdp_hbusy = 0;      // stop loading BG graphics
+            }
             if (vdp_hcount == 40) {
-                vdp_hborder = 1;     // turn on border
-                vdp_hearly = 0;      // end of early period
+                vdp_hborder = 1;     // turn on border (overscan)
             }
             if (vdp_hcount == 40+9) {
                 vdp_hblank = 1;      // turn on HBLANK
             }
+            // HSYNC happens in 13 tiles of HBLANK
             if (vdp_hcount == 40+9+13) {
                 vdp_hblank = 0;      // turn off HBLANK
             }
             if (vdp_hcount == 40+9+13+9 - 2) { // early line start
-                vdp_hearly = 1;
+                // MUST start TWO tiles early (see above)
+                vdp_hbusy = 1; // start loading BG graphics
+                vdp_vram_lock = 1; // locked while hbusy
                 // update vertical sub-tile counter
                 if (vdp_vsub == 7) {
                     // next tile-row vertically
@@ -261,10 +258,9 @@ void advance_vdp() {
                         uint16_t Vmask = (1 << (5+(NameSize&3))) - 1; // 5-8 bits (32,64,128,256)
                         vdp_vtile = (vdp_vtile+1) & Vmask;
                     } else if (vdp_vcount == 311) {
-                        // on the last line before the visible lines start,
-                        // and at the point of early line start,
-                        // reset vsub and vtile.
-                        vdp_vearly = 1;
+                        // on the last line before visible lines start,
+                        // at the point of early line start, reset vsub and vtile.
+                        vdp_vbusy = 1;
                         // uint16_t Vmask = (1 << (5+(NameSize&3))) - 1; // 5-8 bits (32,64,128,256)
                         vdp_vtile = 0; // VidScrV & Vmask; // reload vertical tile counter
                         vdp_vsub = 0; // VidFinV & 3;  // reload vertical sub-tile counter
@@ -282,7 +278,7 @@ void advance_vdp() {
             if (vdp_hcount == 40+9+13+9) { // 71*8=568
                 // end of the scanline
                 vdp_hcount = 0;      // reset hcount
-                vdp_hborder = 0;     // turn off border
+                vdp_hborder = 0;     // turn off border (overscan)
                 if (vdp_vborder == 0 && FBrow < fb_height-1) { // necessary?
                     FBrow++;
                     int coord = (((fb_vbord+FBrow) * fb_width) + fb_hbord);
@@ -293,11 +289,18 @@ void advance_vdp() {
                 vdp_vcount++;
                 if (vdp_vcount == 224) { // 28 lines * 8 = 224
                     vdp_vborder = 1;
-                    vdp_vearly = 0;
+                    vdp_vbusy = 0;
+                    if (VidEna & VENA_VSync) {
+                        VidSta |= VSTA_VSync;
+                        request_irq();
+                    }
                 }
                 if (vdp_vcount == 224+32) {
                     vdp_vblank = 1;
+                    // printf("+++ flip %d\n", FBrow);
+                    render();
                 }
+                // VSYNC happens in the 24 tiles of VBLANK
                 if (vdp_vcount == 224+32+24) {
                     vdp_vblank = 0;
                 }
@@ -306,8 +309,6 @@ void advance_vdp() {
                     vdp_hsub = 0;
                     vdp_vcount = 0;      // reset vcount
                     vdp_vborder = 0;     // start display output
-                    // printf("+++ flip %d\n", FBrow);
-                    render();
                     int topleft = ((fb_vbord * fb_width) + fb_hbord);
                     FBspan = &FB[topleft];     // reset FB
                     FBcol = 0;

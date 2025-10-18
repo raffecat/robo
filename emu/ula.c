@@ -59,49 +59,6 @@ enum io_reg {
     IO_SPRD    = 0xFF,   // sprite data R/W        (direct sprite-memory data, increments address)
 };
 
-enum dma_ctl {
-    // direction
-    dma_ctl_to_vram = 0x40,
-    dma_ctl_from_vram = 0x80,
-    // flags
-    dma_ctl_vertical = 0x20,
-    dma_ctl_reverse = 0x10,
-    // mode
-    DMA_Copy        = 0x00,  // copy bytes from source to destinaton
-    DMA_Fill        = 0x01,  // using fill byte (write IO_DJMP)
-    DMA_Masked      = 0x02,  // copy pixels, skip zero pixels (shares APA HW)
-    DMA_APA         = 0x03,  // APA addressing: low 3 bits of address select pixel; BPP from VCTL
-    DMA_Palette     = 0x04,  // read src / write dest is palette memory, SRCL/DSTL only; ignores direction
-    DMA_Sprite      = 0x05,  // read src / write dest is sprite memory, SRCL/DSTL only; ignores direction
-    DMA_SprClr      = 0x06,  // write $FF to Y coords of sprites (inc by 4), DSTL only; ignores direction
-    // mode mask
-    dma_ctl_mode    = 0x07,  // low 3 bits
-};
-enum video_ctl {
-    VCTL_APA       = 0x80,  // linear framebuffer at address 0 (or linear 8x8 tiles?)
-    VCTL_NARROW    = 0x40,  // 5x8 tiles at 2bpp only; left 5 pixels of each tile (64 columns)
-    VCTL_16COL     = 0x20,  // attributes contain [BBBBFFFF] BG,FG colors (2+2x16 colours)
-    VCTL_LATCH     = 0x20,  // in APA mode, latch color on zero (filled shapes mode)
-    VCTL_GREY      = 0x10,  // disable Colorburst for text legibility
-    VCTL_V240      = 0x0C,  // 240 visible lines per frame
-    VCTL_V224      = 0x08,  // 224 visible lines per frame
-    VCTL_V200      = 0x04,  // 200 visible lines per frame
-    VCTL_V192      = 0x00,  // 192 visible lines per frame
-    VCTL_H320      = 0x02,  // 320 visible pixels per line (shift rate)
-    VCTL_H256      = 0x00,  // 256 visible pixels per line (shift rate)
-    VCTL_4BPP      = 0x01,  // divide clock by 4, use 4 bits per pixel (double-width)
-    VCTL_2BPP      = 0x00,  // divide clock by 2, use 2 bits per pixel (square pixels)
-};
-enum video_enable {
-    VENA_VSync     = 0x80,
-    VENA_VCmp      = 0x40,
-    VENA_HSync     = 0x20,
-    VENA_Pwr_LED   = 0x08,
-    VENA_Caps_LED  = 0x04,
-    VENA_Spr_En    = 0x02,
-    VENA_BG_En     = 0x01,
-};
-
 uint8_t OpenBus[16*1024] = { 0xE1 };
 uint8_t SysROM[16*1024];
 uint8_t MainRAM_0[16*1024];
@@ -118,7 +75,7 @@ uint8_t SPR_RAM[160];                // 160 for 80-col color mode
 /*vid*/ uint8_t  VidFinV  = 0x66;    // 3-bit vertical fine scroll
 /*vid*/ uint8_t  VidCtl   = 0x2E;    // 8-bit video control
 /*vid*/ uint8_t  VidEna   = 0x23;    // 8-bit register
-/*vid*/ uint8_t  PendInt  = 0x00;    // 3-bit register         -- reset to 000 (Interrupts)
+/*vid*/ uint8_t  VidSta   = 0x7F;    // 8-bit register         -- reset to 000 (Interrupts)
 /*vid*/ uint8_t  NameSize = 0x07;    // 4-bit name table size (2:2 width 32,64,128,256; height 32,64,128,256)
 /*vid*/ uint8_t  NameBase = 0x18;    // 6-bit name table page address (high 6 bits)
 static uint8_t  PalAddr  = 0x2C;     // 6-bit register (0-63)
@@ -306,7 +263,7 @@ static uint8_t ula_io_read(uint16_t address) {
             value = VidEna;
             break;
         case IO_VSTA:       // $F8: interrupt status/clear   (7:VSync 6:VCmp 5:HSync)  (write:clear)
-            value = PendInt;
+            value = VidSta;
             break;
         case IO_VMAP:       // $F9: name table size
             value = NameSize;
@@ -362,8 +319,14 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             break;
         case IO_DRUN: {     // $D5: DMA count
             DMA_Run = value; // 8-bit register
-            if ((DMA_Ctl & dma_ctl_mode) == DMA_Fill) {
+            while (vdp_vbusy) {
+                clockticks6502++;
+                advance_vdp();
+            }
+            if ((DMA_Ctl & DMA_Mode) == DMA_Fill) {
                 do {
+                    // increment cycle (dummy read cycle)
+                    clockticks6502++;
                     // write cycle
                     if (DMA_Ctl & dma_ctl_to_vram) {
                         VRAM[DMA_Dst & 0x3FFF] = DMA_DL;
@@ -374,7 +337,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
                     }
                     DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
                     clockticks6502++;
-                    advance_vdp();
+                    advance_vdp(); // in case DMA changes visible pixels
                     DMA_Run--;
                 } while (DMA_Run > 0);
             } else {
@@ -397,7 +360,10 @@ static void ula_io_write(uint16_t address, uint8_t value) {
                     }
                     DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
                     clockticks6502++;
-                    advance_vdp();
+                    // DMA can change tiles that affects the very next pixel drawn.
+                    // However VDP is already caught up before DMA starts.
+                    // If we complete the DMA before the next pixel
+                    advance_vdp(); // in case DMA changes visible pixels
                     DMA_Run--;
                 } while (DMA_Run > 0);
             }
@@ -417,7 +383,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
         }
         case IO_APJP:                        // $D8: trigger APA write cycle, or set Jump Table page [page latch]
             DMA_Page = value;                // 8-bit register [page latch]
-            if ((DMA_Ctl & dma_ctl_mode) == DMA_APA) {
+            if ((DMA_Ctl & DMA_Mode) == DMA_APA) {
                 // Trigger APA DMA cycle:
                 // APA address mapping (640x200 in all modes [or VV height])
                 uint16_t APA_Src = DMA_Src >> 3; // divide by 8 (8 pixels per byte at most: 640x200)
@@ -530,11 +496,11 @@ static void ula_io_write(uint16_t address, uint8_t value) {
         case IO_VCTL:                    // $F6: video control (7:APA 6:Grey 5:Double 4:HCount 3-2:VCount 1-0:Divider) (see below)
             VidCtl = value;
             break;
-        case IO_VENA:                    // $F7: interrupt enable (7:VSync 6:VCmp 5:HSync 3:BG_En 2:Spr_En 1:HDMA_En)
+        case IO_VENA:                    // $F7: interrupt enable (7:VSync 6:YCmp 5:HSync 3:BG_En 2:Spr_En 1:HDMA_En)
             VidEna = value;
             break;
         case IO_VSTA:                    // $F8: interrupt status/clear (7:VSync 6:YCmp 5:HSync)
-            PendInt &= ~(value & 0xE0);  // 3-bit register [VYH00000]
+            VidSta &= ~(value & 0xE0);   // 3-bit register [VYH00000]
             break;
         case IO_VMAP:                    // $F9: name table size
             NameSize = value & 0xF;      // 4-bit register [0000WWHH]
