@@ -40,8 +40,8 @@ int main(int argc, char *argv[]) {
     reset6502();
 
     // DEBUGGER
-    pend_irq = 8; // 8 = enable debug
-    dbg_break = 0x0C178;
+    pend_irq = 8-8; // 8 = enable debug
+    dbg_break = 0x0C0E1;
     Uint32 held_time = 0;
 
     // run the simulator.
