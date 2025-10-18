@@ -320,3 +320,36 @@ https://www.masswerk.at/nowgobang/2023/pet-keys-2001-edition
 • 1977
 
 https://www.youtube.com/watch?v=YN8pyV6o3M0 70s-80s Video Controllers
+
+
+
+HW APA divides all X coords by 8, and all Y coords by 2, for upwards compatibility.
+So 640 x 400 @ 1bpp maps to 80 x 200 bytes (16000)
+   320 x 200 @ 2bpp
+   160 x 200 @ 4bpp
+
+Can APA HW do the math for you?
+   we would need an adder to multiply N * 640
+   (N << 9) + (N << 7)
+
+OK but our addresses are counters:
+    cycle 1: trigger an increment at bit 9 (add 512)
+    cycle 2: trigger an increment at bit 7 (add 128)
+    increments by 640
+
+Hardware that does this can be called a "line accelerator".
+
+APA mode only uses the DST address (in a read-write cycle)
+So this is only implemented on the destination counter.
+
+Vertical mode increments after each odd write:
+    at bit 6 if map width = 32    (64 bytes)
+    at bit 7 if map width = 64    (128 bytes) •
+    at bit 8 if map width = 128   (256 bytes)
+    at bit 9 if map width = 256   (512 bytes) •
+
+The APA increment can re-use these taps.
+
+Is vertical mode also supported on the source counter?
+    it's less critical
+

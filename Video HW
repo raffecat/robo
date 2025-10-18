@@ -1,24 +1,5 @@
 Video HW
 
-An 80-column mode is highly desirable:
-• use the 4 memory accesses per tile to load [chr0][chr1][gfx0][gfx1]
-• render 1bpp gfx0 then gfx1 at 640 clock rate (1x multiplier)
-• can the chip technology shift at twice the pixel rate?
-
-80-column color text is just possible:
-• reuse sprite RAM to hold the attribute byte for each character on a line
-• expand sprite RAM to 160 bytes (+32), so we can store 80 x 2 bytes
-• upload 10 bytes (20 mem cycles) per HBlank -> 10*8 = 80 bytes
-• during each line of text, upload colour data for the next line
-
-However, consider the goal for the machine:
-• a home games machine to hook up to the TV, or composite display
-• some home productivity capabilities (marketing requirement)
-• we already support a TV-compatible 64 column mode, at lower design cost
-• we can offer an 80-column "CGA compatible" expansion later
-• but consider total cost: 2x pixel clock + 32 bytes of SRAM (to tick a fairly large box)
-• the Beeb (monitor) and CPC464 (custom monitor) both support 640 modes
-
 https://en.wikipedia.org/wiki/Composite_artifact_colors
 https://retrocomputing.stackexchange.com/questions/2205/ideal-resolution-for-color-computer-on-ntsc
 https://forums.nesdev.org/viewtopic.php?t=14394 Why Doesn't the NES Show Artifact Colors?
@@ -419,6 +400,9 @@ PAL: 4.43361875  8.867238/2  17.734475/4(C64)  26.6017125/6(NES)
 14.318181818181 / 8  = 1.789772727272625  (NES, Atari 800, CoCo)
 14.318181818181 / 7  = 2.0454545454544286 (C128 CPU)
 
+NTSC 1 / (14.318181818181 / 2) * 320 = 44.7µs (~2600, C64=46µs)
+ PAL      1 / (26.6017125 / 4) * 320 = 48.1µs (wide, but workable?)
+
 64µs line * 262 lines per field = 16768µs / 488.8888ns = 34,298.188 cycles per field
 64µs line / 488.8888ns = 130.9 cycles per line
 
@@ -445,3 +429,45 @@ RESET  320+72+104+72 = 568 (40+9+13+9 x8)
 
 4.43361875*4 = 17.734475 MHz
 17.734475 / 9 = 1.970497222222222 MHz
+
+
+NTSC system: 7.159090909090 / 2.045454545454 = 3.5 Pixels per CPU cycle [44.698µs]
+ PAL system: 8.8672375 / 1.9704972222222221  = 4.5 Pixels per CPU cycle [36.087µs]
+
+
+CGA Timing (4 x NTSC dot clock; visible 44.69μs)
+visible-period:A right-overscan:B right-blanking:C sync:D left-blanking:E left-overscan:F 
+Horizontal: 
+A = 80 (640)   B = 89 (712)   C = 94 (752)   D = 102 (816)   E = 109 (872)   F = 114 (912) 
+Vertical: 
+A = 200   B = 223   C = 225   D = 228   E = 239   F = 261
+https://techblog.vsza.hu/posts/Arduino_vs._CGA_part_1_-_flag_PoC.html
+https://docs.rs-online.com/0671/0900766b8001b0e7.pdf
+https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1124-3-200106-I!!PDF-E.pdf
+
+
+An 80-column mode is highly desirable:
+• use the 4 memory accesses per tile to load [chr0][chr1][gfx0][gfx1]
+• render 1bpp gfx0 then gfx1 at 640 clocks per line
+• can the chip technology shift at twice the pixel rate?
+
+80-column color text is just possible:
+• repurpose sprite RAM to hold the attribute byte for each character on a line
+• expand sprite RAM to 160 bytes (+32), so we can store (80 x 2) bytes
+• upload 10 bytes (20 mem cycles) per HBlank -> 10*8 = 80 bytes
+• during each line of text, upload colour data for the next line
+• hack: make the palette 64 bytes, share (alias) the top 32 bytes
+
+However, consider the goal for the machine:
+• a home games machine to hook up to the TV, or composite display
+• some home productivity capabilities (marketing requirement)
+• we already support a TV-compatible 64 column mode, at lower design cost
+• we can offer an 80-column "CGA compatible" expansion later
+• but consider total cost: 2x pixel clock + 32 bytes of SRAM (to tick a fairly large box)
+• the Beeb (monitor) and CPC464 (custom monitor) both support 640 modes
+
+We can design an 80-column mode into the chip:
+• new pixel latch mode: latch bit 0 on rising edge, bit 1 on falling edge
+• new access mode: read [chr0][chr1][gfx0][gfx1] (gfx1 has independent address)
+• use sprite HW to load SprRAM as attribute byte (linear scan, attr mux)
+• must have 160 bytes on-chip: can alias top 32 of palette, if 64 bytes.

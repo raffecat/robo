@@ -55,15 +55,14 @@ DCTL direction:                        [implementation: drives different chip-en
     3 = vram -> vram                   (can be used for windowed scrolling)
 DCTL vertical:                         (increments [Dest] by current map width in VMAP [column upload])
 DCTL reverse:                          (derements src and dest addresses [memmove])
-DCTL mode:
+DCTL mode:                             [ALWAYS 2-cycles/byte due to counter increment cycle]
     0 = copy                           (copy bytes)
     1 = fill                           (using FILL byte [data latch])
-    2 = copy transparent               (copy pixels, skip zero pixels; BPP from VCTL)
-    3 = APA mode (RMW)                 (APA addressing: low 1-3 bits of address select pixel; BPP from VCTL)
-    4 = expand                         (copy and expand 1bpp to 2bpp [1 byte to 2 bytes]) ... if cheap!
-    5 = palette memory                 (read src / write dest is palette memory, low-byte only; ignores direction)
-    6 = sprite memory                  (read src / write dest is sprite memory, low-byte only; ignores direction)
-    7 = clear sprites                  (write $FF to the Y coords of sprites, low-byte only; ignores direction)
+    2 = copy transparent               (copy bytes, skip zero bytes)
+    3 = APA mode (RMW)                 (APA addressing: low 3 bits of address select pixel)
+    4 = palette memory                 (src/dest is palette memory; 8-bit addr, ignores direction)
+    5 = sprite memory                  (src/dest is sprite memory; 8-bit addr, ignores direction)
+    6 = clear sprites                  (write $FF to Y coords in sprite memory; 8-bit addr, ignores direction)
 
 TON0    = $E0    ; PSG Ch.0 tone
 PCH0    = $E1    ; PSG Ch.0 pitch
@@ -82,22 +81,22 @@ GP1R    = $ED    ; Game port 1 read
 ----    = $EE
 ----    = $EF
 
-YLIN    = $F0    ; current Y-line         (read: V-counter; write: wait for VBlank)
-YCMP    = $F1    ; compare Y-line         (read/write, $FF won't trigger)
-SCRH    = $F2    ; horizontal scroll      (tile offset from 0, wraps)
-SCRV    = $F3    ; vertical scroll        (row offset from 0, wraps)
-FINH    = $F4    ; horizontal fine scroll (top 3 bits)
-FINV    = $F5    ; vertical fine scroll   (top 3 bits)
-VCTL    = $F6    ; video control          (7:APA 6:Grey 5:Double 4:HCount 3-2:VCount 1-0:Divider) (see below)
-VENA    = $F7    ; interrupt enable       (7:VSync 6:VCmp 5:HSync 3:BG_En 2:Spr_En)
-VSTA    = $F8    ; interrupt status       (7:VSync 6:VCmp 5:HSync)  (read:status / write:clear)
-VMAP    = $F9    ; name table size        (4:4 width 32,64,128,256; height 32,64,128,256)
-VTAB    = $FA    ; name table base        (high byte)
-VBNK    = $FB    ; tile bank R/W          (write: [aaaadddd] bank addr,data; read: [aaaa----] read data)
-PALA    = $FC    ; palette address        (direct palette-memory address, top bit enables auto-increment)
-PALD    = $FD    ; palette data R/W       (direct palette-memory data, increments address if enabled)
-PALA    = $FE    ; sprite address         (direct sprite-memory address)
-PALD    = $FF    ; sprite data R/W        (direct sprite-memory data, increments address)
+YLIN    = $F0    ; current Y-line         (read: V-counter; write: wait for VBlank)                      [LIVE]
+YCMP    = $F1    ; compare Y-line         (read/write, $FF won't trigger interrupt)
+SCRH    = $F2    ; horizontal scroll      (tile offset from 0, wraps)                      [Reloads End HBLANK]
+SCRV    = $F3    ; vertical scroll        (row offset from 0, wraps)                                     [LIVE]
+FINH    = $F4    ; horizontal fine scroll (top 3 bits)                                     [Reloads End HBLANK]
+FINV    = $F5    ; vertical fine scroll   (top 3 bits)                                                   [LIVE]
+VCTL    = $F6    ; video control          (7:APA 6:Grey 5:Double 4:HCount 3-2:VCount 1-0:Divider)        [LIVE]
+VENA    = $F7    ; interrupt enable       (7:VSync 6:VCmp 5:HSync 3:BG_En 2:Spr_En)                      [LIVE]
+VSTA    = $F8    ; interrupt status       (7:VSync 6:VCmp 5:HSync)  (read:status / write:clear)          [LIVE]
+VMAP    = $F9    ; name table size        (4:4 width 32,64,128,256; height 32,64,128,256)                [LIVE]
+VTAB    = $FA    ; name table base        (high byte)                                                    [LIVE]
+VBNK    = $FB    ; tile bank R/W          (write: [aaaadddd] bank addr,data; read: [aaaa----] read data) [LIVE]
+PALA    = $FC    ; palette address        (direct palette-memory address, top bit enables auto-inc)      [LIVE]
+PALD    = $FD    ; palette data R/W       (direct palette-memory data)                                   [LIVE]
+PALA    = $FE    ; sprite address         (direct sprite-memory address, always auto-increment)          [LIVE]
+PALD    = $FF    ; sprite data R/W        (direct sprite-memory data)                                    [LIVE]
 
 VCTL register [ANCGVVHD] set video mode:
 (7) APA mode (A) direct [non-tiled] VRAM addressing fixed at address 0
