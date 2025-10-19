@@ -1,4 +1,5 @@
 ; Robo BASIC 1.0
+; Use `asm6` to compile: https://github.com/parasyte/asm6
 
 ; BASIC runtime   2K
 ; Floating point  2K
@@ -224,9 +225,8 @@ ORG ROM
 messages:    ; must be within one page for Y indexing
 welcome_1:
   DB 14, "Robo BASIC 1.0"
-; 31488 leaves 5 pages (zero-page, stack, input-buf, sys-page, scratch-page)
 welcome_2:
-  DB 17, "31744 bytes free",13
+  DB 12, " bytes free",13
 ready:
   DB 5, "READY"
 err_range:
@@ -260,6 +260,13 @@ reset:
   JSR mode       ; set mode, clear screen
   LDY #<welcome_1
   JSR printmsg
+  ; 32768 - 5*256 (ZeroPg, StackPg, SysPg, LineBuf, Scratch)
+  ; 16384 will be added for each bank of expanded RAM
+  LDA #<31488    ; low
+  STA Acc0
+  LDA #>31488    ; high
+  STA Acc1
+  JSR n16_print
   LDY #<welcome_2
   JSR printmsg
   ; +++ fall through to @@ basic +++
@@ -494,51 +501,50 @@ n16_mul_10:     ; Uses A, preserves X,Y (+Term)
   BCS e_range   ; [2] -> unsigned overflow
   RTS           ; [6] -> [64+6]
 
-; @@ n16_tostr
-; convert 16-bit {Acc0,1} to a string
-n16_tostr:       ; from {Acc0,1} (uses Y +Tmp)
-  
 
+; @@ n16_print
+; print a 16-bit number {Acc0,1}
+n16_print:       ; from {Acc0,1} (uses Y +Tmp)
+  LDA #0
+  PHA            ; sentinel
+@loop:
+  JSR n16_div10  ; {Acc0,1} /= 10 -> A = remainder
+  ORA #48        ; 0-9 -> '0'-'9'
+  PHA
+  LDA Acc0
+  ORA Acc1
+  BNE @loop
+@print:
+  PLA
+  BEQ @done
+  JSR writechar  ; print it (A=char, preserves X,Y)
+  JMP @print
+@done
+  RTS
 
 ; @@ n16_div10
-; divide {Acc0,1} by 10, returning A = remainder
+; divide {Acc0,1} by 10, returning A = remainder (uses X) (SLOW)
+; shifts dividend left into remainder
+; if remainder >= 10, subtracts 10 and shifts 1 left into quotient
+; else shifts 0 left into quotient
 n16_div10:
   LDX #16        ; [2] 16 bits
   LDA #0         ; [2] remainder
 @loop:
-  ASL Acc0       ; [5] CF << Acc0 << 0 (quotient low bit = 0)
-  ROL Acc1       ; [5] CF << Acc1 << CF
+  ASL Acc0       ; [5] CF << dividend << 0 (quotient bit0 = 0)
+  ROL Acc1       ; [5] CF << dividend << CF
   ROL A          ; [2] remainder << CF
-  CMP #10        ; [2]
-  BCS @ge10      ; [2] -> is >= 10
+  CMP #10        ; [2] is remainder >= divisor?
+  BCS @ge10      ; [2] -> do subtraction (CF=1)  (~1/3 of the time)
   DEX            ; [2]
   BNE @loop      ; [3] -> @loop [21]
   RTS            ; [6] return A = remainder
-@ge10:
-  SBC #10        ; [2] note CF=1 from above
-  INC Acc0       ; [5] quotient low bit = 1 (rotate quotient into Acc0/1)
+@ge10:           ; CF=1
+  SBC #10        ; [2]
+  INC Acc0       ; [5] quotient bit0 = 1 (shift quotient into Acc0/1)
   DEX            ; [2]
   BNE @loop      ; [3] -> @loop [29]
   RTS            ; [6] return A = remainder [4+11*21+5*29+6 = ~386]
-
-
-parse_var:       ; X -> start of token (1st char is alpha)
-@loop:
-  INX            ; [2] next char
-  LDA LineBuf,X  ; [4] next input char
-  SEC            ; [2] for subtract
-  SBC #65        ; [2] make 'A' be 0
-  CMP #26        ; [2] 26 letters
-  BCC @loop      ; [3] is a letter -> @loop
-  JSR skip_spc   ; [12+]
-  LDA LineBuf,X  ; [4] next input char
-  CMP #$3D       ; [2] is it '='?
-  BEQ @let       ; [3] -> LET name = <expr>
-  JMP e_stmt     ; [3]
-@let:
-  INX
-  LDY #<err_var
-  JMP pf_error
 
 
 print_hex:      ; print Acc1,Acc0 in hex (uses A,Y, preserves X)
@@ -567,6 +573,25 @@ ok1:
 ok2:
   ADC #48       ; add '0'
   JMP writechar ; output char to screen (A=char, preserves X,Y)
+
+
+parse_var:       ; X -> start of token (1st char is alpha)
+@loop:
+  INX            ; [2] next char
+  LDA LineBuf,X  ; [4] next input char
+  SEC            ; [2] for subtract
+  SBC #65        ; [2] make 'A' be 0
+  CMP #26        ; [2] 26 letters
+  BCC @loop      ; [2] is a letter -> @loop [+1]
+  JSR skip_spc   ; [12+]
+  LDA LineBuf,X  ; [4] next input char
+  CMP #$3D       ; [2] is it '='?
+  BEQ @let       ; [2] -> LET name = <expr> [+1]
+  JMP e_stmt     ; [3]
+@let:
+  INX
+  LDY #<err_var
+  JMP pf_error
 
 
 e_expect:         ; A = expected character
