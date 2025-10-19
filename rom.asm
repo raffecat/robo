@@ -94,14 +94,13 @@ IO_SRCH     = $D1    ; DMA src high
 IO_DSTL     = $D2    ; DMA dest low
 IO_DSTH     = $D3    ; DMA dest high
 IO_DCTL     = $D4    ; DMA control         (7-6:direction 5:vertical 4:reverse 2-0:mode)
-IO_DRUN     = $D5    ; DMA count           (writing starts DMA, 0=256)
-;------     = $D6    ; 
+IO_DRUN     = $D5    ; DMA count           (write: start DMA, 0=256; read: increment DST += 640)
+IO_FILL     = $D6    ; DMA fill byte       (write: set FILL byte [data latch]; read: last value to/from IO_DDRW)
 IO_DDRW     = $D7    ; DMA data R/W        (read: reads from src++; write: writes to dest++)
-IO_DJMP     = $D8    ; DMA jump indirect   (read-only: indirect jump low byte)
-IO_APJP     = $D8    ; DMA APA / Jump Pg   (write-only: trigger APA write cycle, or set Jump Table page [page latch])
-IO_FILL     = $D9    ; DMA fill byte       (write-only: set FILL byte [data latch]; read: second byte of indirect jump)
-IO_BNK8     = $DA    ; Bank switch $8000   (low 4 bits)
-IO_BNKC     = $DB    ; Bank switch $C000   (low 4 bits)
+IO_DJMP     = $D8    ; DMA jump indirect   (read: indirect table jump [stalls for +1 cycle]; write: set Jump Table [page latch])
+IO_APWR     = $D9    ; DMA APA write       (read: second byte of indirect jump; write: triggers APA write cycle, writes [page latch])
+IO_BNK8     = $DA    ; Bank switch $8000   (low 6 bits)
+IO_BNKC     = $DB    ; Bank switch $C000   (low 6 bits)
 ;------     = $DC    ; 
 ;------     = $DD    ; 
 IO_KEYB     = $DE    ; Keyboard scan (write: set row; read: scan column)
@@ -242,7 +241,7 @@ reset:
 ; enter the basic command-line interface
 basic:
   LDA #>bas_jump ; high byte
-  STA IO_APJP    ; set BASIC jump table page (XXX move to RUN)
+  STA IO_DJMP    ; set BASIC jump table page (XXX move to RUN)
   LDY #<ready
   JSR printmsg
   LDA #0         ; clear keyboard buffer

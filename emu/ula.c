@@ -8,17 +8,15 @@ enum io_reg {
     IO_DSTL    = 0xD2,   // DMA dest low
     IO_DSTH    = 0xD3,   // DMA dest high
     IO_DCTL    = 0xD4,   // DMA control         (7-6:direction 5:vertical 4:reverse 2-0:mode)
-    IO_DRUN    = 0xD5,   // DMA count           (writing starts DMA, 0=256)
-    IO____1    = 0xD6,   // 
+    IO_DRUN    = 0xD5,   // DMA count           (write: start DMA, 0=256; read: increment DST += 640)
+    IO_FILL    = 0xD6,   // DMA fill byte       (write: set FILL byte [data latch]; read: last value to/from IO_DDRW)
     IO_DDRW    = 0xD7,   // DMA data R/W        (read: reads from src++; write: writes to dest++)
-    IO_DJMP    = 0xD8,   // DMA jump indirect   (read-only: indirect table jump [stalls for +1 cycle])
-    IO_APJP    = 0xD8,   // DMA APA / Jump Pg   (write-only: trigger APA write cycle, or set Jump Table page [page latch])
-    IO_FILL    = 0xD9,   // DMA fill byte       (write-only: set FILL byte [data latch])
-    IO_DJMH    = 0xD9,   // DMA jump 2nd byte   (read-only: second byte of indirect jump)
-    IO_BNK8    = 0xDA,   // Bank switch 0x8000  (low 4 bits)
-    IO_BNKC    = 0xDB,   // Bank switch 0xC000  (low 4 bits)
-    IO____2    = 0xDC,   // 
-    IO____3    = 0xDD,   // 
+    IO_DJMP    = 0xD8,   // DMA jump indirect   (read: indirect table jump [stalls for +1 cycle]; write: set Jump Table [page latch])
+    IO_APWR    = 0xD9,   // DMA APA write       (read: second byte of indirect jump; write: triggers APA write cycle, writes [page latch])
+    IO_BNK8    = 0xDA,   // Bank switch $8000   (low 6 bits)
+    IO_BNKC    = 0xDB,   // Bank switch $C000   (low 6 bits)
+    IO____1    = 0xDC,   // 
+    IO____2    = 0xDD,   // 
     IO_KEYB    = 0xDE,   // Keyboard scan (write: set row; read: scan column) (0x80|zp: DMA fastload 5 bytes)
     IO_MULW    = 0xDF,   // Booth multiplier (write {AL,AH,BL,BH} read {RL,RH})
 
@@ -173,7 +171,14 @@ static uint8_t ula_io_read(uint16_t address) {
         case IO_DSTL: value = DMA_Dst & 0xFF; break; // $D2: DMA dest low
         case IO_DSTH: value = DMA_Dst >> 8;   break; // $D3: DMA dest high
         case IO_DCTL: value = DMA_Ctl;        break; // $D4: DMA control
-        case IO_DRUN: break;                         // $D5: not defined (DMA count)
+        case IO_DRUN: {                              // $D5: increment DST by 640
+            DMA_Dst = (DMA_Dst + 512) & 0xFFFF; // bit 9 (CLK 1)
+            DMA_Dst = (DMA_Dst + 128) & 0xFFFF; // bit 7 (CLK 2)
+            break;
+        }
+        case IO_FILL:                                // $D6: read FILL byte [data latch]
+            value = DMA_DL;
+            break;
         case IO_DDRW: {                              // $D7: DMA data R/W (read from DMA_Src)
             // read cycle
             if (DMA_Ctl & dma_ctl_from_vram) {
@@ -181,33 +186,34 @@ static uint8_t ula_io_read(uint16_t address) {
             } else {
                 value = RAMView[DMA_Src>>14][DMA_Src & 0x3FFF];
             }
+            DMA_DL = value; // latch into DL for FILL-readback
             DMA_Src = (DMA_Src + DMA_sinc) & 0xFFFF;
             break;
         }
-        case IO_DJMP: {                            // $D8: DMA jump indirect (read low byte)
+        case IO_DJMP: {                              // $D8: DMA jump indirect (read low byte)
             // read from DMA_Src into DMA_DL
             // this costs an extra CPU cycle
             DMA_DL = RAMView[DMA_Src >> 14][DMA_Src & 0x3FFF];
             DMA_Src = (DMA_Src + DMA_sinc) & 0xFFFF;
-            clockticks6502++;
+            clockticks6502++; // XXX wrong: should be 2 pixel cycles (one VRAM cycle)
             // read low byte from jump table
             uint16_t entry = (DMA_Page<<8)|DMA_DL;
             value = RAMView[entry >> 14][entry & 0x3FFF];
             break;
         }
-        case IO_DJMH: {                            // $D9: DMA jump indirect (read high byte)
+        case IO_APWR: {                              // $D9: DMA jump indirect (read high byte)
             // read high byte from jump table
             uint16_t entry = (DMA_Page<<8)|DMA_DL|1;
             value = RAMView[entry >> 14][entry & 0x3FFF];
             break;
         }   
-        case IO_BNK8: value = Bank8; break;            // $DA: Bank switch 0x8000  (low 4 bits)
-        case IO_BNKC: value = BankC; break;            // $DB: Bank switch 0xC000  (low 4 bits)
-        case IO_KEYB: {                                // $DE: Keyboard scan (read: scan column)
+        case IO_BNK8: value = Bank8; break;          // $DA: Bank switch 0x8000  (low 4 bits)
+        case IO_BNKC: value = BankC; break;          // $DB: Bank switch 0xC000  (low 4 bits)
+        case IO_KEYB: {                              // $DE: Keyboard scan (read: scan column)
             value = scanKeyCol(KbdCol);
             break;
         }
-        case IO_MULW: break;                           // $DF: Booth multiplier? (write {AL,AH,BL,BH} read {RL,RH})
+        case IO_MULW: break;                         // $DF: Booth multiplier? (write {AL,AH,BL,BH} read {RL,RH})
 
         // E-page
         case IO_TON0:       // $E0: PSG Ch.0 tone
@@ -320,13 +326,13 @@ static void ula_io_write(uint16_t address, uint8_t value) {
         case IO_DRUN: {     // $D5: DMA count
             DMA_Run = value; // 8-bit register
             while (vdp_vbusy) {
-                clockticks6502++;
+                clockticks6502++; // XXX wrong: count VDP cycles until !VBusy, derive CPU cycles
                 advance_vdp();
             }
             if ((DMA_Ctl & DMA_Mode) == DMA_Fill) {
                 do {
                     // increment cycle (dummy read cycle)
-                    clockticks6502++;
+                    clockticks6502++; // XXX wrong: should be 2 pixel cycles (one VRAM cycle)
                     // write cycle
                     if (DMA_Ctl & dma_ctl_to_vram) {
                         VRAM[DMA_Dst & 0x3FFF] = DMA_DL;
@@ -336,7 +342,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
                         }
                     }
                     DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
-                    clockticks6502++;
+                    clockticks6502++; // XXX wrong: should be 2 pixel cycles (one VRAM cycle)
                     advance_vdp(); // in case DMA changes visible pixels
                     DMA_Run--;
                 } while (DMA_Run > 0);
@@ -349,7 +355,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
                         DMA_DL = RAMView[DMA_Src>>14][DMA_Src & 0x3FFF];
                     }
                     DMA_Src = (DMA_Src + DMA_sinc) & 0xFFFF;
-                    clockticks6502++;
+                    clockticks6502++; // XXX wrong: should be 2 pixel cycles (one VRAM cycle)
                     // write cycle
                     if (DMA_Ctl & dma_ctl_to_vram) {
                         VRAM[DMA_Dst & 0x3FFF] = DMA_DL;
@@ -359,7 +365,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
                         }
                     }
                     DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
-                    clockticks6502++;
+                    clockticks6502++; // XXX wrong: should be 2 pixel cycles (one VRAM cycle)
                     // DMA can change tiles that affects the very next pixel drawn.
                     // However VDP is already caught up before DMA starts.
                     // If we complete the DMA before the next pixel
@@ -369,8 +375,12 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             }
             break;
         }
+        case IO_FILL:                        // $D6: set FILL byte [data latch]
+            DMA_DL = value;
+            break;
         case IO_DDRW: {                      // $D7: DMA data R/W (write to DMA_Dst)
             // write cycle
+            DMA_DL = value; // latch into DL for FILL-readback
             if (DMA_Ctl & dma_ctl_to_vram) {
                 VRAM[DMA_Dst & 0x3FFF] = value;
             } else {
@@ -381,51 +391,49 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
             break;
         }
-        case IO_APJP:                        // $D8: trigger APA write cycle, or set Jump Table page [page latch]
+        case IO_DJMP:                        // $D8: set Jump Table [page latch]
             DMA_Page = value;                // 8-bit register [page latch]
-            if ((DMA_Ctl & DMA_Mode) == DMA_APA) {
-                // Trigger APA DMA cycle:
-                // APA address mapping (640x200 in all modes [or VV height])
-                uint16_t APA_Src = DMA_Src >> 3; // divide by 8 (8 pixels per byte at most: 640x200)
-                uint16_t APA_Dst = DMA_Dst >> 3; // divide by 8 (8 pixels per byte at most: 640x200)
-                uint8_t bit_mask; // HW uses AND-OR gates:
-                if (VidCtl & VCTL_4BPP) {
-                    bit_mask = 15 << ((DMA_Src&4)>>2); // position %1111 mask using bit %1xx
-                } else {
-                    bit_mask = 3 << ((DMA_Src&6)>>1); // position %11 mask using bits %11x
-                }
-                // read cycle.
-                if (DMA_Ctl & dma_ctl_from_vram) {
-                    DMA_DL = VRAM[APA_Src & 0x3FFF];
-                } else {
-                    DMA_DL = RAMView[APA_Src>>14][APA_Src & 0x3FFF];
-                }
-                DMA_Src = (DMA_Src + DMA_sinc) & 0xFFFF;
-                clockticks6502++;
-                // APA maked pixel replace.
-                DMA_DL = (DMA_DL & ~bit_mask) | (DMA_Page & bit_mask);
-                // write cycle.
-                if (DMA_Ctl & dma_ctl_to_vram) {
-                    VRAM[APA_Dst & 0x3FFF] = DMA_DL;
-                } else {
-                    if (RAMViewWR[APA_Dst>>14]) {
-                        RAMView[APA_Dst>>14][APA_Dst & 0x3FFF] = DMA_DL;
-                    }
-                }
-                DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
-                clockticks6502++;
-                advance_vdp();
+            break;
+        case IO_APWR: {                      // $D9: trigger APA write cycle, writes [page latch]
+            // Trigger APA DMA cycle:
+            // APA address mapping (640x200 in all modes [or VV height])
+            DMA_Page = value;                // 8-bit register [page latch]
+            uint16_t APA_Src = DMA_Src >> 3; // divide by 8 (8 pixels per byte at most: 640x200)
+            uint16_t APA_Dst = DMA_Dst >> 3; // divide by 8 (8 pixels per byte at most: 640x200)
+            uint8_t bit_mask; // HW uses AND-OR gates:
+            if (VidCtl & VCTL_4BPP) {
+                bit_mask = 15 << ((DMA_Src&4)>>2); // position %1111 mask using bit %1xx
+            } else {
+                bit_mask = 3 << ((DMA_Src&6)>>1); // position %11 mask using bits %11x
             }
+            // read cycle.
+            if (DMA_Ctl & dma_ctl_from_vram) {
+                DMA_DL = VRAM[APA_Src & 0x3FFF];
+            } else {
+                DMA_DL = RAMView[APA_Src>>14][APA_Src & 0x3FFF];
+            }
+            DMA_Src = (DMA_Src + DMA_sinc) & 0xFFFF;
+            clockticks6502++; // XXX wrong: should be 2 pixel cycles (one VRAM cycle)
+            // write cycle.
+            uint8_t wrval = (DMA_DL & ~bit_mask) | (DMA_Page & bit_mask); // APA mask
+            if (DMA_Ctl & dma_ctl_to_vram) {
+                VRAM[APA_Dst & 0x3FFF] = wrval;
+            } else {
+                if (RAMViewWR[APA_Dst>>14]) {
+                    RAMView[APA_Dst>>14][APA_Dst & 0x3FFF] = wrval;
+                }
+            }
+            DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
+            clockticks6502++; // XXX wrong: should be 2 pixel cycles (one VRAM cycle)
+            advance_vdp();
             break;
-        case IO_FILL:                        // $D9: set FILL byte [data latch]
-            DMA_DL = value;
-            break;
-        case IO_BNK8:                        // $CE: Bank switch $8000
+        }
+        case IO_BNK8:                        // $DA: Bank switch $8000
             Bank8 = value & 0xF;             // 4-bit register
             RAMView[2] = BankMap[Bank8];     // update active-bank table
             RAMViewWR[2] = BankMapWR[Bank8]; // [2] is the slot at $8000
             break;
-        case IO_BNKC:                        // $CF: Bank switch $C000
+        case IO_BNKC:                        // $DB: Bank switch $C000
             BankC = value & 0xF;             // 4-bit register
             RAMView[3] = BankMap[Bank8];     // update active-bank table
             RAMViewWR[3] = BankMapWR[Bank8]; // [3] is the slot at $C000
@@ -433,7 +441,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
         case IO_KEYB:                        // $DE: set keyboard scan column (4-bit)
             KbdCol = value & 0xF;
             break;
-        case IO_MULW:       // $ED: Booth multiplier? (write {AL,AH,BL,BH} read {RL,RH})
+        case IO_MULW:                        // $DF: Booth multiplier? (write {AL,AH,BL,BH} read {RL,RH})
             break;
 
         // E-page
@@ -466,7 +474,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
         case IO_YLIN:       // $F0: current Y-line         (write: wait for VBlank)
             // Stall the CPU
             while (!vdp_vblank) {
-                clockticks6502++;
+                clockticks6502++; // XXX wrong: count VDP cycles until VSync, derive CPU cycles
                 advance_vdp();
             }
             break;
