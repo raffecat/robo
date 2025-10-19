@@ -207,19 +207,20 @@ ENDM
 
 ORG ROM
 
-; ROM entry table     ; public entry points
+; ROM entry table     ; public entry points (double-JMP vectors)
   DB  10              ; version 1.0
   DB  11              ; length of table:
-  DW  reset           ; $C000
-  DW  basic           ; $C002
-  DW  print           ; $C004
-  DW  writechar       ; $C006
-  DW  readline        ; $C008
-  DW  mode            ; $C00A
-  DW  cls             ; $C00C
-  DW  tab             ; $C010
-  DW  clear_sprites   ; $C012
-  DW  reset_tilebank  ; $C014
+  JMP reset           ; $C000  reset the computer                              (JMP)
+  JMP basic           ; $C002  enter BASIC                                     (JMP)
+  JMP print           ; $C004  print len-prefix X=page Y=offset                (JSR uses A,X,Y)
+  JMP writechar       ; $C006  print char in A                                 (JSR preserves X,Y)
+  JMP newline         ; $C008  print a newline, scroll if necessary            (JSR preserves X,Y)
+  JMP readline        ; $C00A  read a line into LineBuf page (zero-terminated) (JSR uses A,X,Y)
+  JMP mode            ; $C00C  set screen mode, clear the screen               (JSR uses A,X,Y)
+  JMP cls             ; $C00E  clear the screen                                (JSR uses A,X,Y)
+  JMP tab             ; $C010  move the text cursor to X,Y                     (JSR uses A,X,Y)
+  JMP clear_sprites   ; $C012                                                  (JSR preserves Y)
+  JMP reset_tilebank  ; $C014                                                  (JSR preserves X,Y)
 
 reset:
   SEI            ; disable interrupts
@@ -231,30 +232,26 @@ reset:
   STX Color      ; set text color (before MODE)
   LDX #4         ; screen mode 4 (40x25 text, 16 color)
   JSR mode       ; set mode, clear screen
-  LDX #>welcome_1
   LDY #<welcome_1
-  JSR println
-  LDX #>welcome_2
+  JSR printmsg
   LDY #<welcome_2
-  JSR println
+  JSR printmsg
   ; +++ fall through to @@ basic +++
 
 ; @@ basic
 ; enter the basic command-line interface
 basic:
   LDA #>bas_jump ; high byte
-  STA IO_APJP    ; set BASIC jump table page
-  LDX #>ready
+  STA IO_APJP    ; set BASIC jump table page (XXX move to RUN)
   LDY #<ready
-  JSR println
+  JSR printmsg
   LDA #0         ; clear keyboard buffer
   STA KeyHd
   STA KeyTl
   JSR irq_init   ; restore system IRQ
 repl:
-  LDX #>prompt
-  LDY #<prompt
-  JSR print
+  LDA #$3E       ; ">"
+  JSR writechar
   JSR readline   ; -> Y=length
   JSR newline    ; preserves X,Y
   JSR parse_cmd
@@ -266,7 +263,7 @@ repl:
 
 e_stmt:
   LDY #(err_stmt - messages)
-  JMP printerr
+  JMP pf_error
 
 ; @@ parse_cmd
 ; parse a BASIC command line
@@ -399,11 +396,11 @@ parse_cmd:
 
 e_range:
   LDY #(err_range - messages)
-  JMP printerr
+  JMP pf_error
 
 e_bounds:
   LDY #(err_bound - messages)
-  JMP printerr
+  JMP pf_error
 
 
 ; @@ skip_spc
@@ -488,7 +485,7 @@ parse_var:       ; X -> start of token (1st char is alpha)
 @let:
   INX
   LDY #(err_var - messages)
-  JMP printerr
+  JMP pf_error
 
 
 print_hex:      ; print Acc1,Acc0 in hex (uses A,Y, preserves X)
@@ -519,25 +516,18 @@ ok2:
   JMP writechar ; output char to screen (A=char, preserves X,Y)
 
 
-printerr:         ; Y = message offset (from messages)
-  LDX #>messages  ; high byte
-  JSR println     ; X=high Y=low
-  JMP repl
-
 e_expect:         ; A = expected character
   STA Tmp         ; save char
   LDY #<msg_expecting
-  LDX #>messages
-  JSR print       ; X=high Y=low (uses A,Src)
+  JSR printmsg    ; Y=low (uses A,X,Y,Src)
   LDA Tmp         ; restore char
   JSR writechar
   JSR newline
   JMP repl
 
-e_expect_kw:      ; Tmp = keyword offset (low byte)
+e_expect_kw:      ; Tmp = keyword ofs (low byte) in kwtab
   LDY #<msg_expecting
-  LDX #>messages
-  JSR print       ; X=high Y=low (uses A,Src)
+  JSR printmsg    ; Y=low (uses A,X,Y,Src)
   LDY Tmp         ; offset
   LDX #>kwtab     ; page
   JSR println     ; X=high Y=low (uses A,Src)
@@ -709,6 +699,26 @@ pf_line:
   STY Ptr
   RTS
 
+
+; current version uses 6 bytes
+pf_error:         ; Y = low byte (in messages page)
+  JSR printmsg    ; Y=low
+  JMP repl
+
+; to be a win, this needs to be smaller than adding a length byte
+; to every message in messages (25-6 = 19 messages)
+;pf_error2:       ; Y=msg-ofs in messages page
+;  LDA messages,Y ; first char can be uppercase, print unconditionally
+;@loop
+;  JSR writechar  ; A=char (preserves X,Y)
+;  INY
+;  LDA messages,Y
+;  CMP #97        ; 'a'
+;  BCS @loop      ; >= 97 (loop while lowercase)
+;  ORA #32        ; set bit 5 (to lowercase)
+;  JSR writechar
+;  JSR newline
+;  JMP repl
 
 
 ; ------------------------------------------------------------------------------
@@ -887,7 +897,17 @@ kw_else:
 ; ------------------------------------------------------------------------------
 ; TABLES - MUST be page aligned (Y indexing)
 ALIGN $100
-messages:
+
+messages:    ; must be within one page for Y indexing
+welcome_1:
+  DB 14, "Robo BASIC 1.0"
+; 31488 leaves 5 pages (zero-page, stack, input-buf, sys-page, scratch-page)
+welcome_2:
+  DB 17, "31744 bytes free",13
+ready:
+  DB 5, "READY"
+prompt:
+  DB 1, ">"
 err_range:
   DB 8, "Bad line"
 err_stmt:
@@ -902,16 +922,10 @@ err_var:
   DB 16,"No such variable"
 err_div:
   DB 11,"Div by zero"
-
-welcome_1:
-  DB 14, "Robo BASIC 1.0"
-; 31488 leaves 5 pages (zero-page, stack, input-buf, sys-page, scratch-page)
-welcome_2:
-  DB 17, "31744 bytes free",13
-ready:
-  DB 5, "READY"
-prompt:
-  DB 1, ">"
+err_ovf:
+  DB 8,"Overflow"
+err_type:
+  DB 13,"Type mismatch"
 
 ; STATEMENT KEYWORDS
 kws_tab:
@@ -1471,34 +1485,7 @@ bas_print:
 
 ; ------------------------------------------------------------------------------
 ; PAGE 10 - SYSTEM
-
-; keymap tables
-; must be page-aligned (uses 2x64 = 128 bytes)
 ORG ROM+$1000 ; 4K
-
-;   Esc 1 2 3 4 5 6 7 (0)  8 9 0 - = ` Del Up    (4)
-;   Tab Q W E R T Y U (1)  I O P [ ] \     Down  (5)
-;  Caps A S D F G H J (2)  K L ; '     Ret Left  (6)
-;       Z X C V B N M (3)  , . /       Spc Right (7)
-;   Shf Ctl Fn                                   (8)
-scantab:
-  DB  $1B, $31, $32, $33, $34, $35, $36, $37     ;   Esc 1 2 3 4 5 6 7
-  DB  $09, $71, $77, $65, $72, $74, $79, $75     ;   Tab q w e r t y u
-  DB  $00, $61, $73, $64, $66, $67, $68, $6A     ;  Caps a s d f g h j
-  DB  $00, $7A, $78, $63, $76, $62, $6E, $6D     ;       z x c v b n m
-  DB  $38, $39, $30, $2D, $3D, $60, $1A, $8B     ;     8 9 0 - = ` Del Up
-  DB  $69, $6F, $70, $5B, $5D, $5C, $00, $8A     ;     i o p [ ] \     Down
-  DB  $6B, $6C, $3B, $27, $00, $00, $0D, $88     ;     k l ; '     Ret Left
-  DB  $2C, $2E, $2F, $00, $00, $00, $20, $89     ;     , . /       Spc Right
-scanshf:
-  DB  $1B, $21, $40, $23, $24, $25, $5E, $26     ;   Esc ! @ # $ % ^ &
-  DB  $09, $51, $57, $45, $52, $54, $59, $55     ;   Tab Q W E R T Y U
-  DB  $0E, $41, $53, $44, $46, $47, $48, $4A     ;  Caps A S D F G H J
-  DB  $00, $5A, $58, $43, $56, $42, $4E, $4D     ;       Z X C V B N M
-  DB  $2A, $28, $29, $5F, $2B, $7E, $00, $1A     ;     * ( ) _ + ~ Del Up
-  DB  $49, $4F, $50, $7B, $7D, $7C, $00, $00     ;     I O P { } |     Down
-  DB  $4B, $4C, $3A, $22, $00, $00, $00, $0D     ;     K L : "     Ret Left
-  DB  $3C, $3E, $3F, $00, $00, $00, $00, $20     ;     < > ?       Spc Right
 
 ; @@ key_scan
 ; scan the keyboard matrix for a keypress
@@ -1570,6 +1557,32 @@ keyscan:          ; uses A,X,Y returns nothing (!Tmp,+Tmp2)
   STY LastKey     ; [3] no keys pressed: clear last key pressed (to $00)
   RTS             ; [6] done
 
+; keymap tables
+; must be within a page to avoid boundary cross (uses 2x64 = 128 bytes)
+
+;   Esc 1 2 3 4 5 6 7 (0)  8 9 0 - = ` Del Up    (4)
+;   Tab Q W E R T Y U (1)  I O P [ ] \     Down  (5)
+;  Caps A S D F G H J (2)  K L ; '     Ret Left  (6)
+;       Z X C V B N M (3)  , . /       Spc Right (7)
+;   Shf Ctl Fn                                   (8)
+scantab:
+  DB  $1B, $31, $32, $33, $34, $35, $36, $37     ;   Esc 1 2 3 4 5 6 7
+  DB  $09, $71, $77, $65, $72, $74, $79, $75     ;   Tab q w e r t y u
+  DB  $00, $61, $73, $64, $66, $67, $68, $6A     ;  Caps a s d f g h j
+  DB  $00, $7A, $78, $63, $76, $62, $6E, $6D     ;       z x c v b n m
+  DB  $38, $39, $30, $2D, $3D, $60, $1A, $8B     ;     8 9 0 - = ` Del Up
+  DB  $69, $6F, $70, $5B, $5D, $5C, $00, $8A     ;     i o p [ ] \     Down
+  DB  $6B, $6C, $3B, $27, $00, $00, $0D, $88     ;     k l ; '     Ret Left
+  DB  $2C, $2E, $2F, $00, $00, $00, $20, $89     ;     , . /       Spc Right
+scanshf:
+  DB  $1B, $21, $40, $23, $24, $25, $5E, $26     ;   Esc ! @ # $ % ^ &
+  DB  $09, $51, $57, $45, $52, $54, $59, $55     ;   Tab Q W E R T Y U
+  DB  $0E, $41, $53, $44, $46, $47, $48, $4A     ;  Caps A S D F G H J
+  DB  $00, $5A, $58, $43, $56, $42, $4E, $4D     ;       Z X C V B N M
+  DB  $2A, $28, $29, $5F, $2B, $7E, $00, $1A     ;     * ( ) _ + ~ Del Up
+  DB  $49, $4F, $50, $7B, $7D, $7C, $00, $00     ;     I O P { } |     Down
+  DB  $4B, $4C, $3A, $22, $00, $00, $00, $0D     ;     K L : "     Ret Left
+  DB  $3C, $3E, $3F, $00, $00, $00, $00, $20     ;     < > ?       Spc Right
 
 ; @@ readchar
 ; read a single character from the keyboard buffer
@@ -1659,6 +1672,12 @@ wrctrl:          ; uses A, preserves X,Y
   RTS
 @back_sol:      ; start of buffer, or some line within a buffer?
   RTS
+
+; @@ printmsg
+; println a string in the messages page
+printmsg:
+  LDX #>messages  ; high byte
+  ; +++ fall through to @@ println +++
 
 ; @@ println
 ; print a string, then a carriage return
