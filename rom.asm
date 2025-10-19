@@ -1586,9 +1586,9 @@ keyscan:          ; uses A,X,Y returns nothing (!Tmp,+Tmp2)
 scantab:
   DB  $1B, $31, $32, $33, $34, $35, $36, $37     ;   Esc 1 2 3 4 5 6 7
   DB  $09, $71, $77, $65, $72, $74, $79, $75     ;   Tab q w e r t y u
-  DB  $00, $61, $73, $64, $66, $67, $68, $6A     ;  Caps a s d f g h j
+  DB  $0E, $61, $73, $64, $66, $67, $68, $6A     ;  Caps a s d f g h j
   DB  $00, $7A, $78, $63, $76, $62, $6E, $6D     ;       z x c v b n m
-  DB  $38, $39, $30, $2D, $3D, $60, $1A, $8B     ;     8 9 0 - = ` Del Up
+  DB  $38, $39, $30, $2D, $3D, $60, $08, $8B     ;     8 9 0 - = ` Del Up
   DB  $69, $6F, $70, $5B, $5D, $5C, $00, $8A     ;     i o p [ ] \     Down
   DB  $6B, $6C, $3B, $27, $00, $00, $0D, $88     ;     k l ; '     Ret Left
   DB  $2C, $2E, $2F, $00, $00, $00, $20, $89     ;     , . /       Spc Right
@@ -1597,10 +1597,10 @@ scanshf:
   DB  $09, $51, $57, $45, $52, $54, $59, $55     ;   Tab Q W E R T Y U
   DB  $0E, $41, $53, $44, $46, $47, $48, $4A     ;  Caps A S D F G H J
   DB  $00, $5A, $58, $43, $56, $42, $4E, $4D     ;       Z X C V B N M
-  DB  $2A, $28, $29, $5F, $2B, $7E, $00, $1A     ;     * ( ) _ + ~ Del Up
-  DB  $49, $4F, $50, $7B, $7D, $7C, $00, $00     ;     I O P { } |     Down
-  DB  $4B, $4C, $3A, $22, $00, $00, $00, $0D     ;     K L : "     Ret Left
-  DB  $3C, $3E, $3F, $00, $00, $00, $00, $20     ;     < > ?       Spc Right
+  DB  $2A, $28, $29, $5F, $2B, $7E, $08, $8B     ;     * ( ) _ + ~ Del Up
+  DB  $49, $4F, $50, $7B, $7D, $7C, $00, $8A     ;     I O P { } |     Down
+  DB  $4B, $4C, $3A, $22, $00, $00, $0D, $88     ;     K L : "     Ret Left
+  DB  $3C, $3E, $3F, $00, $00, $00, $20, $89     ;     < > ?       Spc Right
 
 ; @@ readchar
 ; read a single character from the keyboard buffer
@@ -1630,65 +1630,63 @@ readchar:        ; uses A,X,Y returns ASCII or zero (!Tmp)
 ; @@ writechar
 ; write a single character to the screen
 ; assumes we're in "text mode" with DMA DST set up
-writechar:       ; A=char; preserves X,Y
-  CMP #32        ; is it a control character?
-  BCC wrctrl     ; -> do control code and return
+writechar:       ; A=char; preserves X,Y [25]
+  CMP #32        ; [2] is it a control character?
+  BCC wrctrl     ; [2] if <32 -> execute control code and return [+1]
   STA IO_DDRW    ; [3] write tile byte to VRAM
   LDA Color      ; [2] current text color (16-color mode)
   STA IO_DDRW    ; [3] write attribte byte to VRAM
   DEC WinRem     ; [5] at right edge of window?
-  BNE ret        ; [3] if not -> RTS
-; +++ fall through: wrap onto the next line
+  BEQ newline    ; [2] if so -> newline [+1]
+  RTS            ; [6]
 
 ; @@ newline, in "text mode"
 ; advance to the next line inside the text window
 ; scroll the text window if we're at the bottom
 ; DMA is already set up (DST*) for "text mode"
 newline:         ; uses A, preserves X,Y
-  LDA WinRem     ; current WinRem
-  CLC            ; unknown CF
-  ADC #64        ; advance = 64 - (WinW - WinRem) = WinRem + 64 - WinW
-  SEC            ;
-  SBC WinW       ;
-  CLC            ; 
-  ASL A          ; A*2 for (text,attr) pairs [CF=1 if A >= 128]
-  CLC            ; 
-  ADC IO_DSTL    ; add destination low (may set CF=1)
-  STA IO_DSTL    ; set destination low
-  BCC @nohi      ; CF=0, did not cross a page boundary
-  INC IO_DSTH    ; CF=1, increment destination high
+  LDA WinRem     ; [3] current WinRem
+  CLC            ; [2]
+  ADC #64        ; [2] advance = 64 - (WinW - WinRem) = WinRem + 64 - WinW
+  SEC            ; [2]
+  SBC WinW       ; [3]
+  CLC            ; [2]
+  ASL A          ; [2] A*2 for (text,attr) pairs [CF=1 if A >= 128]
+  CLC            ; [2]
+  ADC IO_DSTL    ; [3] add destination low (may set CF=1)
+  STA IO_DSTL    ; [3] set destination low
+  BCC @nohi      ; [2] CF=0, did not cross a page boundary [+1]
+  INC IO_DSTH    ; [5] CF=1, increment destination high
 @nohi:           ; 
-  LDA WinW       ; reset remaining window width
-  STA WinRem     ; must be ready to write in steady-state
-ret:
-  RTS
+  LDA WinW       ; [3] reset remaining window width
+  STA WinRem     ; [3] must be ready to write in steady-state
+  RTS            ; [6]
 
 ; @@ wrctrl, in "text mode"
 ; write a single control code
 wrctrl:          ; uses A, preserves X,Y
-  CMP #13        ; is it RETURN?
-  BEQ newline    ; -> do newline and return
-  CMP #$1A       ; is it BACKSPACE?
-  BEQ @backsp    ; -> do backspace and return
-  RTS
-@backsp:         ; back up one cell, and clear it
-  ; XXX line editor won't use this, so it's just for PRINT CHR$(8) ?
-  LDA WinRem     ; remaining space
-  CMP WinW       ; window width
-  BEQ @back_sol  ; equal -> at start of the line
-  INC WinRem     ; give back one character
-  ; use reverse DMA mode to write backwards
-  ; this is only safe if we're not at the left edge
-  LDA IO_DCTL    ; get DMA control
-  ORA #DMA_Rev   ; set reverse direction
-  STA IO_DCTL    ; set DMA control
-  LDX #0         ; clear to zero
-  STX IO_DDRW    ; write attribute (reverse dir)
-  STX IO_DDRW    ; write text char (reverse dir)
-  EOR #DMA_Rev   ; clear reverse direction
-  STA IO_DCTL    ; set DMA control
-  RTS
-@back_sol:      ; start of buffer, or some line within a buffer?
+  CMP #13        ; [2] is it RETURN?
+  BEQ newline    ; [2] -> do newline and return [+1]
+  CMP #8         ; [2] is it BACKSPACE?
+  BEQ @backsp    ; [2] -> do backspace and return [+1]
+  RTS            ; [6]
+@backsp:         ; go back one cell and clear it
+  LDA WinRem     ; [3] remaining space
+  CMP WinW       ; [3] window width
+  BEQ @back_sol  ; [2] equal -> at start of the line [+1]
+  INC WinRem     ; [5] give back one character
+  ; only correct if we're not at the left edge:
+  DEC IO_DSTL    ; [5] cannot wrap (within an aligned span of 128)
+  DEC IO_DSTL    ; [5] cannot wrap (as above)
+  LDA #32        ; [3] space character
+  STA IO_DDRW    ; [3] only to decrement the address!
+  LDA Color      ; [2] current text color (16-color mode)
+  STA IO_DDRW    ; [3] write attribute (reverse dir)
+  DEC IO_DSTL    ; [5] cannot wrap (redoing the above decrements)
+  DEC IO_DSTL    ; [5] cannot wrap
+  RTS            ; [6]
+@back_sol:       ; start of buffer, or some line within a buffer?
+  ; XXX incomplete: go back to previous line if multiline
   RTS
 
 ; @@ printmsg
@@ -1719,9 +1717,9 @@ print:           ; X=high Y=low (uses Src,A,X,Y)
   LDA (Src),Y    ; [5] load char from string
   ; begin writechar inline
   CMP #32        ; [2] is it a control character?
-  BCC @ctrl      ; [2] if so -> @ctrl
+  BCC @ctrl      ; [2] if <32 -> @ctrl
   STA IO_DDRW    ; [3] write tile byte to VRAM
-  LDA Color      ; [2] current text color (16-color mode)
+  LDA Color      ; [3] current text color (16-color mode)
   STA IO_DDRW    ; [3] write attribte byte to VRAM
   DEC WinRem     ; [5] at right edge of window?
   BEQ @nl        ; [2] if so -> @nl
@@ -1733,13 +1731,9 @@ print:           ; X=high Y=low (uses Src,A,X,Y)
 @ret
   RTS            ; [6] done
 @nl:             ; wrap onto the next line and keep printing
-  JSR newline    ; [6] uses A, preserves X,Y
-  JMP @incr      ; [3] always
-; control codes
+  LDA #13        ; [2] newline control code
 @ctrl:
-  CMP #13        ; [2] ENTER
-  BEQ @nl        ; [2]
-  JSR wrctrl     ; [6] execute control code, uses A, preserves ???
+  JSR wrctrl     ; [6] execute control code (uses A, preserves X,Y)
   JMP @incr
 
 
@@ -1770,7 +1764,7 @@ readline:        ; uses A,X,Y, returns Y=length (Z=1 if zero)
   CMP #13        ; is it RETURN?
   BEQ @done      ; if so -> exit
   LDY Tmp        ; load line offset [3] not [4]
-  CMP #08        ; is it BACKSPACE?
+  CMP #8         ; is it BACKSPACE?
   BEQ @backsp    ; if so -> @backsp
   CPY #$FF       ; at the final byte?
   BEQ @beep      ; buffer full -> beep
@@ -1789,6 +1783,7 @@ readline:        ; uses A,X,Y, returns Y=length (Z=1 if zero)
   BEQ @beep      ; buffer empty -> beep
   DEY            ; go back one place
   STY Tmp        ; save line offset [3] not [4]
+  JSR wrctrl     ; backspace the display
     ; XXX if text is selected -> from=end_of_sel; to=start_of_sel
     ; XXX else from=cursor; to=cursor-1
     ; XXX DMA_len = buf_length - from
