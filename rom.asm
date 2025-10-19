@@ -207,8 +207,8 @@ ENDM
 ORG ROM
 
 ; ROM entry table     ; public entry points (double-JMP vectors)
-  DB  10              ; version 1.0
-  DB  11              ; length of table:
+  DB  10              ; ROM version 1.0
+  DB  11              ; number of entry points:
   JMP reset           ; $C000  reset the computer                              (JMP)
   JMP basic           ; $C002  enter BASIC                                     (JMP)
   JMP print           ; $C004  print len-prefix X=page Y=offset                (JSR uses A,X,Y)
@@ -220,6 +220,33 @@ ORG ROM
   JMP tab             ; $C010  move the text cursor to X,Y                     (JSR uses A,X,Y)
   JMP clear_sprites   ; $C012                                                  (JSR preserves Y)
   JMP reset_tilebank  ; $C014                                                  (JSR preserves X,Y)
+
+messages:    ; must be within one page for Y indexing
+welcome_1:
+  DB 14, "Robo BASIC 1.0"
+; 31488 leaves 5 pages (zero-page, stack, input-buf, sys-page, scratch-page)
+welcome_2:
+  DB 17, "31744 bytes free",13
+ready:
+  DB 5, "READY"
+err_range:
+  DB 8, "Bad line"
+err_stmt:
+  DB 13, "Bad statement"
+err_bound:
+  DB 13,"Out of bounds"
+msg_expecting:
+  DB 10,"Expecting "
+err_var:
+  DB 16,"No such variable"
+err_div:
+  DB 11,"Div by zero"
+err_ovf:
+  DB 8,"Overflow"
+err_type:
+  DB 13,"Type mismatch"
+err_prog:
+  DB 10,"No program"
 
 reset:
   SEI            ; disable interrupts
@@ -261,7 +288,7 @@ repl:
 ; BASIC Parser
 
 e_stmt:
-  LDY #(err_stmt - messages)
+  LDY #<err_stmt
   JMP pf_error
 
 ; @@ parse_cmd
@@ -275,7 +302,7 @@ parse_cmd:
   STA Ptr        ; [3]
 
   ; parse line number
-  JSR parse_n16  ; [12+] parse number at LineBuf,X -> {Acc0/1}, X, ZF
+  JSR n16_parse  ; [12+] parse number at LineBuf,X -> {Acc0/1}, X, ZF
   BEQ @stmt      ; [2] -> no line number
 
   ; debug
@@ -394,11 +421,11 @@ parse_cmd:
   RTS            ; return to parse function
 
 e_range:
-  LDY #(err_range - messages)
+  LDY #<err_range
   JMP pf_error
 
 e_bounds:
-  LDY #(err_bound - messages)
+  LDY #<err_bound
   JMP pf_error
 
 
@@ -412,9 +439,9 @@ skip_spc:
   DEX            ; [2] undo advance (didn't match)
   RTS            ; [6] return X
 
-; @@ parse_n16
+; @@ n16_parse
 ; parse a 16-bit number -> {Acc0/1}, X, ZF
-parse_n16:       ; from LineBuf,X returning {Acc0/1} X=end ZF=no-match (uses Y +Tmp)
+n16_parse:       ; from LineBuf,X returning {Acc0/1} X=end ZF=no-match (uses Y +Tmp)
   LDA #0         ; [2] length of num
   STA Acc0       ; [3] clear result
   STA Acc1       ; [3]
@@ -442,7 +469,7 @@ parse_n16:       ; from LineBuf,X returning {Acc0/1} X=end ZF=no-match (uses Y +
   RTS            ; [6] return X=end
 
 ; @@ n16_mul_10
-; multiply {Acc1,Acc0} by 10 (uses Term)
+; multiply {Acc0,1} by 10 (uses Term)
 n16_mul_10:     ; Uses A, preserves X,Y (+Term)
   LDA Acc0      ; [3] Term = Val * 2
   ASL           ; [2]
@@ -467,6 +494,33 @@ n16_mul_10:     ; Uses A, preserves X,Y (+Term)
   BCS e_range   ; [2] -> unsigned overflow
   RTS           ; [6] -> [64+6]
 
+; @@ n16_tostr
+; convert 16-bit {Acc0,1} to a string
+n16_tostr:       ; from {Acc0,1} (uses Y +Tmp)
+  
+
+
+; @@ n16_div10
+; divide {Acc0,1} by 10, returning A = remainder
+n16_div10:
+  LDX #16        ; [2] 16 bits
+  LDA #0         ; [2] remainder
+@loop:
+  ASL Acc0       ; [5] CF << Acc0 << 0 (quotient low bit = 0)
+  ROL Acc1       ; [5] CF << Acc1 << CF
+  ROL A          ; [2] remainder << CF
+  CMP #10        ; [2]
+  BCS @ge10      ; [2] -> is >= 10
+  DEX            ; [2]
+  BNE @loop      ; [3] -> @loop [21]
+  RTS            ; [6] return A = remainder
+@ge10:
+  SBC #10        ; [2] note CF=1 from above
+  INC Acc0       ; [5] quotient low bit = 1 (rotate quotient into Acc0/1)
+  DEX            ; [2]
+  BNE @loop      ; [3] -> @loop [29]
+  RTS            ; [6] return A = remainder [4+11*21+5*29+6 = ~386]
+
 
 parse_var:       ; X -> start of token (1st char is alpha)
 @loop:
@@ -483,7 +537,7 @@ parse_var:       ; X -> start of token (1st char is alpha)
   JMP e_stmt     ; [3]
 @let:
   INX
-  LDY #(err_var - messages)
+  LDY #<err_var
   JMP pf_error
 
 
@@ -596,7 +650,7 @@ pfs_if:
   LDY #<kw_then  ; "THEN"
   JSR match_kw   ; uses A,X,Y (Tmp) -> CF,X
   BCS @no_then   ; -> allow stmts, but not line no
-  JSR parse_n16  ; [12+] parse line number -> {Acc0/1}, X, ZF
+  JSR n16_parse  ; [12+] parse line number -> {Acc0/1}, X, ZF
   BNE @then_lno  ; [2] -> found line number
 @no_then:
   JSR pf_stmts   ; parse statements
@@ -606,7 +660,7 @@ pfs_if:
   BCS @done      ; -> no ELSE
   LDA #OP_ELSE   ; write OP_ELSE
   JSR pf_opcode
-  JSR parse_n16  ; [12+] parse line number -> {Acc0/1}, X, ZF
+  JSR n16_parse  ; [12+] parse line number -> {Acc0/1}, X, ZF
   BNE @else_lno  ; [2] -> found line number
   JSR pf_stmts   ; parse statements
 @done:
@@ -722,7 +776,7 @@ pf_error:         ; Y = low byte (in messages page)
 
 ; ------------------------------------------------------------------------------
 ; STATEMENT KEYWORDS - MUST be page aligned (Y indexing)
-ALIGN $100
+ALIGN ROM+$500
 kws_page:
 
 kws_a:
@@ -897,34 +951,18 @@ kw_else:
 ; TABLES - MUST be page aligned (Y indexing)
 ALIGN $100
 
-messages:    ; must be within one page for Y indexing
-welcome_1:
-  DB 14, "Robo BASIC 1.0"
-; 31488 leaves 5 pages (zero-page, stack, input-buf, sys-page, scratch-page)
-welcome_2:
-  DB 17, "31744 bytes free",13
-ready:
-  DB 5, "READY"
-prompt:
-  DB 1, ">"
-err_range:
-  DB 8, "Bad line"
-err_stmt:
-  DB 13, "Bad statement"
-err_bound:
-  DB 13,"Out of bounds"
-msg_expecting:
-  DB 10,"Expecting "
-err_match:
-  DB 5,"Match"
-err_var:
-  DB 16,"No such variable"
-err_div:
-  DB 11,"Div by zero"
-err_ovf:
-  DB 8,"Overflow"
-err_type:
-  DB 13,"Type mismatch"
+; Command list for the repl
+kws_repl:
+  DB "LIST",$A5
+  DB "RUN",$A0
+  DB "AUTO",$80
+  DB "RENUMBER",$A0
+  DB "DELETE",$A4
+  DB "LOAD",$A2
+  DB "SAVE",$A3
+  DB "NEW",$A6
+  DB "OLD",$A7
+  DB 0
 
 ; STATEMENT KEYWORDS
 kws_tab:
@@ -1115,25 +1153,6 @@ kwe_pb:            ; [49]
   DB 0+(1<<5)      ; "USR", $AE     fn (0,1)
   DB 0+(1<<5)      ; "VAL",$AF      fn (0,1)
   DB 0             ; "VPOS",$B0     no-arg (3,0)
-
-
-; ------------------------------------------------------------------------------
-; COMMAND LIST - MUST be page aligned (Y indexing)
-ALIGN $100
-
-; Command list for the repl
-kws_repl:
-  DB "LIST",$A5
-  DB "RUN",$A0
-  DB "AUTO",$80
-  DB "RENUMBER",$A0
-  DB "DELETE",$A4
-  DB "LOAD",$A2
-  DB "SAVE",$A3
-  DB "NEW",$A6
-  DB "OLD",$A7
-  DB 0
-
 
 
 
