@@ -159,7 +159,7 @@ void advance_vdp() {
         // tile 1: shift 1st BG tile into pixel shift register; load 2nd BG tile graphics.
         // tile 2: start drawing from pixel shift register; load 3rd BG tile graphics.
         if (vdp_vbusy && vdp_hbusy) {
-            // rising edge:
+            // VRAM memory access on each cycle
             // load next background tile every 8 clk
             if (vdp_hsub == 0) {
                 int Vshift = 6+(NameSize>>2); // 1 + 5-8 bits (32,64,128,256) (top 2 bits of NameSize are width)
@@ -183,43 +183,43 @@ void advance_vdp() {
                 if (!(VidCtl & VCTL_16COL)) addr |= (bg_ld_al&1) << 12; // extra bit in 4-color mode
                 bg_ld_gfx1 = VRAM[addr]; // GFX1
             }
-            // shift up the last pixel
-            // shift left (out <- [msb<-lsb][msb<-lsb][msb<-lsb] <- load)
-            bg_shift = bg_shift << 2;
-            // load a byte into shift register every 4 pixels, because we shift twice (2bpp)
-            if (vdp_hsub == 0) {
-                bg_shift |= bg_ld_gfx0; // set low byte of 24-bit
-                bg_attr = bg_attr_del;  // move delayed attrs to active attrs (every 8th)
-                bg_attr_del = bg_ld_al; // latch current BG attrs (every 8th)
-            } else if (vdp_hsub == 4) {
-                bg_shift |= bg_ld_gfx1; // set low byte of 24-bit
-            }
-            // falling edge:
-            // clock out a pixel every Nth clk (N=bpp)
+        }
+        // clock the shifter on each cycle
+        // shift left (out <- [msb<-lsb][msb<-lsb][msb<-lsb] <- load) [rising edge]
+        bg_shift = bg_shift << 2;
+        // load a byte into shift register every 4 pixels, because we shift twice (2bpp) [falling edge]
+        if (vdp_hsub == 0) {
+            bg_shift |= bg_ld_gfx0; // set low byte of 24-bit
+            bg_attr = bg_attr_del;  // move delayed attrs to active attrs (every 8th)
+            bg_attr_del = bg_ld_al; // latch current BG attrs (every 8th)
+        } else if (vdp_hsub == 4) {
+            bg_shift |= bg_ld_gfx1; // set low byte of 24-bit
+        }
+        if (vdp_vborder == 0 && vdp_hborder == 0) {
+            // display area
+            // latch the pixel every Nth clk (N=bpp) [falling edge]
             if ((vdp_hsub & bpp) == 0) { // h&0 (always) or H&1 (every 2nd)
                 //bg_pixel = bg_shift & (bpp_mask << (VidFinH << 1));
                 bg_pixel = (bg_shift >> bpp_shift); // take `bpp` top bits of 24-bit
             }
-            if (vdp_vborder == 0 && vdp_hborder == 0) {
-                // pixel output
-                uint8_t text_col;
-                if (VidCtl & VCTL_16COL) {
-                    text_col = ((bg_pixel&2)<<3) | ((bg_pixel&1) ? (bg_attr&15) : (bg_attr>>4)); // 16-color mode.
-                } else {
-                    text_col = ((bg_attr&14)<<1) | bg_pixel; // 4-color mode (8-palettes)
-                }
-                uint8_t px = PAL_RAM[text_col]; // [IIRRGGBB]
-                if (FBrow < fb_height && FBcol < fb_width) { // safety check
-                    static uint8_t chroma[4] = {0x00,0x60,0xB0,0xF0}; // 0.....6....B...F
-                    static uint8_t luma[4] = {0x05,0x09,0x0C,0x0F};   // .....5...9..C..F
-                    uint32_t red = chroma[(px>>4)&3] | luma[px>>6]; // red
-                    uint32_t green = chroma[(px>>2)&3] | luma[px>>6]; // green
-                    uint32_t blue = chroma[(px>>0)&3] | luma[px>>6]; // blue
-                    uint32_t output = 0xFF000000 | (red<<16) | (green<<8) | blue;
-                    int coord = ((fb_vbord+FBrow) * fb_width) + fb_hbord + FBcol;
-                    FB[coord] = output;
-                    FBcol++;
-                }
+            // pixel output
+            uint8_t text_col;
+            if (VidCtl & VCTL_16COL) {
+                text_col = ((bg_pixel&2)<<3) | ((bg_pixel&1) ? (bg_attr&15) : (bg_attr>>4)); // 16-color mode.
+            } else {
+                text_col = ((bg_attr&14)<<1) | bg_pixel; // 4-color mode (8-palettes)
+            }
+            uint8_t px = PAL_RAM[text_col]; // [IIRRGGBB]
+            if (FBrow < fb_height && FBcol < fb_width) { // safety check
+                static uint8_t chroma[4] = {0x00,0x60,0xB0,0xF0}; // 0.....6....B...F
+                static uint8_t luma[4] = {0x05,0x09,0x0C,0x0F};   // .....5...9..C..F
+                uint32_t red = chroma[(px>>4)&3] | luma[px>>6]; // red
+                uint32_t green = chroma[(px>>2)&3] | luma[px>>6]; // green
+                uint32_t blue = chroma[(px>>0)&3] | luma[px>>6]; // blue
+                uint32_t output = 0xFF000000 | (red<<16) | (green<<8) | blue;
+                int coord = ((fb_vbord+FBrow) * fb_width) + fb_hbord + FBcol;
+                FB[coord] = output;
+                FBcol++;
             }
         }
         vdp_clk++;
