@@ -186,6 +186,7 @@ uint16_t oldpc, ea, reladdr, value, result;
 uint8_t opcode, oldstatus;
 
 // debugger state
+uint8_t dbg_enable = 0;
 uint16_t dbg_break = 0;
 
 //externally supplied functions
@@ -948,14 +949,16 @@ void exec6502(uint32_t tickcount) {
     clockgoal6502 += tickcount;
 
     while (clockticks6502 < clockgoal6502) {
-        if (pend_irq) {
 #ifdef DEBUGGER
+        if (dbg_enable) {
             old_pc = pc;
-            if ((pend_irq & 8) && pc == dbg_break) {
+            if (dbg_enable && pc == dbg_break) {
                 printf("%04X breakpoint\n", pc);
                 return;
             }
+        }
 #endif
+        if (pend_irq) {
             if ((pend_irq & 1) && !(status & FLAG_INTERRUPT)) {
                 pend_irq &= ~1;
                 irq6502();
@@ -982,7 +985,7 @@ void exec6502(uint32_t tickcount) {
         instructions++;
 
 #ifdef DEBUGGER
-        if (pend_irq&8) {
+        if (dbg_enable) {
             dbg_decode_next_op(old_pc);
         }
 #endif

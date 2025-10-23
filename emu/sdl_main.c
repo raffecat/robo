@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
     reset6502();
 
     // DEBUGGER
-    pend_irq = 8-8; // 8 = enable debug
+    dbg_enable = 0;
     dbg_break = 0x0C0E1;
     Uint32 held_time = 0;
 
@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
         }    
 
         // run the CPU.
-        if (!(pend_irq&8)) {
+        if (!dbg_enable) {
             exec6502(one_scanline);
         } else {
             // debugger

@@ -19,6 +19,7 @@ void request_nmi();
 extern uint32_t clockticks6502;
 extern uint16_t pc;
 extern uint8_t sp, a, x, y, status;
+extern uint8_t dbg_enable;
 extern uint16_t dbg_break;
 extern uint8_t pend_irq;
 

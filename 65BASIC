@@ -888,7 +888,12 @@ ADC #$F0  ; Set top bits clear if -ve, set if +ve (added to sign bit)
 EOR #$F0  ; Toggle bits (&F+0=&F->&0; &F+1=&0->&F)
 
 ; other tricks
-; http://www.6502.org/users/mycorner/6502/shorts/index.html
+http://www.6502.org/users/mycorner/6502/shorts/index.html
+http://www.6502.org/users/mycorner/6502/shorts/asl.html
+http://6502.org/documents/books/  (ksproul_unsorted.pdf ASM65)
+
+CMP #$80           ; copy Sign into CF
+ROR A              ; arithmetic shift right (Sign >> A >> CF)
 
 
 if v>100 { print "1"; v-=100 }
