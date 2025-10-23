@@ -39,10 +39,14 @@ Ptr      = $02    ; second pointer
 PtrH     = $03    ; second pointer high
 Tmp      = $04    ; temp
 Tmp2     = $05    ; temp
-KeyHd    = $06    ; keyboard buffer head
-KeyTl    = $07    ; keyboard buffer tial
-ModKeys  = $08    ; modifier keys: Shf Ctl Fn Caps Left Rght Down Up
-LastKey  = $09    ; keyboard last key pressed, for auto-repeat
+Tmp3     = $06    ; temp
+
+; Keyboard buffer
+
+KeyHd    = $0A    ; keyboard buffer head
+KeyTl    = $0B    ; keyboard buffer tial
+ModKeys  = $0C    ; modifier keys: Shf Ctl Fn Caps Left Rght Down Up
+LastKey  = $0D    ; keyboard last key pressed, for auto-repeat
 
 ; BASIC vars
 
@@ -232,7 +236,7 @@ ready:
 err_range:
   DB 8, "Bad line"
 err_stmt:
-  DB 13, "Bad statement"
+  DB 11, "Bad command"
 err_bound:
   DB 13,"Out of bounds"
 msg_expecting:
@@ -247,6 +251,8 @@ err_type:
   DB 13,"Type mismatch"
 err_prog:
   DB 10,"No program"
+err_repl:
+  DB 4,"REPL"
 
 reset:
   SEI            ; disable interrupts
@@ -302,15 +308,15 @@ e_stmt:
 ; parse a BASIC command line
 parse_cmd:
   LDX #0         ; [2]
-  JSR skip_spc   ; [12+] leading spaces
+  JSR skip_spc   ; [24+] leading spaces
 
   ; init bytecode write pos
   LDA #1         ; [2] after OP at [0]
-  STA Ptr        ; [3]
+  STA Ptr        ; [3] bytecode write offset (+Ptr)
 
   ; parse line number
   JSR n16_parse  ; [12+] parse number at LineBuf,X -> {Acc0/1}, X, ZF
-  BEQ @stmt      ; [2] -> no line number
+  BEQ @repl      ; [2] -> no line number
 
   ; debug
   STX Tmp
@@ -322,34 +328,116 @@ parse_cmd:
   LDA Acc0       ; [3]
   STA Line       ; [3]
   LDA Acc1       ; [3]
-  BMI e_range    ; [2] -> negative
+  BPL @ge0       ; [2] -> valid >= 0
+  JMP e_range
+@ge0:
   STA LineH      ; [3]
   ; +++ fall through
 
 @stmt:
-  JSR skip_spc   ; [12+] leading spaces
+  JSR skip_spc   ; [24+] leading spaces
   STX Tmp        ; [3] start of token (+Tmp)
 
   ; XXX this needs to use pf_stmts, recursion is allowed
   ; XXX pf_stmts needs to call pf_stmt in a loop
   ; XXX pf_stmt needs to do what this does
 
-  ; check for keyword
+  ; check for alpha char
+  JSR is_alpha   ; [24] returns CF=0 if alphabetic
+  BCS e_stmt     ; [2] -> not a keyword (CF=1)
+
+  ; search for a matching statement keyword
+  TAY              ; [2] as an index (0-25)
+  LDA stmt_tab,Y   ; [4] offset within keyword table
+  LDY #>stmt_page  ; [2] stmt keyword table
+  JSR scan_kw_idx  ; [6] search -> CF=1 if found, X=next-input
+  BCS @stmt_found  ; [2] -> found a match
+  JMP parse_var    ; [3] -> no match, must be a variable
+
+  ; try matching a repl command
+@repl:
+  LDA #<repl_tab   ; [2] repl commands table
+  LDY #>repl_tab   ; [2]
+  JSR scan_kw_all  ; [6] search -> CF=1 if found, X=next-input
+  BCS @repl_found  ; [2] -> found a match
+  BCC @stmt        ; [3] -> match a statement instead
+
+  ; matched a statement
+@stmt_found:      ; A = top-bit byte; X -> after keyword
+  STA LineBuf     ; write opcode to LineBuf[0] (stmts keep top-bit)
+  EOR #$80        ; clear top bit
+  CMP #41         ; ASSERT
+  BCS e_bounds    ; ASSERT
+  TAY             ; as index
+  LDA stmt_pb,Y   ; A = parse byte
+  STA PtrH        ; save parse flags for parse function (+PtrH)
+  AND #31         ; low 5 bits
+  ASL             ; times 2 (word index)
+  TAY             ; as index
+  LDA stmt_fn+1,Y ; parse function, high byte
+  PHA             ; push high
+  LDA stmt_fn,Y   ; parse function, low byte
+  PHA             ; push low
+  RTS             ; return to parse function
+
+@repl_found:
+  LDY #<err_repl
+  JMP pf_error
+
+
+e_bounds:
+  LDY #<err_bound
+  JMP pf_error
+
+
+; @@ skip_spc
+; skip spaces in the input buffer
+skip_spc:        ; X = input-ofs (uses A preserves Y) -> returns X
   LDA LineBuf,X  ; [4] next input char
+  INX            ; [2] advance (assume match)
+  CMP #32        ; [2] was it space?
+  BEQ skip_spc   ; [2] -> loop [+1]
+  DEX            ; [2] undo advance (didn't match)
+  RTS            ; [6] return X [12+6=18]
+
+
+; @@ is_alpha
+is_alpha:        ; X=input-ofs (uses A, preserves X,Y) -> CF=0 if alphabetic
+  LDA LineBuf,X  ; [4] next input char
+  AND #$DF       ; [2] lower -> upper (clear bit 5)
   SEC            ; [2] for subtract
   SBC #65        ; [2] make 'A' be 0
-  CMP #26        ; [2] 26 letters
-  BCS e_stmt     ; [2] >= 26 -> not a keyword
+  CMP #26        ; [2] 26 letters (CF=1 if >= 26)
+  RTS            ; [6] return CF=0 if alphabetic [12+6=18]
 
+
+; @@ scan_kw_idx
+; find a matching keyword in a table indexed by first letter
+scan_kw_idx:       ; X=input-offset A=table-low Y=table-high
   ; find first keyword for this letter
-  TAY             ; [2] as an index
-  LDA kws_tab,Y   ; [4] offset within page
-  STA Src         ; [3] src low byte
-  LDA #>kws_page  ; [4] stmt page
-  STA SrcH        ; [3] src high byte
+  STA Src          ; [3] table-low
+  STY SrcH         ; [3] table-high
+  ; start the search  
+  LDY #$FF         ; [2] search-mode: same-first-char (D7=1)
+  STY Tmp3         ; [3] set mode
+  INY              ; [2] word list offset (start of 1st word) = 0
+  BEQ scan_kw_list ; [3] -> always
 
-  ; scan the keyword list
-  LDY #0         ; [2] word list offset (start of 1st word)
+; @@ scan_kw_all
+; scan a list of keywords, matching all keywords in the list.
+scan_kw_all:       ; X=input-offset A=table-low Y=table-high
+  STA Src          ; [3] table-low
+  STY SrcH         ; [3] table-high
+  LDY #0           ; [2] word list offset (start of 1st word)
+  STY Tmp3         ; [3] search-mode: all-keywords (D7=0)
+  ; +++ fall through to @@ scan_kw_list +++
+
+; @@ scan_kw_list
+; find a matching keyword (terminated by a byte with the top-bit set) in a zero-terminated list
+; two search modes are supported: same-first-char (D7=1) or all-keywords (D7=0)
+scan_kw_list:    ; X=input-ofs Y=keyword-ofs Src=keyword-list Tmp3.D7=search-mode (+Tmp2)
+  DEX            ; [2] nullify first pre-increment
+  DEY            ; [2] nullify first pre-increment
 @next_kw:
   LDA #0         ; [2] zero
   STA Tmp2       ; [3] dot shorthand off (zero) (Tmp2)
@@ -358,37 +446,41 @@ parse_cmd:
   INY            ; [2] pre-increment keyword position
   LDA LineBuf,X  ; [4] next input char
   EOR (Src),Y    ; [5] compare keyword char
-  BEQ @match_lp  ; [3] -> yes, next char
+  BEQ @match_lp  ; [2] -> yes, next char [+1]
   CMP #32        ; [2] differs only by upper/lower case? (bit 5)
-  BEQ @match_en  ; [3] -> yes, enable dot, next char
+  BEQ @match_en  ; [2] -> yes, enable dot, next char [+1]
 
   ; no match, check edge-cases
   LDA LineBuf,X  ; [4] reload input char
-  BEQ @end_line  ; [2] -> end of input (check if we matched the current keyword)
+  BEQ @no_match  ; [2] -> end of input (check if we matched the current keyword) [+1]
   CMP #46        ; [2] dot
-  BEQ @match_dot ; [2] -> check dot shorthand
+  BEQ @match_dot ; [2] -> check dot shorthand [+1]
 
-  ; this input char didn't match
-@no_match:
-  DEX            ; [2] undo input inc (didn't match keyword)
-@end_line:       ; X = nonmatching offset
-  LDA (Src),Y    ; [5] check keyword char
-  BMI @kw_found  ; [2] -> matched a keyword (top bit set)
-  ; +++ fall through
+  ; input char didn't match
+@no_match:       ; X = offset of nonmatching character
+  LDA (Src),Y    ; [5] check keyword char's top bit
+  BMI @kw_found  ; [2] -> matched a keyword (top bit set) [+1]
 
   ; no match, skip rest of keyword (find top-bit)
 @skip_lp:
   INY            ; [2] pre-increment Y
   LDA (Src),Y    ; [5] check keyword char
-  BPL @skip_lp   ; [3] -> top bit clear, keep going
+  BPL @skip_lp   ; [2] -> top bit clear, keep going [+1]
   INY            ; [2] skip byte with top-bit
 
-  ; does the next keyword start with the same letter?
+  ; match-mode: does next keyword start with same letter / are there more keywords?
   LDX Tmp        ; [3] restore X = start of token (Tmp)
-  LDA LineBuf,X  ; [3] get first char
-  CMP (Src),Y    ; [5] matches first char of next keyword?
-  BEQ @next_kw   ; [3] -> check next keyword
-  JMP parse_var  ; [2] -> end of list, not a keyword (X -> start of token)
+  LDA (Src),Y    ; [5] first char of next keyword
+  BEQ @not_found ; [2] -> zero byte, end of list [+1]
+  BIT Tmp3       ; [3] check scan_kw_list mode
+  BPL @next_kw   ; [2] -> check next keyword (D7=0: all-keywords mode) [+1]
+  CMP LineBuf,X  ; [3] does it match first char? (D7=1: same-first-char mode)
+  BEQ @next_kw   ; [2] -> check next keyword [+1]
+
+  ; did not find a match
+@not_found:
+  CLC            ; [2] clear carry: no match found
+  RTS            ; [6] X = start of token
 
 ; input and keyword chars differ by case
 ; check if keyword is lowercase (otherwise input is lowercase!)
@@ -402,49 +494,17 @@ parse_cmd:
 @match_dot:      ; X=next-in Y=next-kw
   LDA Tmp2       ; [3] is dot enabled for this keyword?
   BEQ @no_match  ; [3] -> not enabled (zero), didn't match input
+  INX            ; [2] advance over the dot
   DEY            ; [2] for pre-inc Y below
 @dot_lp:         ; advance to byte with top-bit set
   INY            ; [2] pre-inc Y
   LDA (Src),Y    ; [5] check keyword char
   BPL @dot_lp    ; [3] -> top bit clear, keep going
-  ; +++ fall through
 
-  ; matched a keyword
-@kw_found:       ; A = top-bit byte; X -> after keyword
-  STA LineBuf    ; write opcode to LineBuf[0] (stmts keep top-bit)
-  EOR #$80       ; clear top bit
-  CMP #41        ; ASSERT
-  BCS e_bounds   ; ASSERT
-  TAY            ; as index
-  LDA kws_pb,Y   ; A = parse byte
-  STA PtrH       ; save parse flags for parse function (+PtrH)
-  AND #31        ; low 5 bits
-  ASL            ; times 2 (word index)
-  TAY            ; as index
-  LDA kws_fn+1,Y ; parse function, high byte
-  PHA
-  LDA kws_fn,Y   ; parse function, low byte
-  PHA
-  RTS            ; return to parse function
+@kw_found:
+  SEC            ; [2] set carry: keyword was found
+  RTS            ; [6] X = next-character A=top-bit byte
 
-e_range:
-  LDY #<err_range
-  JMP pf_error
-
-e_bounds:
-  LDY #<err_bound
-  JMP pf_error
-
-
-; @@ skip_spc
-; skip spaces in the input buffer (X = offset; uses A,X preserves Y)
-skip_spc:
-  LDA LineBuf,X  ; [4] next input char
-  INX            ; [2] advance (assume match)
-  CMP #32        ; [2] was it space?
-  BEQ skip_spc   ; [3] -> loop
-  DEX            ; [2] undo advance (didn't match)
-  RTS            ; [6] return X
 
 ; @@ n16_parse
 ; parse a 16-bit number -> {Acc0/1}, X, ZF
@@ -485,21 +545,26 @@ n16_mul_10:     ; Uses A, preserves X,Y (+Term)
   ROL           ; [2]
   STA Term1     ; [3]
   BCS e_range   ; [2] -> unsigned overflow
-  ASL Term0     ; [5] Term = Term * 2 = Val * 4
+  ASL Term0     ; [5] Term *= 2 = Val * 4
   ROL Term1     ; [5]
   BCS e_range   ; [2] -> unsigned overflow
   CLC           ; [2]
-  LDA Acc0      ; [3] Acc = Acc + Term = Val * 5   (acc_add_term)
+  LDA Acc0      ; [3] Acc += Term = Val * 5
   ADC Term0     ; [3]
   STA Acc0      ; [3]
   LDA Acc1      ; [3]
   ADC Term1     ; [3]
   STA Acc1      ; [3]
   BCS e_range   ; [2] -> unsigned overflow
-  ASL Acc0      ; [5] Acc = Acc * 2 = Val * 10
+  ASL Acc0      ; [5] Acc *= 2 = Val * 10
   ROL Acc1      ; [5]
   BCS e_range   ; [2] -> unsigned overflow
   RTS           ; [6] -> [64+6]
+
+
+e_range:
+  LDY #<err_range
+  JMP pf_error
 
 
 ; @@ n16_print
@@ -547,6 +612,8 @@ n16_div10:
   RTS            ; [6] return A = remainder [4+11*21+5*29+6 = ~386]
 
 
+; @@ print_hex
+; print a u16 number {Acc0,1} in hexadecimal
 print_hex:      ; print Acc1,Acc0 in hex (uses A,Y, preserves X)
   LDA Acc1      ; high byte
   JSR out_hex
@@ -583,7 +650,7 @@ parse_var:       ; X -> start of token (1st char is alpha)
   SBC #65        ; [2] make 'A' be 0
   CMP #26        ; [2] 26 letters
   BCC @loop      ; [2] is a letter -> @loop [+1]
-  JSR skip_spc   ; [12+]
+  JSR skip_spc   ; [24+]
   LDA LineBuf,X  ; [4] next input char
   CMP #$3D       ; [2] is it '='?
   BEQ @let       ; [2] -> LET name = <expr> [+1]
@@ -613,9 +680,9 @@ e_expect_kw:      ; Tmp = keyword ofs (low byte) in kwtab
 
 
 ; KEYWORD parse-function table
-; matches kws_pb "parse function" entries
+; matches stmt_pb "parse function" entries
 ; no special alignment requirements
-kws_fn:            ; [41]
+stmt_fn:             ; [41]
   DW pfs_for      -1 ;  0 = FOR .. TO .. [ STEP .. ]
   DW pfs_if       -1 ;  1 = IF .. THEN .. [ ELSE .. ]
   DW pfs_print    -1 ;  2 = PRINT .. SPC .. TAB .. ~';
@@ -651,7 +718,7 @@ OP_GOTO = 3
 pfs_for:
   ; var "=" iexpr "TO" iexpr [ "STEP" iexpr ]
   JSR pf_var     ; parse var
-  JSR skip_spc
+  JSR skip_spc   ; [24+]
   LDA #61        ; "="
   CMP LineBuf,X  ; next char
   BNE e_expect
@@ -741,20 +808,20 @@ pfs_hash:
 ; these directly output opcodes to LineBuf+Ptr
 
 pf_var:
-  JSR skip_spc
+  JSR skip_spc  ; [24+]
   RTS
 
 pf_expr:
-  JSR skip_spc
+  JSR skip_spc  ; [24+]
   RTS
 
 pf_stmts:
-  JSR skip_spc
+  JSR skip_spc  ; [24+]
   RTS
 
 match_kw:        ; Y = keyword low byte (on kwtab page)
   STY Tmp        ; for e_expect_kw (error case)
-  JSR skip_spc   ; uses A,X (preserves Y) -> X
+  JSR skip_spc  ; [24+] uses A (preserves Y) -> X
   ; XXX compare it
   SEC            ; CF=1 means not found
   RTS
@@ -802,7 +869,7 @@ pf_error:         ; Y = low byte (in messages page)
 ; ------------------------------------------------------------------------------
 ; STATEMENT KEYWORDS - MUST be page aligned (Y indexing)
 ALIGN ROM+$500
-kws_page:
+stmt_page:
 
 kws_a:
 kws_b:
@@ -881,83 +948,83 @@ kws_z:
 ; ------------------------------------------------------------------------------
 ; EXPRESSION KEYWORDS - MUST be page aligned (Y indexing)
 ALIGN $100
-kwe_page:
+expr_page:
 
-kwe_a:
+expr_a:
   DB "AND",$80      ; kw oper (4)
   DB "ABS",$81      ; fn (0,0)
   DB "ACS",$82      ; fn (0,0)
   DB "ASC",$83      ; fn (0,0)
   DB "ASN",$84      ; fn (0,0)
   DB "ATN",$85      ; fn (0,0)
-kwe_b:
+expr_b:
   DB "BGET",$86     ; # function (2,0)
-kwe_c:
+expr_c:
   DB "CHR",$87      ; fn$ (1,1)
   DB "COS",$88      ; fn (0,1)
-kwe_d:
+expr_d:
   DB "DEG",$89      ; fn (0,1)
   DB "DIV",$8A      ; kw oper (4)
-kwe_e:
+expr_e:
   DB "EOR",$8B      ; kw oper (4)
   DB "EXP",$8C      ; fn (0,1)
   DB "EOF",$8D      ; # function (2,0)
   DB "ERR",$8E      ; no-arg (0,0)
   DB "ERL",$8F      ; no-arg (0,0)
   DB "EVAL",$90     ; eval$ (1,1)
-kwe_f:
+expr_f:
   DB "FALSE",$91    ; no-arg (0,0)
   DB "FN",$92       ; function-call (9)
-kwe_g:
+expr_g:
   DB "GET",$93      ; fn-or-fn$ (8,0)
-kwe_h:
-kwe_i:
+expr_h:
+expr_i:
   DB "INKEY",$94    ; fn-or-fn$ (8,1) 1st is $
   DB "INSTR",$95    ; fn$ (1,1) 1st is $
   DB "INT",$96      ; fn (0,1)
-kwe_j:
-kwe_k:
-kwe_l:
+expr_j:
+expr_k:
+expr_l:
   DB "LEN",$97      ; fn-or-fn# (B,1) 1st is $
   DB "LEFT",$98     ; fn$ (1,2) 1st is $
   DB "LN",$99       ; fn (0,1)
   DB "LOG",$9A      ; fn (0,1)
-kwe_m:
+expr_m:
   DB "MID",$9B      ; fn$ (1,3) 1st is $
   DB "MOD",$9C      ; kw oper (4,1)
-kwe_n:
+expr_n:
   DB "NOT",$9D      ; kw oper (5)
-kwe_o:
+expr_o:
   DB "OR",$9E       ; kw oper (4)
-kwe_p:
+expr_p:
   DB "POINT",$9F    ; fn (0,2)
   DB "POS",$A0      ; fn-or-fn# (B,0)
   DB "PI",$A1       ; no-arg (0,0)
-kwe_q:
-kwe_r:
+expr_q:
+expr_r:
   DB "RIGHT",$A2    ; fn$ (1,2) 1st is $
   DB "RAD",$A3      ; fn (0,1)
   DB "RND",$A4      ; fn (0,1)
-kwe_s:
+expr_s:
   DB "STR",$A5      ; fn$ (1,1) 1st is $
   DB "SIN",$A6      ; fn (0,1)
   DB "SQR",$A7      ; fn (0,1)
   DB "STRING",$A8   ; fn$ (1,2) 1st is $
   DB "SGN",$A9      ; fn (0,1)
-kwe_t:
+expr_t:
   DB "TAN",$AA      ; fn (0,1)
   DB "TRUE",$AB     ; no-arg (0,0)
   DB "TIME",$AC     ; no-arg (0,0)
   DB "TOP",$AD      ; no-arg (0,0)
-kwe_u:
+expr_u:
   DB "USR", $AE     ; fn (0,1)
-kwe_v:
+expr_v:
   DB "VAL",$AF      ; fn (0,1)
   DB "VPOS",$B0     ; no-arg (3,0)
-kwe_w:
-kwe_x:
-kwe_y:
-kwe_z:
+expr_w:
+expr_x:
+expr_y:
+expr_z:
   DB 0
 
 ; context keywords (keep on one page for Y indexing)
@@ -977,7 +1044,7 @@ kw_else:
 ALIGN $100
 
 ; Command list for the repl
-kws_repl:
+repl_tab:
   DB "LIST",$A5
   DB "RUN",$A0
   DB "AUTO",$80
@@ -990,33 +1057,33 @@ kws_repl:
   DB 0
 
 ; STATEMENT KEYWORDS
-kws_tab:
-  DB (kws_a - kws_page) ; A
-  DB (kws_b - kws_page) ; B
-  DB (kws_c - kws_page) ; C
-  DB (kws_d - kws_page) ; D
-  DB (kws_e - kws_page) ; E
-  DB (kws_f - kws_page) ; F
-  DB (kws_g - kws_page) ; G
-  DB (kws_h - kws_page) ; H
-  DB (kws_i - kws_page) ; I
-  DB (kws_j - kws_page) ; J
-  DB (kws_k - kws_page) ; K
-  DB (kws_l - kws_page) ; L
-  DB (kws_m - kws_page) ; M
-  DB (kws_n - kws_page) ; N
-  DB (kws_o - kws_page) ; O
-  DB (kws_p - kws_page) ; P
-  DB (kws_q - kws_page) ; Q
-  DB (kws_r - kws_page) ; R
-  DB (kws_s - kws_page) ; S
-  DB (kws_t - kws_page) ; T
-  DB (kws_u - kws_page) ; U
-  DB (kws_v - kws_page) ; V
-  DB (kws_w - kws_page) ; W
-  DB (kws_x - kws_page) ; X
-  DB (kws_y - kws_page) ; Y
-  DB (kws_z - kws_page) ; Z
+stmt_tab:
+  DB (kws_a - stmt_page) ; A
+  DB (kws_b - stmt_page) ; B
+  DB (kws_c - stmt_page) ; C
+  DB (kws_d - stmt_page) ; D
+  DB (kws_e - stmt_page) ; E
+  DB (kws_f - stmt_page) ; F
+  DB (kws_g - stmt_page) ; G
+  DB (kws_h - stmt_page) ; H
+  DB (kws_i - stmt_page) ; I
+  DB (kws_j - stmt_page) ; J
+  DB (kws_k - stmt_page) ; K
+  DB (kws_l - stmt_page) ; L
+  DB (kws_m - stmt_page) ; M
+  DB (kws_n - stmt_page) ; N
+  DB (kws_o - stmt_page) ; O
+  DB (kws_p - stmt_page) ; P
+  DB (kws_q - stmt_page) ; Q
+  DB (kws_r - stmt_page) ; R
+  DB (kws_s - stmt_page) ; S
+  DB (kws_t - stmt_page) ; T
+  DB (kws_u - stmt_page) ; U
+  DB (kws_v - stmt_page) ; V
+  DB (kws_w - stmt_page) ; W
+  DB (kws_x - stmt_page) ; X
+  DB (kws_y - stmt_page) ; Y
+  DB (kws_z - stmt_page) ; Z
 
 ; STATEMENT parse bytes: [FNNPPPPP]
 ; F - flag for parse function
@@ -1040,7 +1107,7 @@ kws_tab:
 ; 15 = on-off
 ; 16 = str stmt, uses NN
 ; 17 = # stmt
-kws_pb:            ; [41]
+stmt_pb:           ; [41]
   DB 17+(2<<5)     ; "BPUT",$80      # stmt (7,2)
   DB 6+(1<<5)      ; "COLOR",$81     num stmt (6,1)
   DB 6+(1<<5)+$80  ; "CALL",$82      num stmt (6,1+) XXX F also means optional
@@ -1084,33 +1151,33 @@ kws_pb:            ; [41]
   DB 6             ; "WAIT",$A8      num stmt (6,0)
 
 ; EXPRESSION KEYWORDS
-kwe_tab:
-  DB (kwe_a - kwe_page) ; A
-  DB (kwe_b - kwe_page) ; B
-  DB (kwe_c - kwe_page) ; C
-  DB (kwe_d - kwe_page) ; D
-  DB (kwe_e - kwe_page) ; E
-  DB (kwe_f - kwe_page) ; F
-  DB (kwe_g - kwe_page) ; G
-  DB (kwe_h - kwe_page) ; H
-  DB (kwe_i - kwe_page) ; I
-  DB (kwe_j - kwe_page) ; J
-  DB (kwe_k - kwe_page) ; K
-  DB (kwe_l - kwe_page) ; L
-  DB (kwe_m - kwe_page) ; M
-  DB (kwe_n - kwe_page) ; N
-  DB (kwe_o - kwe_page) ; O
-  DB (kwe_p - kwe_page) ; P
-  DB (kwe_q - kwe_page) ; Q
-  DB (kwe_r - kwe_page) ; R
-  DB (kwe_s - kwe_page) ; S
-  DB (kwe_t - kwe_page) ; T
-  DB (kwe_u - kwe_page) ; U
-  DB (kwe_v - kwe_page) ; V
-  DB (kwe_w - kwe_page) ; W
-  DB (kwe_x - kwe_page) ; X
-  DB (kwe_y - kwe_page) ; Y
-  DB (kwe_z - kwe_page) ; Z
+expr_tab:
+  DB (expr_a - expr_page) ; A
+  DB (expr_b - expr_page) ; B
+  DB (expr_c - expr_page) ; C
+  DB (expr_d - expr_page) ; D
+  DB (expr_e - expr_page) ; E
+  DB (expr_f - expr_page) ; F
+  DB (expr_g - expr_page) ; G
+  DB (expr_h - expr_page) ; H
+  DB (expr_i - expr_page) ; I
+  DB (expr_j - expr_page) ; J
+  DB (expr_k - expr_page) ; K
+  DB (expr_l - expr_page) ; L
+  DB (expr_m - expr_page) ; M
+  DB (expr_n - expr_page) ; N
+  DB (expr_o - expr_page) ; O
+  DB (expr_p - expr_page) ; P
+  DB (expr_q - expr_page) ; Q
+  DB (expr_r - expr_page) ; R
+  DB (expr_s - expr_page) ; S
+  DB (expr_t - expr_page) ; T
+  DB (expr_u - expr_page) ; U
+  DB (expr_v - expr_page) ; V
+  DB (expr_w - expr_page) ; W
+  DB (expr_x - expr_page) ; X
+  DB (expr_y - expr_page) ; Y
+  DB (expr_z - expr_page) ; Z
 
 ; EXPRESSION parse bytes: [FNNPPPPP]
 ; F - flags for parse function
@@ -1128,7 +1195,7 @@ kwe_tab:
 ;  9 = function-call ()
 ;  B = str fn# ()
 ; XXX returns $ vs takes $ argument
-kwe_pb:            ; [49]
+expr_pb:           ; [49]
   DB 4             ; "AND",$80      kw oper (4)
   DB 0+(1<<5)      ; "ABS",$81      fn (0,0)
   DB 0+(1<<5)      ; "ACS",$82      fn (0,0)
