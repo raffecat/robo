@@ -40,13 +40,14 @@ PtrH     = $03    ; second pointer high
 Tmp      = $04    ; temp
 Tmp2     = $05    ; temp
 Tmp3     = $06    ; temp
+Tmp4     = $07    ; temp 4 (used by AUTO [can't use in parser])
 
 ; Keyboard buffer
 
-KeyHd    = $0A    ; keyboard buffer head
-KeyTl    = $0B    ; keyboard buffer tial
-ModKeys  = $0C    ; modifier keys: Shf Ctl Fn Caps Left Rght Down Up
-LastKey  = $0D    ; keyboard last key pressed, for auto-repeat
+KeyHd    = $0A    ; keyboard buffer head (owned by User)
+KeyTl    = $0B    ; keyboard buffer tail (owned by IRQ)
+ModKeys  = $0C    ; modifier keys [7:Esc 6:Shf 5:Ctl 4:Fn] (owned by IRQ)
+LastKey  = $0D    ; keyboard last key pressed, for auto-repeat (owned by IRQ)
 
 ; BASIC vars
 
@@ -64,7 +65,7 @@ Term3     = $19    ; Term high byte
 
 Code     = $1C    ; saved BASIC code address
 CodeH    = $1D
-Line     = $1E    ; current line number
+Line     = $1E    ; current line number (used by AUTO, parse_cmd, bas_ins_line)
 LineH    = $1F
 
 ; Video vars
@@ -79,6 +80,10 @@ CurY     = $26    ; text cursor Y                   XXX need these?
 Dstl     = $27    ; text write address low  (saved DSTL)
 Dsth     = $28    ; text write address high (saved DSTH)
 Color    = $29    ; text color (bg-col : fg-col)
+
+; High vars
+
+IRQTmp   = $BF    ; Temp for IRQ handler
 
 ; ------------------------------------------------------------------------------
 ; Defines
@@ -241,6 +246,8 @@ err_bound:
   DB 13,"Out of bounds"
 msg_expecting:
   DB 10,"Expecting "
+err_no:
+  DB 3,"No "
 err_var:
   DB 16,"No such variable"
 err_div:
@@ -249,21 +256,21 @@ err_ovf:
   DB 8,"Overflow"
 err_type:
   DB 13,"Type mismatch"
+err_escape:
+  DB 7, 13, "Escape"
 err_prog:
   DB 10,"No program"
-err_repl:
-  DB 4,"REPL"
 
 reset:
   SEI            ; disable interrupts
   CLD            ; disable BCD mode
-  LDX #$FF
+  LDX #$FF       ; reset stack [to align it?]
   TXS            ; stack init
-  JSR chrcpy     ; copy tileset to VRAM
+  JSR chrcpy     ; copy tileset to VRAM (XXX move to Mode?)
   LDX #$1F       ; blue BG white FG
   STX Color      ; set text color (before MODE)
   LDX #4         ; screen mode 4 (40x25 text, 16 color)
-  JSR mode       ; set mode, clear screen
+  JSR mode       ; set mode, clear screen (uses Color)
   LDY #<welcome_1
   JSR printmsg
   ; 32768 - 5*256 (ZeroPg, StackPg, SysPg, LineBuf, Scratch)
@@ -275,26 +282,41 @@ reset:
   JSR n16_print
   LDY #<welcome_2
   JSR printmsg
+  LDY #<ready
+  JSR printmsg
   ; +++ fall through to @@ basic +++
 
 ; @@ basic
 ; enter the basic command-line interface
 basic:
+  CLD            ; disable BCD mode (for re-entry)
+  JSR irq_init   ; init IRQ vector, init keyboard, enable IRQ
   LDA #>bas_jump ; high byte
-  STA IO_DJMP    ; set BASIC jump table page (XXX move to RUN)
-  LDY #<ready
-  JSR printmsg
-  LDA #0         ; clear keyboard buffer
-  STA KeyHd
-  STA KeyTl
-  JSR irq_init   ; restore system IRQ
-repl:
+  STA IO_DJMP    ; set BASIC jump table page (XXX move to enter_interp)
+repl:            ; <- entry point after parse error
   LDA #$3E       ; ">"
   JSR writechar
+  ; XXX must restore text cursor after parsing/interpreting?
+basic_e1:        ; <- entry point after Escape
+  LDX #$FF       ; reset stack on entry (e.g. from Escape) [for overflow detect]
+  TXS            ; stack init
   JSR readline   ; -> Y=length
   JSR newline    ; preserves X,Y
   JSR parse_cmd
   JMP repl
+
+; @@ repl_esc
+; Escape from readline or the interpreter
+repl_esc:
+  LDY #<err_escape
+  JSR printmsg
+  LDA #$3E       ; ">"
+  JSR writechar
+@wait:           ; wait for Escape to be released
+  STA IO_YLIN    ; wait for vblank
+  LDA ModKeys    ; check key state
+  BMI @wait      ; -> Escape still down
+  JMP basic_e1   ; -> re-enter repl
 
 
 ; ------------------------------------
@@ -307,36 +329,55 @@ e_stmt:
 ; @@ parse_cmd
 ; parse a BASIC command line
 parse_cmd:
-  LDX #0         ; [2]
-  JSR skip_spc   ; [24+] leading spaces
+  LDX #0           ; [2]
+  JSR skip_spc     ; [24+] leading spaces
 
+  ; parse line number
+  JSR n16_parse    ; [12+] parse number at LineBuf,X -> {Acc0/1}, X, EQ=no (uses A,Y,Tmp)
+  BNE @haveline    ; [2] -> found line number [+1]
+
+  ; try matching a repl command
+  LDA #<repl_tab   ; [2] repl commands table
+  LDY #>repl_tab   ; [2]
+  JSR scan_kw_all  ; [6] search -> CF=1 if found, X=next-input
+  BCC @immediate   ; [3] -> no match, parse immediate
+  EOR #$80         ; [2] clear top bit
+  CMP #repl_len    ; [2] ASSERT
+  BCS e_bounds     ; [2] ASSERT
+  ASL              ; [2] times 2 (word index)
+  TAY              ; [2] as index
+  LDA repl_fn+1,Y  ; [4] repl function, high byte
+  PHA              ; [3] push high
+  LDA repl_fn,Y    ; [4] repl function, low byte
+  PHA              ; [3] push low
+  RTS              ; [6] return to repl function
+
+@immediate:
+  LDX #0           ; [2]
+  JSR parse_line   ; [6]
+  ; execute the line immediately
+  RTS              ; [6]
+
+@haveline:         ; X = after line number
+  ; save line number for bas_ins_line
+  LDA Acc0         ; [3]
+  STA Line         ; [3]
+  LDA Acc1         ; [3]
+  STA LineH        ; [3]
+  BMI e_range2     ; [2]
+  JSR parse_line   ; [6]
+  ; copy tokenised line into place
+  JMP bas_ins_line ; [3]
+
+
+; @@ parse_line
+; called from parse_cmd or from cmd_auto
+parse_line:
   ; init bytecode write pos
   LDA #1         ; [2] after OP at [0]
   STA Ptr        ; [3] bytecode write offset (+Ptr)
 
-  ; parse line number
-  JSR n16_parse  ; [12+] parse number at LineBuf,X -> {Acc0/1}, X, ZF
-  BEQ @repl      ; [2] -> no line number
-
-  ; debug
-  STX Tmp
-  JSR print_hex  ; DEBUG print Acc1,Acc0 in hex (uses A,Y, preserves X)
-  JSR newline    ; DEBUG uses A, preserves X,Y
-  LDX Tmp
-
-  ; save line number (XXX maybe parse into this?)
-  LDA Acc0       ; [3]
-  STA Line       ; [3]
-  LDA Acc1       ; [3]
-  BPL @ge0       ; [2] -> valid >= 0
-  JMP e_range
-@ge0:
-  STA LineH      ; [3]
-  ; +++ fall through
-
-@stmt:
   JSR skip_spc   ; [24+] leading spaces
-  STX Tmp        ; [3] start of token (+Tmp)
 
   ; XXX this needs to use pf_stmts, recursion is allowed
   ; XXX pf_stmts needs to call pf_stmt in a loop
@@ -350,17 +391,9 @@ parse_cmd:
   TAY              ; [2] as an index (0-25)
   LDA stmt_tab,Y   ; [4] offset within keyword table
   LDY #>stmt_page  ; [2] stmt keyword table
-  JSR scan_kw_idx  ; [6] search -> CF=1 if found, X=next-input
+  JSR scan_kw_idx  ; [6] search -> CF=1 if found, X=next-input (start-of-token if CF=0)
   BCS @stmt_found  ; [2] -> found a match
   JMP parse_var    ; [3] -> no match, must be a variable
-
-  ; try matching a repl command
-@repl:
-  LDA #<repl_tab   ; [2] repl commands table
-  LDY #>repl_tab   ; [2]
-  JSR scan_kw_all  ; [6] search -> CF=1 if found, X=next-input
-  BCS @repl_found  ; [2] -> found a match
-  BCC @stmt        ; [3] -> match a statement instead
 
   ; matched a statement
 @stmt_found:      ; A = top-bit byte; X -> after keyword
@@ -380,13 +413,13 @@ parse_cmd:
   PHA             ; push low
   RTS             ; return to parse function
 
-@repl_found:
-  LDY #<err_repl
-  JMP pf_error
-
 
 e_bounds:
   LDY #<err_bound
+  JMP pf_error
+
+e_range2:
+  LDY #<err_range
   JMP pf_error
 
 
@@ -436,6 +469,7 @@ scan_kw_all:       ; X=input-offset A=table-low Y=table-high
 ; find a matching keyword (terminated by a byte with the top-bit set) in a zero-terminated list
 ; two search modes are supported: same-first-char (D7=1) or all-keywords (D7=0)
 scan_kw_list:    ; X=input-ofs Y=keyword-ofs Src=keyword-list Tmp3.D7=search-mode (+Tmp2)
+  STX Tmp        ; [3] save start of token (+Tmp)
   DEX            ; [2] nullify first pre-increment
   DEY            ; [2] nullify first pre-increment
 @next_kw:
@@ -506,9 +540,14 @@ scan_kw_list:    ; X=input-ofs Y=keyword-ofs Src=keyword-list Tmp3.D7=search-mod
   RTS            ; [6] X = next-character A=top-bit byte
 
 
+e_range:
+  LDY #<err_range
+  JMP pf_error
+
+
 ; @@ n16_parse
 ; parse a 16-bit number -> {Acc0/1}, X, ZF
-n16_parse:       ; from LineBuf,X returning {Acc0/1} X=end ZF=no-match (uses Y +Tmp)
+n16_parse:       ; from LineBuf,X returning {Acc0/1} X=end ZF=no-match (uses A,Y,Tmp)
   LDA #0         ; [2] length of num
   STA Acc0       ; [3] clear result
   STA Acc1       ; [3]
@@ -560,11 +599,6 @@ n16_mul_10:     ; Uses A, preserves X,Y (+Term)
   ROL Acc1      ; [5]
   BCS e_range   ; [2] -> unsigned overflow
   RTS           ; [6] -> [64+6]
-
-
-e_range:
-  LDY #<err_range
-  JMP pf_error
 
 
 ; @@ n16_print
@@ -646,17 +680,20 @@ parse_var:       ; X -> start of token (1st char is alpha)
 @loop:
   INX            ; [2] next char
   LDA LineBuf,X  ; [4] next input char
+  AND #$DF       ; [2] lower -> upper (clear bit 5)
   SEC            ; [2] for subtract
   SBC #65        ; [2] make 'A' be 0
   CMP #26        ; [2] 26 letters
   BCC @loop      ; [2] is a letter -> @loop [+1]
+  STX Tmp2       ; [3] save end of token
   JSR skip_spc   ; [24+]
   LDA LineBuf,X  ; [4] next input char
   CMP #$3D       ; [2] is it '='?
   BEQ @let       ; [2] -> LET name = <expr> [+1]
   JMP e_stmt     ; [3]
 @let:
-  INX
+  INX            ; [2]
+  JSR pf_expr    ; [6] parse expr
   LDY #<err_var
   JMP pf_error
 
@@ -670,14 +707,21 @@ e_expect:         ; A = expected character
   JSR newline
   JMP repl
 
-e_expect_kw:      ; Tmp = keyword ofs (low byte) in kwtab
+e_expect_kw:      ; Tmp = keyword (low byte) in kwtab
   LDY #<msg_expecting
   JSR printmsg    ; Y=low (uses A,X,Y,Src)
-  LDY Tmp         ; offset
-  LDX #>kwtab     ; page
-  JSR println     ; X=high Y=low (uses A,Src)
+  LDY Tmp         ; keyword offset
+  JSR printkw     ; Y=offset (uses A,Src)
   JMP repl
 
+printkw:          ; 13 bytes
+  LDA kwtab,Y     ; [4] first char
+@loop:
+  JSR writechar   ; [6] print char (A=char, preserves X,Y)
+  INY             ; [2] advance
+  LDA kwtab,Y     ; [4] load next char
+  BPL @loop       ; [3] until top-bit is set
+  RTS             ; [6] done
 
 ; KEYWORD parse-function table
 ; matches stmt_pb "parse function" entries
@@ -724,11 +768,11 @@ pfs_for:
   BNE e_expect
   JSR pf_expr    ; parse expr
   LDY #<kw_to    ; "TO"
-  JSR match_kw   ; uses A,X,Y (Tmp) -> CF,X
-  BCS e_expect_kw ; -> expecting TO
+  JSR match_kw   ; uses A,X,Y (Tmp=Y) -> CF,X
+  BCS e_expect_kw ; -> expecting TO (Tmp=kw_to)
   JSR pf_expr    ; parse expr
   LDY #<kw_step  ; "STEP"
-  JSR match_kw   ; uses A,X,Y (Tmp) -> CF,X
+  JSR match_kw   ; uses A,X,Y (Tmp=Y) -> CF,X
   BCS @done      ; -> no STEP
   LDA #OP_STEP   ; write OP_STEP
   JSR pf_opcode
@@ -742,8 +786,8 @@ pfs_if:
   LDY #<kw_then  ; "THEN"
   JSR match_kw   ; uses A,X,Y (Tmp) -> CF,X
   BCS @no_then   ; -> allow stmts, but not line no
-  JSR n16_parse  ; [12+] parse line number -> {Acc0/1}, X, ZF
-  BNE @then_lno  ; [2] -> found line number
+  JSR n16_parse  ; [12+] parse line number -> {Acc0/1}, X, EQ=no (uses A,Y,Tmp)
+  BNE @then_line ; [2] -> found line number
 @no_then:
   JSR pf_stmts   ; parse statements
 @if_else:
@@ -752,17 +796,17 @@ pfs_if:
   BCS @done      ; -> no ELSE
   LDA #OP_ELSE   ; write OP_ELSE
   JSR pf_opcode
-  JSR n16_parse  ; [12+] parse line number -> {Acc0/1}, X, ZF
-  BNE @else_lno  ; [2] -> found line number
+  JSR n16_parse  ; [12+] parse line number -> {Acc0/1}, X, EQ=no (uses A,Y,Tmp)
+  BNE @else_line ; [2] -> found line number
   JSR pf_stmts   ; parse statements
 @done:
   RTS
-@then_lno:
+@then_line:
   LDA #OP_GOTO   ; write OP_GOTO
   JSR pf_opcode
   JSR pf_line    ; write line number (find in index at runtime?)
   JMP @if_else
-@else_lno:
+@else_line:
   LDA #OP_GOTO   ; write OP_GOTO
   JSR pf_opcode
   JSR pf_line    ; write line number (find in index at runtime?)
@@ -826,7 +870,7 @@ match_kw:        ; Y = keyword low byte (on kwtab page)
   SEC            ; CF=1 means not found
   RTS
 
-pf_opcode:       ; A=opcode (preserves X)
+pf_opcode:       ; A=opcode (preserves X)           [XXX replace with DMA write]
   LDY Ptr        ; bytecode write pos in LineBuf
   STA LineBuf,Y  ; append the opcode
   INC Ptr        ; advance output pos
@@ -842,6 +886,9 @@ pf_line:
   STA LineBuf,Y  ; append the opcode
   INY
   STY Ptr
+  RTS
+
+bas_ins_line:
   RTS
 
 
@@ -864,6 +911,99 @@ pf_error:         ; Y = low byte (in messages page)
 ;  JSR writechar
 ;  JSR newline
 ;  JMP repl
+
+
+; REPL handler table
+; matches repl_tab entries
+; no special alignment requirements
+repl_fn:             ; 9 entries (repl_len)
+  DW cmd_list     -1 ;
+  DW cmd_run      -1 ;
+  DW cmd_auto     -1 ;
+  DW cmd_renum    -1 ;
+  DW cmd_delete   -1 ;
+  DW cmd_load     -1 ;
+  DW cmd_save     -1 ;
+  DW cmd_new      -1 ;
+  DW cmd_old      -1 ;
+
+cmd_list:
+  RTS
+
+cmd_run:
+  RTS
+
+cmd_auto:
+  LDA #10            ; [2]
+  STA Line           ; [3] start from line 10
+  STA Tmp4           ; [3] step by 10
+  LDA #0             ; [2]
+  STA LineH          ; [3]
+  JSR skip_spc       ; [6] uses A (preserves Y) -> X
+  JSR n16_parse      ; [6] parse number at LineBuf,X -> {Acc0/1}, X, EQ=no (uses A,Y,Tmp)
+  BEQ @loop          ; [2] -> no number [+1]
+  LDA Acc0           ; [3]
+  STA Line           ; [3] set start line
+  LDA Acc1           ; [3]
+  STA LineH          ; [3]
+  JSR skip_spc       ; [6] uses A (preserves Y) -> X
+  LDA LineBuf,X      ; [4]
+  CMP #$2C           ; [2] comma
+  BNE @loop          ; [2] -> no comma
+  JSR skip_spc       ; [6] uses A (preserves Y) -> X
+  JSR n16_parse      ; [6] parse number at LineBuf,X -> {Acc0/1}, X, EQ=no (uses A,Y,Tmp)
+  BEQ @loop          ; [2] -> no number [+1]
+  LDA Acc0           ; [3]
+  STA Tmp4           ; [3]
+  BEQ @range         ; [2] -> bad step (equals zero)
+  LDA Acc1           ; [3]
+  BNE @range         ; [2] -> bad step (non-zero high byte)
+@loop:
+  ; print the line number
+  LDA Line
+  STA Acc0
+  LDA LineH
+  STA Acc1
+  JSR n16_print     ; assumes text mode
+  LDA #32
+  JSR writechar     ; assumes text mode
+  ; read an input line
+  JSR readline      ; assumes text mode
+  JSR newline       ; assumes text mode
+  ; parse and tokenise the line
+  LDX #0
+  JSR parse_line    ; corrupts text mode; returns CF=valid?
+  ; copy tokenised line into place
+  JSR bas_ins_line
+  ; increment line number
+  CLC
+  LDA Tmp4
+  ADC Line          ; add step
+  STA Line
+  BCC @loop         ; -> no carry
+  INC LineH
+  BNE @loop         ; -> unless zero
+@range:
+  JMP e_range
+
+cmd_renum:
+  RTS
+
+cmd_delete:
+  RTS
+
+cmd_load:
+  RTS
+
+cmd_save:
+  RTS
+
+cmd_new:
+  RTS
+
+cmd_old:
+  RTS
+
 
 
 ; ------------------------------------------------------------------------------
@@ -1044,16 +1184,18 @@ kw_else:
 ALIGN $100
 
 ; Command list for the repl
+; matches repl_fn table
+repl_len = 9
 repl_tab:
-  DB "LIST",$A5
-  DB "RUN",$A0
-  DB "AUTO",$80
-  DB "RENUMBER",$A0
-  DB "DELETE",$A4
-  DB "LOAD",$A2
-  DB "SAVE",$A3
-  DB "NEW",$A6
-  DB "OLD",$A7
+  DB "LIST",$80
+  DB "RUN",$81
+  DB "AUTO",$82
+  DB "RENUMBER",$83
+  DB "DELETE",$84
+  DB "LOAD",$85
+  DB "SAVE",$86
+  DB "NEW",$87
+  DB "OLD",$88
   DB 0
 
 ; STATEMENT KEYWORDS
@@ -1601,33 +1743,33 @@ ORG ROM+$1000 ; 4K
 ; scan the keyboard matrix for a keypress
 ; [..ABCDE....]
 ;    ^hd  ^tl     ; empty when hd==tl, full when tl+1==hd
-keyscan:          ; uses A,X,Y returns nothing (!Tmp,+Tmp2)
+keyscan:          ; uses A,X,Y returns nothing (CANNOT use normal Tmp)
   LDY #8          ; [2] last key column
   STY IO_KEYB     ; [3] set keyscan column (0-7)
-  LDX IO_KEYB     ; [3] read key state bitmap
-  STX ModKeys     ; [3] update modifier keys
+  LDA IO_KEYB     ; [3] read key state bitmap
+  STA ModKeys     ; [3] update modifier keys
   DEY             ; [2] prev column
 ; debounce check
-  CPX IO_KEYB     ; [3] check if stable (3+2+3)/2MHz=4µs later
+  CMP IO_KEYB     ; [3] check if stable (3+2+3)/2MHz=4µs later
   BNE keyscan     ; [2] if not -> try again
 @col_lp:          ; -> [13] cycles
   STY IO_KEYB     ; [3] set keyscan column (0-7)
   LDX IO_KEYB     ; [3] read key state bitmap
-  BNE @key_hit    ; [2] -> one or more keys pressed
+  BNE @key_hit    ; [2] -> one or more keys pressed [+1]
   DEY             ; [2] prev column
   BPL @col_lp     ; [3] go again, until Y<0
   STY LastKey     ; [3] no keys pressed: clear last key pressed (to $FF)
   RTS             ; [6] TOTAL Scan 2+13*8-1+6 = [111] cycles
 @key_hit:         ; X=bitmap Y=column
-  STY Tmp2        ; [2] save keyscan column for resuming later
+  STY IRQTmp      ; [3] save keyscan column for resuming later
   TYA             ; [2] active keyscan column
   ASL             ; [2] column * 8
   ASL             ; [2] 
   ASL             ; [2] 
 ; debounce check 
-  CPX IO_KEYB     ; [3] check if stable (3+4*2+3)/2Mhz = 7µs later
+  CPX IO_KEYB     ; [3] check if stable 17/2Mhz = 8.5µs later
   BNE @col_lp     ; [2] if not -> try again
-  TAY             ; [2] scantab offset = col*8
+  TAY             ; [2] scantab offset = col*8 as index
   TXA             ; [2] key state bitmap
 ; find first bit set
 ; loop WILL terminate because A is non-zero!
@@ -1636,14 +1778,14 @@ keyscan:          ; uses A,X,Y returns nothing (!Tmp,+Tmp2)
   ASL A           ; [2] shift keys bits left into CF
   BCC @bsf_lp     ; [3] until CF=1
 ; translate to ascii
-  BIT ModKeys     ; [3] test shift key [Shf][Ctl]
-  BMI @shift      ; [2] -> shift is down
+  BIT ModKeys     ; [3] test shift key [N=Esc][V=Shf]
+  BVS @shift      ; [2] -> shift is down (bit 6)
   TAX             ; [2] save remaining bitmap
   LDA scantab-1,Y ; [4] translate to ASCII (Y is off by +1)
 @shft_ret:
-  CMP LastKey     ; [3] debounce
-  BEQ @cont_scan  ; [2] keep scanning
-  STA LastKey     ; [3] save last key pressed, for auto-repeat
+  CMP LastKey     ; [3] one-key roll over
+  BEQ @cont_scan  ; [2] keep scanning (XXX go check timer, auto-repeat)
+  STA LastKey     ; [3] save last key pressed
 ; append to keyboard buffer
   LDY KeyTl       ; [3] keyboard buffer write offset
   STA KeyBuf,Y    ; [4] always safe to write at KeyTl
@@ -1662,7 +1804,7 @@ keyscan:          ; uses A,X,Y returns nothing (!Tmp,+Tmp2)
   RTS             ; XXXXX debug
   TXA             ; [2] restore bitmap
   BNE @bsf_lp     ; [3] -> continue bsf loop
-  LDY Tmp2        ; [3] restore keyscan column
+  LDY IRQTmp      ; [3] restore keyscan column
   BNE @col_lp     ; [3] -> continue scanning key columns
   STY LastKey     ; [3] no keys pressed: clear last key pressed (to $00)
   RTS             ; [6] done
@@ -1850,6 +1992,8 @@ readline:        ; uses A,X,Y, returns Y=length (Z=1 if zero)
   STA Tmp        ; init line offset [3] not [4]
 @wait:
   STA IO_YLIN    ; wait for vblank (A ignored)
+  BIT ModKeys    ; check for Escape
+  BMI @esc
 @more:
   JSR readchar   ; read char from keyboard -> A (ZF) uses X,Y !Tmp
   BEQ @wait      ; if zero -> @wait
@@ -1889,7 +2033,8 @@ readline:        ; uses A,X,Y, returns Y=length (Z=1 if zero)
   LDA KeyTl      ; clear keyboard buffer
   STA KeyHd
   JMP @more
-
+@esc:
+  JMP repl_esc
 
 ; @@ beep
 ; play an error beep over the speaker
@@ -1935,7 +2080,7 @@ text_palette:
 ; modes 0-3 are linear APA modes, 1/2/4/8 bpp
 ; modes 4-7 are tiled "text" modes, 1/2/4/8 bpp
 ; modes 8-15 are greyscale versions of the above (no colorburst)
-mode:            ; set screen mode, X=mode
+mode:            ; set screen mode, X=mode (+Tmp)
   CPX #7         ; range-check mode number
   BCS mode_ret   ; if >= 7
   LDA modetab,X  ; screen mode config
@@ -1973,7 +2118,7 @@ mode:            ; set screen mode, X=mode
 ; @@ cls, in "text mode"
 ; clear the text window
 ; 64-40=24 wasted cycles: fill_rect saves 7 cycles per row
-cls:                     ; clear tilemap
+cls:                     ; (+Tmp)
   LDX WinL               ; [3] text window left
   LDY WinT               ; [3] text window top
   JSR text_addr_xy       ; [6] calculate DSTH,DSTL at X,Y
@@ -2006,7 +2151,7 @@ cls:                     ; clear tilemap
 ; @@ home
 ; move the cursor to the top-left of the window
 ; update DMA address (DSTL,DSTH) for "text mode"
-; home:
+; home:          ; (+Tmp)
   LDX #0         ; top-left corner of text window
   LDY #0         ; 
   BEQ tab_e2     ; skip range checks
@@ -2016,7 +2161,7 @@ cls:                     ; clear tilemap
 ; move the cursor to X,Y in index registers (unsigned)
 ; relative to the top-left corner of the text window, zero-based.
 ; update DMA address (DSTL,DSTH) for "text mode"
-tab:
+tab:             ; (+Tmp)
   CPX WinW       ; clamp X if out of range (WinW)
   BCC @x_ok      ; CC < WinW
   LDX WinW       ; (CS)
@@ -2050,7 +2195,7 @@ tab_e2:
 ; @@ text_addr_xy
 ; calculate the tilemap address for an X,Y coordinate; set the DMA DSTH,DSTL
 ; do not change the cursor position (use `tab` for that)
-text_addr_xy:
+text_addr_xy:    ; (+Tmp)
   TXA            ; X column
   CLC            ; don't know state of CF
   ADC IO_SCRH    ; add H scroll (in map-space) -> X column in tilemap [may set CF=1]
@@ -2104,6 +2249,41 @@ reset_tilebank:
   ADC #$11       ; [2] 00 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF ..
   BCC @banklp    ; [3] .. 110 (C=1)  [[ 16*8 = 128 cycles ]]
   RTS
+
+
+; @@ dma_fill_rect
+; fill VRAM rect with byte FILL at address DSTH,DSTL (changes DMA mode!)
+dma_fill_rect:           ; A=stride X=width Y=height (+Tmp)
+  STA Tmp                ; [3] save stride
+  LDA #DMA_M2V|DMA_Fill  ; [2] VRAM fill mode
+  STA IO_DCTL            ; [3] set DMA mode
+  LDA IO_DSTL            ; [3] keep DSTL in A
+@loop:
+  STX IO_DRUN            ; [3] start DMA (fill 'width' bytes)
+  CLC                    ; [2]
+  ADC Tmp                ; [3] address += stride
+  STA IO_DSTL            ; [3] set new DSTL
+  BCC @low_ok            ; [3] C=1 when DSTL wraps around
+  INC IO_DSTH            ; [5] address high += 1
+@low_ok:
+  DEY                    ; [2] decrement height
+  BNE @loop              ; [3] until Y=0  [[ 17 per iteration ]]
+  RTS                    ; [6]
+
+; @@ dma_fill_vram
+; fill VRAM with byte A, start at page X, fill Y pages (changes DMA mode!)
+dma_fill_vram:           ; A=byte X=base.pg Y=count
+  STA IO_FILL            ; [3] DMA fill byte
+  LDA #DMA_M2V|DMA_Fill  ; [2] DMA fill mode (M2M)
+  STA IO_DCTL            ; [3] set fill mode
+  STX IO_DSTH            ; [3] DMA dest high (page)
+  LDA #0                 ; [2]
+  STA IO_DSTL            ; [3] DMA dest low  (0)
+@loop:
+  STA IO_DRUN            ; [3] start DMA (fill 256 bytes)
+  DEY                    ; [2]
+  BNE @loop              ; [3]
+  RTS                    ; [6]
 
 
 
@@ -2245,40 +2425,6 @@ badram:
   BNE @delay           ; 
   JMP badram
 
-; @@ dma_fill_rect
-; fill VRAM rect with byte FILL at address DSTH,DSTL (changes DMA mode!)
-dma_fill_rect:           ; A=stride X=width Y=height
-  STA Tmp                ; [3] save stride
-  LDA #DMA_M2V|DMA_Fill  ; [2] VRAM fill mode
-  STA IO_DCTL            ; [3] set DMA mode
-  LDA IO_DSTL            ; [3] keep DSTL in A
-@loop:
-  STX IO_DRUN            ; [3] start DMA (fill 'width' bytes)
-  CLC                    ; [2]
-  ADC Tmp                ; [3] address += stride
-  STA IO_DSTL            ; [3] set new DSTL
-  BCC @low_ok            ; [3] C=1 when DSTL wraps around
-  INC IO_DSTH            ; [5] address high += 1
-@low_ok:
-  DEY                    ; [2] decrement height
-  BNE @loop              ; [3] until Y=0  [[ 17 per iteration ]]
-  RTS                    ; [6]
-
-; @@ dma_fill_vram
-; fill VRAM with byte A, start at page X, fill Y pages (changes DMA mode!)
-dma_fill_vram:           ; A=byte X=base.pg Y=count
-  STA IO_FILL            ; [3] DMA fill byte
-  LDA #DMA_M2V|DMA_Fill  ; [2] DMA fill mode (M2M)
-  STA IO_DCTL            ; [3] set fill mode
-  STX IO_DSTH            ; [3] DMA dest high (page)
-  LDA #0                 ; [2]
-  STA IO_DSTL            ; [3] DMA dest low  (0)
-@loop:
-  STA IO_DRUN            ; [3] start DMA (fill 256 bytes)
-  DEY                    ; [2]
-  BNE @loop              ; [3]
-  RTS                    ; [6]
-
 ; @@ halt
 ; stop the CPU, wait for interrupt
 halt:
@@ -2286,20 +2432,23 @@ halt:
   JMP halt
 
 ; @@ irq_init
-; set up IRQ vector in zero page, enable interrupts
+; set up IRQ vector in zero page, init keyboard, enable interrupts
 irq_init:
+  SEI            ; disable IRQ
+  LDA #0         ; reset keyboard buffer (with interrupts disabled)
+  STA KeyHd
+  STA KeyTl
   LDA #$4C       ; JMP abs
   STA IrqVec
   LDA #<irq_rom  ; low byte
   STA IrqVec+1
   LDA #>irq_rom  ; high byte
   STA IrqVec+2
-  CLI            ; enable interrupts
+  CLI            ; enable IRQ
   RTS
 
 ; @@ irq_rom
-; standard ROM IRQ handler:
-; • keyboard scan
+; standard ROM IRQ handler: keyboard scan
 irq_rom:
   JSR keyscan
   LDA #VSTA_VSync|VSTA_VCmp|VSTA_HSync
