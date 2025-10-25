@@ -40,8 +40,8 @@ int main(int argc, char *argv[]) {
     reset6502();
 
     // DEBUGGER
-    dbg_enable = 0;
-    dbg_break = 0x0C0E1;
+    dbg_enable = 1;
+    dbg_break = 0x0C41C;
     Uint32 held_time = 0;
 
     // run the simulator.
@@ -100,15 +100,15 @@ int main(int argc, char *argv[]) {
 }
 
 uint8_t scanKeyCol(uint8_t col) {
-    //   Esc 1 2 3 4 5 6 7  8 9 0 - = ` Del Up
+    //       1 2 3 4 5 6 7  8 9 0 - = ` Del Up
     //   Tab Q W E R T Y U  I O P [ ] \     Down
     //  Caps A S D F G H J  K L ; '     Ret Left
     //       Z X C V B N M  , . /       Spc Right
-    //    Shf Ctl Fn
+    //   Esc Shf Ctl Fn
     switch (col) {
         // left side
         case 0:
-            return (keys[SDL_SCANCODE_ESCAPE]<<7) |
+            return (0<<7) |
                    (keys[SDL_SCANCODE_1]<<6) |
                    (keys[SDL_SCANCODE_2]<<5) |
                    (keys[SDL_SCANCODE_3]<<4) |
@@ -184,10 +184,11 @@ uint8_t scanKeyCol(uint8_t col) {
 
         // modifiers
         case 8:
-            // Shf Ctl Fn
-            return ((keys[SDL_SCANCODE_LSHIFT]|keys[SDL_SCANCODE_RSHIFT])<<7) |
+            // Esc Shf Ctl Fn
+            return ((keys[SDL_SCANCODE_ESCAPE]?1:0)<<7) |
+                   ((keys[SDL_SCANCODE_LSHIFT]|keys[SDL_SCANCODE_RSHIFT])<<6) |
                    ((keys[SDL_SCANCODE_LCTRL]|keys[SDL_SCANCODE_RCTRL])<<6) |
-                   (keys[SDL_SCANCODE_LGUI]<<5) |
+                   ((keys[SDL_SCANCODE_LALT]|keys[SDL_SCANCODE_RALT])<<5) |
                    (0<<4) |
                    (0<<3) |
                    (0<<2) |
