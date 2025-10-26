@@ -35,11 +35,11 @@ IO_SRCH    = $D1    ; DMA src high        (r/w: BASIC must handle bank-crossing 
 IO_DSTL    = $D2    ; DMA dest low        (r/w)
 IO_DSTH    = $D3    ; DMA dest high       (r/w)
 IO_DCTL    = $D4    ; DMA control         (r/w: 7-6:direction 5:vertical 4:reverse 2-0:mode)
-IO_DRUN    = $D5    ; DMA count           (write: start DMA, 0=256; read: increment DST += 640)
-IO_FILL    = $D6    ; DMA fill byte       (write: set FILL byte [data latch]; read: last value to/from IO_DDRW)
+IO_DRUN    = $D5    ; DMA count           (write: start DMA, 0=256; read: XXX unused)
+IO_FILL    = $D6    ; DMA fill byte       (write: set Data Latch [FILL]; read: last value to/from IO_DDRW)
 IO_DDRW    = $D7    ; DMA data R/W        (read: reads from src++; write: writes to dest++)
-IO_DJMP    = $D8    ; DMA jump indirect   (read: indirect table jump [stalls for +1 cycle]; write: set Jump Table [page latch])
-IO_APWR    = $D9    ; DMA APA write       (read: second byte of indirect jump; write: triggers APA write cycle, writes [page latch])
+IO_DJMP    = $D8    ; DMA jump indirect   (read: indirect table jump [stalls for +1 cycle]; write: set Jump Table [TABLE])
+IO_AINC    = $D9    ; APA increment       (read: second byte of indirect jump; write: increment DST += 640)
 IO_BNK8    = $DA    ; Bank switch $8000   (low 6 bits)
 IO_BNKC    = $DB    ; Bank switch $C000   (low 6 bits)
 -------    = $DC    ; 
@@ -55,13 +55,23 @@ DCTL direction:                        [implementation: drives different chip-en
 DCTL vertical:                         (increments [Dest] by current map width in VMAP [column upload])
 DCTL reverse:                          (derements src and dest addresses [memmove])
 DCTL mode:                             [ALWAYS 2-cycles/byte due to counter increment cycle]
-    0 = copy                           (copy bytes)
-    1 = fill                           (using FILL byte [data latch])
-    2 = copy transparent               (copy bytes, skip zero bytes)
-    3 = APA mode (RMW)                 (APA addressing: low 3 bits of address select pixel)
-    4 = palette memory                 (src/dest is palette memory; 8-bit addr, ignores direction)
-    5 = sprite memory                  (src/dest is sprite memory; 8-bit addr, ignores direction)
-    6 = clear sprites                  (write $FF to Y coords in sprite memory; 8-bit addr, ignores direction)
+    0 = copy                           (copy bytes from src to dst)
+    1 = fill                           (fill with [FILL] byte in [data latch])
+    2 = copy masked                    (copy bytes, skip zero bytes [zero-pixels would require Read+RMW!])
+    3 = alt fill                       (fill with [FILL] and [TABLE] alternating [low bit selects])
+    4 = APA mode (RMW)                 (APA addressing: low 3 bits of address select pixel [BPP from VCTL])
+    5 = palette memory                 (src/dest is palette memory; 5-bit addr)
+    6 = sprite memory                  (src/dest is sprite memory; 7-bit addr)
+    7 = clear sprites                  (write $FF to Y coords in sprite memory; 7-bit addr, ignores bottom 2 bits)
+
+DMA_Copy       = 0     ; copy bytes from source to destinaton
+DMA_Fill       = 1     ; fill with FILL byte (2 cycles per byte)
+DMA_Masked     = 2     ; copy bytes, skip zero-bytes 
+DMA_AltFill    = 3     ; fill with FILL and PAGE bytes alternating (low bit selects)
+DMA_APA        = 4     ; APA addressing: low 3 bits of address select pixel; BPP from VCTL
+DMA_Palette    = 5     ; read src / write dest is palette memory, SRCL/DSTL only; ignores direction
+DMA_Sprite     = 6     ; read src / write dest is sprite memory, SRCL/DSTL only; ignores direction
+DMA_SprClr     = 7     ; write $FF to Y coords of sprites (inc by 4), DSTL only; ignores direction
 
 TON0    = $E0    ; PSG Ch.0 tone
 PCH0    = $E1    ; PSG Ch.0 pitch
@@ -137,25 +147,28 @@ VENA register [VCH-PLSB] video enable:
 (0) Background enable (B)
 
 
-DMA-APA Mode:
+DMA-APA mode:
 
 Configure VRAM -> VRAM mode, same SRC and DST address.
-Mask isolates one pixel, indexed by low bits of address.
-Trigger mode: CPU writes FILL byte, triggers one DMA cycle (varying FILL or Address)
-[ Counted mode: CPU presets FILL byte, then sets RUN count (limited use vs DMA fill) - REMOVED ]
+Mask isolates one pixel, indexed by low 3 bits of address.
 Read cycle -> DL
-Write cycle <- DL & ~mask | FILL & mask
-Write replaces DL bits with 1/2/4 quarters of FILL byte.
-Trigger e.g. line draw, dashed line, graphics scaling.
-[ Counted e.g. last few partial-byte pixels on a span? - REMOVED ]
-[ Write cycle <- DL & ~mask | (ROP-result) & mask  [when ROP enabled] - REMOVED ]
+Write cycle <- DL & ~mask | (byte-written) & mask (on write to DDRW)
+Write cycle <- DL & ~mask | (JumpTable) & mask (if DRUN is supported [extra HW])
+e.g. line draw, dashed line, graphics scaling.
 ^ 8x 2-way AND-OR selector ~24 gates, well worth it for line/edge accel,
   especially combined with a color-latching video mode
-APA writes are always triggered by writing to IO_APJP, which replaces the [page latch]
+• BUT line-draw just writes a color to DDRW, without prior read [+3 cycles]
+• Other option: writes latch into DL; on next SYNC, perform RMW [+2 cycles]
 
-FILL byte is shared with JTAB page to keep register count low.
-After using APA DMA-mode, the jump table page must be restored.
 
+DMA-Text mode - REMOVED
+HW must select between:
+VMAP.w=0 -> [00YYYYYY][YYXXXXXX]  (shift 2)   32xY (NOT worth the HW cost)
+VMAP.w=1 -> [0YYYYYYY][YXXXXXXX]  (shift 1)   64xY <- current "text mode"        (4K)
+VMAP.w=2 -> [YYYYYYYY][XXXXXXXX]  (native)   128xY <- if "text mode" used 128x32 (8K)
+VMAP.w=3 -> [YYYYYYYX][XXXXXXXX]  (shift -1) 256xY (only 8-bit, NOT worth the HW cost)
+^ cost: 16-bit 2:1 select: 32xAND, 16xOR, 48 gates!
+^ it's not worth the HW cost at all.
 
 
 HDMA REMOVED - YLIN and its Interrupt are enough.
@@ -169,8 +182,6 @@ Implementation: 12-bit counter (low 16 pages), 8-bit YReg for "wait for YLine" (
 
 Can use HDMA to play samples (need to unpack 64 samples per frame: 64*4=256 bytes: 0,YLine,IO,sample)
 every 4th line. Can unpack 1-bit delata modulation with ASL;ADC;STA loop. Too much work.
-
-
 
 
 DMA ROP modes REMOVED - not worth the HW cost.
@@ -231,14 +242,14 @@ for (x = x0; x <= x1; x++) {
     if (D < 0) { y++; D += dx; }
 }
 
-Fast-Inc Line Draw:
+Fast-Inc Line Draw:  X=color Y=dx-count (X-major, up to dx=127 dy=127)
 LDA dx; ASR; SEC
-loop: STX DDRW; [C=1] SBC dy; BCC step; DEY; BNE loop [13]  ; X steps, while D>=0 (X=color)
-step: STA DINC; [C=0] ADC dx; DEY; BNE loop      [9+11=20]  ; Y step (Y=dx; DINC ignores A)
+loop: STX DDRW; [C=1] SBC dy; BCC step; DEY; BNE loop [13]  ; X steps, while D>0 (X=color)
+step: STA AINC; [C=0] ADC dx; DEY; BNE loop           [+7]  ; Y step (Y=dx; AINC ignores A)
 
 Fast-Inc 16-bit Line Draw:
-LDA dxh; CMP #$80; ROR A; STA ehi; LDA dxl; ROR A; STA elo                                      ; CMP #$80 sets C=sign-bit
-loop: STX DDRW; SEC; LDA elo; SBC dyl; STA elo; LDA ehi; SBC dyh; STA ehi; DEY; BPL loop [26]   ; X steps, while D>=0 (X=color)
-step: STA DINC; CLC; LDA elo; ADC dxl; STA elo; LDA ehi; ADC dxh; STA ehi; DEY; BNE loop [+28]  ; Y step (DINC ignores A)
+LDA dxh; CMP #$80; ROR A; STA ehi; LDA dxl; ROR A; STA elo; SEC                                    ; CMP #$80 sets C=sign-bit
+loop: STX DDRW; LDA elo; SBC dyl; STA elo; LDA ehi; SBC dyh; STA ehi; BCC step; DEY; BNE loop [28] ; X steps, while D>=0 (X=color)
+step: STA AINC; LDA elo; ADC dxl; STA elo; LDA ehi; ADC dxh; STA ehi; DEY; BNE loop          [+22] ; Y step (DINC ignores A)
 
 Better to break lines into 127-pixel segments.

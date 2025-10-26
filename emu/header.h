@@ -94,10 +94,11 @@ enum dma_ctl {
     DMA_Copy        = 0x00,  // copy bytes from source to destinaton
     DMA_Fill        = 0x01,  // using fill byte (write IO_DJMP)
     DMA_Masked      = 0x02,  // copy pixels, skip zero pixels (shares APA HW)
-    DMA_APA         = 0x03,  // APA addressing: low 3 bits of address select pixel; BPP from VCTL
-    DMA_Palette     = 0x04,  // read src / write dest is palette memory, SRCL/DSTL only; ignores direction
-    DMA_Sprite      = 0x05,  // read src / write dest is sprite memory, SRCL/DSTL only; ignores direction
-    DMA_SprClr      = 0x06,  // write $FF to Y coords of sprites (inc by 4), DSTL only; ignores direction
+    DMA_AltFill     = 0x03,  // fill with [FILL] and [TABLE] alternating (low bit selects)
+    DMA_APA         = 0x04,  // APA addressing: low 3 bits of address select pixel (BPP from VCTL)
+    DMA_Palette     = 0x05,  // read src / write dest is palette memory, SRCL/DSTL only; ignores direction
+    DMA_Sprite      = 0x06,  // read src / write dest is sprite memory, SRCL/DSTL only; ignores direction
+    DMA_SprClr      = 0x07,  // write $FF to Y coords of sprites (inc by 4), DSTL only; ignores direction
     // mode mask
     DMA_Mode        = 0x07,  // low 3 bits
 };
