@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
     reset6502();
 
     // DEBUGGER
-    dbg_enable = 1;
+    dbg_enable = 0;
     dbg_break = 0x0C41C;
     Uint32 held_time = 0;
 

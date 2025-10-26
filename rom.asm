@@ -33,23 +33,16 @@ IrqVec   = $0216  ; IRQ vector in RAM {JMP abs instruction} (for ROM override)
 ; ------------------------------------------------------------------------------
 ; Zero Page
 
-Src      = $00    ; source pointer
-SrcH     = $01    ; source pointer high
-Ptr      = $02    ; second pointer
-PtrH     = $03    ; second pointer high
-Tmp      = $04    ; temp
-Tmp2     = $05    ; temp
-Tmp3     = $06    ; temp
-Tmp4     = $07    ; temp 4 (used by AUTO [can't use in parser])
+Src      = $00    ; source pointer \
+SrcH     = $01    ; source pointer |
+Ptr      = $02    ; second pointer | Used in BASIC
+PtrH     = $03    ; second pointer |     and
+B        = $04    ; extra register | OS Routines
+C        = $05    ; extra register |
+D        = $06    ; extra register |
+E        = $07    ; extra register /
 
-; Keyboard buffer
-
-KeyHd    = $0A    ; keyboard buffer head (owned by User)
-KeyTl    = $0B    ; keyboard buffer tail (owned by IRQ)
-ModKeys  = $0C    ; modifier keys [7:Esc 6:Shf 5:Ctl 4:Fn] (owned by IRQ)
-LastKey  = $0D    ; keyboard last key pressed, for auto-repeat (owned by IRQ)
-
-; BASIC vars
+; BASIC Vars
 
 AccE     = $10    ; Accumulator exponent
 Acc0     = $11    ; Accumulator low byte
@@ -57,31 +50,34 @@ Acc1     = $12    ; Accumulator byte 1
 Acc2     = $13    ; Accumulator byte 2
 Acc3     = $14    ; Accumulator high byte
 
-TermE     = $15    ; Term exponent
+AutoInc   = $15    ; Term exponent alias
+TermE     = $15    ; Term exponent (not used in parser)
 Term0     = $16    ; Term low byte
 Term1     = $17    ; Term byte 1
 Term2     = $18    ; Term byte 2
 Term3     = $19    ; Term high byte
 
-Code     = $1C    ; saved BASIC code address
-CodeH    = $1D
 Line     = $1E    ; current line number (used by AUTO, parse_cmd, bas_ins_line)
 LineH    = $1F
 
-; Video vars
+; OS Vars
 
-WinRem   = $20    ; remaining horizontal space in text window
-WinL     = $21    ; text window left
-WinT     = $22    ; text window top
-WinW     = $23    ; text window width
-WinH     = $24    ; text window height
-CurX     = $25    ; text cursor X                   XXX need these?
-CurY     = $26    ; text cursor Y                   XXX need these?
-Dstl     = $27    ; text write address low  (saved DSTL)
-Dsth     = $28    ; text write address high (saved DSTH)
-Color    = $29    ; text color (bg-col : fg-col)
+KeyHd    = $B3    ; keyboard buffer head (owned by User)
+KeyTl    = $B4    ; keyboard buffer tail (owned by IRQ)
+ModKeys  = $B5    ; modifier keys [7:Esc 6:Shf 5:Ctl 4:Fn] (owned by IRQ)
+LastKey  = $B6    ; keyboard last key pressed, for auto-repeat (owned by IRQ)
 
-; High vars
+WinRem   = $B7    ; remaining horizontal space in text window
+WinL     = $B8    ; text window left
+WinT     = $B9    ; text window top
+WinW     = $BA    ; text window width
+WinH     = $BB    ; text window height
+CurX     = $BC    ; text cursor X (copied to Sprite 0)
+CurY     = $BD    ; text cursor Y (copied to Sprite 0)
+Color    = $BE    ; text color (bg-col : fg-col)
+
+; Cursor from IO_DST: ASL/ROL twice -> Y; AND #63 -> X
+; Maybe text coords should be 256x256 and HW maps it, like APA?
 
 IRQTmp   = $BF    ; Temp for IRQ handler
 
@@ -104,11 +100,11 @@ IO_SRCH     = $D1    ; DMA src high
 IO_DSTL     = $D2    ; DMA dest low
 IO_DSTH     = $D3    ; DMA dest high
 IO_DCTL     = $D4    ; DMA control         (7-6:direction 5:vertical 4:reverse 2-0:mode)
-IO_DRUN     = $D5    ; DMA count           (write: start DMA, 0=256; read: increment DST += 640)
+IO_DRUN     = $D5    ; DMA count           (write: start DMA, 0=256; read: unused)
 IO_FILL     = $D6    ; DMA fill byte       (write: set FILL byte [data latch]; read: last value to/from IO_DDRW)
 IO_DDRW     = $D7    ; DMA data R/W        (read: reads from src++; write: writes to dest++)
-IO_DJMP     = $D8    ; DMA jump indirect   (read: indirect table jump [stalls for +1 cycle]; write: set Jump Table [page latch])
-IO_APWR     = $D9    ; DMA APA write       (read: second byte of indirect jump; write: triggers APA write cycle, writes [page latch])
+IO_DJMP     = $D8    ; DMA jump indirect   (read: indirect table jump [stalls for +1 cycle]; write: set Jump Table)
+IO_AINC     = $D9    ; APA increment       (read: second byte of indirect jump; write: increment DST += 640)
 IO_BNK8     = $DA    ; Bank switch $8000   (low 6 bits)
 IO_BNKC     = $DB    ; Bank switch $C000   (low 6 bits)
 ;------     = $DC    ; 
@@ -142,30 +138,28 @@ IO_FINV     = $F5    ; vertical fine scroll   (top 3 bits)                [in bi
 IO_VCTL     = $F6    ; video control          (7:APA 6:Grey 5:HCount 4:Double 3-2:VCount 1-0:Divider)
 IO_VENA     = $F7    ; interrupt enable       (7:VSync 6:VCmp 5:HSync 3:Power_LED 2:Caps_LED 1:Spr_En 0:BG_En)
 IO_VSTA     = $F8    ; interrupt status       (7:VSync 6:VCmp 5:HSync)  (read:status / write:clear)
-IO_VMAP     = $F9    ; name table size        (2:2 width 32,64,128,256; height 32,64,128,256)
+IO_VMAP     = $F9    ; name table size        (2:2 width 32,64,128; height 32,64,128)
 IO_VTAB     = $FA    ; name table base        (page byte)
-IO_VBNK     = $FB    ; tile bank R/W          (write: [sssaaaa] set slot to addr*1K; read: [sss-----] read slot)
+IO_VBNK     = $FB    ; tile bank R/W          (write: [sssaaaaa] set slot to addr*1K; read: last written?)
 IO_PALA     = $FC    ; palette address        (direct palette-memory address, top bit enables auto-increment)
 IO_PALD     = $FD    ; palette data R/W       (direct palette-memory data, increments address if enabled)
 IO_SPRA     = $FE    ; sprite address         (direct sprite-memory address)
 IO_SPRD     = $FF    ; sprite data R/W        (direct sprite-memory data, increments address)
 
-; DCTL direction
-DMA_M2M        = $00
-DMA_M2V        = $40
-DMA_V2M        = $80
-DMA_V2V        = $C0   ; can be used for windowed scrolling
 ; DCTL flags
+DMA_FROMV      = $80   ; reads from VRAM
+DMA_TOV        = $40   ; writes to VRAM
 DMA_Vert       = $20   ; increments VRAM by current map width, from VMAP [column copy]
 DMA_Rev        = $10   ; derements src and dest addresses [memmove]
 ; DCTL mode
-DMA_Copy       = 0     ; copy from source to destinaton
-DMA_Fill       = 1     ; using fill byte (write IO_FILL)
-DMA_Masked     = 2     ; copy pixels, skip zero pixels (shares APA HW)
-DMA_APA        = 3     ; APA addressing: low 3 bits of address select pixel; BPP from VCTL
-DMA_Palette    = 4     ; read src / write dest is palette memory, SRCL/DSTL only; ignores direction
-DMA_Sprite     = 5     ; read src / write dest is sprite memory, SRCL/DSTL only; ignores direction
-DMA_SprClr     = 6     ; write $FF to Y coords of sprites (inc by 4), DSTL only; ignores direction
+DMA_Copy       = 0     ; copy bytes from source to destinaton
+DMA_Fill       = 1     ; fill with FILL byte (2 cycles per byte)
+DMA_Masked     = 2     ; copy bytes, skip zero-bytes [zero-pixels would require Read+RMW!]
+DMA_AltFill    = 3     ; fill with FILL and PAGE bytes alternating (low bit selects)
+DMA_APA        = 4     ; APA addressing: low 3 bits of address select pixel; BPP from VCTL
+DMA_Palette    = 5     ; read src / write dest is palette memory, SRCL/DSTL only; ignores direction
+DMA_Sprite     = 6     ; read src / write dest is sprite memory, SRCL/DSTL only; ignores direction
+DMA_SprClr     = 7     ; write $FF to Y coords of sprites (inc by 4), DSTL only; ignores direction
 ; VCTL flags [ANCGVVHD]
 VCTL_APA       = $80   ; linear framebuffer at address 0 (or linear 8x8 tiles?)
 VCTL_NARROW    = $40   ; 5x8 tiles at 2bpp only; left 5 pixels of each tile (64 columns)
@@ -261,6 +255,7 @@ err_escape:
 err_prog:
   DB 10,"No program"
 
+
 reset:
   SEI            ; disable interrupts
   CLD            ; disable BCD mode
@@ -272,7 +267,7 @@ reset:
   LDX #4         ; screen mode 4 (40x25 text, 16 color)
   JSR mode       ; set mode, clear screen (uses Color)
   LDY #<welcome_1
-  JSR printmsg
+  JSR printmsgln
   ; 32768 - 5*256 (ZeroPg, StackPg, SysPg, LineBuf, Scratch)
   ; 16384 will be added for each bank of expanded RAM
   LDA #<31488    ; low
@@ -281,9 +276,9 @@ reset:
   STA Acc1
   JSR n16_print
   LDY #<welcome_2
-  JSR printmsg
+  JSR printmsgln
   LDY #<ready
-  JSR printmsg
+  JSR printmsgln
   ; +++ fall through to @@ basic +++
 
 ; @@ basic
@@ -309,7 +304,7 @@ basic_e1:        ; <- entry point after Escape
 ; Escape from readline or the interpreter
 repl_esc:
   LDY #<err_escape
-  JSR printmsg
+  JSR printmsgln
   LDA #$3E       ; ">"
   JSR writechar
 @wait:           ; wait for Escape to be released
@@ -322,26 +317,37 @@ repl_esc:
 ; ------------------------------------
 ; BASIC Parser
 
-e_stmt:
-  LDY #<err_stmt
+e_bounds:
+  LDY #<err_bound
+  ; +++ fall through to @@ pf_error +++
+
+pf_error:         ; Y = low byte (in messages page)
+  JSR printmsgln  ; Y=low
+  JMP repl
+
+e_range:
+  LDY #<err_range
   JMP pf_error
+
 
 ; @@ parse_cmd
 ; parse a BASIC command line
 parse_cmd:
   LDX #0           ; [2]
-  JSR skip_spc     ; [24+] leading spaces
+  JSR skip_spc     ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
 
   ; parse line number
-  JSR n16_parse    ; [12+] parse number at LineBuf,X -> {Acc0/1}, X, EQ=no (uses A,Y,Tmp)
+  JSR cg_enter     ; XXX
+  JSR cg_n16       ; [6] parse number at X -> X,Acc01,EQ=no (uses A,Y,B)
   BNE @haveline    ; [2] -> found line number [+1]
+  JSR cg_leave     ; XXX
 
   ; try matching a repl command
   LDA #<repl_tab   ; [2] repl commands table
   LDY #>repl_tab   ; [2]
-  JSR scan_kw_all  ; [6] search -> CF=1 if found, X=next-input
+  JSR scan_kw_all  ; [6] X=ln-ofs A,Y=table -> CF=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src)
   BCC @immediate   ; [3] -> no match, parse immediate
-  EOR #$80         ; [2] clear top bit
+  EOR #$80         ; [2] clear top bit of hi-byte
   CMP #repl_len    ; [2] ASSERT
   BCS e_bounds     ; [2] ASSERT
   ASL              ; [2] times 2 (word index)
@@ -354,256 +360,26 @@ parse_cmd:
 
 @immediate:
   LDX #0           ; [2]
-  JSR parse_line   ; [6]
+  JSR cge_line     ; [6]
   ; execute the line immediately
   RTS              ; [6]
 
 @haveline:         ; X = after line number
+  JSR cg_leave     ; XXX
   ; save line number for bas_ins_line
   LDA Acc0         ; [3]
   STA Line         ; [3]
   LDA Acc1         ; [3]
   STA LineH        ; [3]
-  BMI e_range2     ; [2]
-  JSR parse_line   ; [6]
+  BMI e_range      ; [2]
+  JSR cge_line     ; [6]
   ; copy tokenised line into place
   JMP bas_ins_line ; [3]
 
 
-; @@ parse_line
-; called from parse_cmd or from cmd_auto
-parse_line:
-  ; init bytecode write pos
-  LDA #1         ; [2] after OP at [0]
-  STA Ptr        ; [3] bytecode write offset (+Ptr)
-
-  JSR skip_spc   ; [24+] leading spaces
-
-  ; XXX this needs to use pf_stmts, recursion is allowed
-  ; XXX pf_stmts needs to call pf_stmt in a loop
-  ; XXX pf_stmt needs to do what this does
-
-  ; check for alpha char
-  JSR is_alpha   ; [24] returns CF=0 if alphabetic
-  BCS e_stmt     ; [2] -> not a keyword (CF=1)
-
-  ; search for a matching statement keyword
-  TAY              ; [2] as an index (0-25)
-  LDA stmt_tab,Y   ; [4] offset within keyword table
-  LDY #>stmt_page  ; [2] stmt keyword table
-  JSR scan_kw_idx  ; [6] search -> CF=1 if found, X=next-input (start-of-token if CF=0)
-  BCS @stmt_found  ; [2] -> found a match
-  JMP parse_var    ; [3] -> no match, must be a variable
-
-  ; matched a statement
-@stmt_found:      ; A = top-bit byte; X -> after keyword
-  STA LineBuf     ; write opcode to LineBuf[0] (stmts keep top-bit)
-  EOR #$80        ; clear top bit
-  CMP #41         ; ASSERT
-  BCS e_bounds    ; ASSERT
-  TAY             ; as index
-  LDA stmt_pb,Y   ; A = parse byte
-  STA PtrH        ; save parse flags for parse function (+PtrH)
-  AND #31         ; low 5 bits
-  ASL             ; times 2 (word index)
-  TAY             ; as index
-  LDA stmt_fn+1,Y ; parse function, high byte
-  PHA             ; push high
-  LDA stmt_fn,Y   ; parse function, low byte
-  PHA             ; push low
-  RTS             ; return to parse function
-
-
-e_bounds:
-  LDY #<err_bound
-  JMP pf_error
-
-e_range2:
-  LDY #<err_range
-  JMP pf_error
-
-
-; @@ skip_spc
-; skip spaces in the input buffer
-skip_spc:        ; X = input-ofs (uses A preserves Y) -> returns X
-  LDA LineBuf,X  ; [4] next input char
-  INX            ; [2] advance (assume match)
-  CMP #32        ; [2] was it space?
-  BEQ skip_spc   ; [2] -> loop [+1]
-  DEX            ; [2] undo advance (didn't match)
-  RTS            ; [6] return X [12+6=18]
-
-
-; @@ is_alpha
-is_alpha:        ; X=input-ofs (uses A, preserves X,Y) -> CF=0 if alphabetic
-  LDA LineBuf,X  ; [4] next input char
-  AND #$DF       ; [2] lower -> upper (clear bit 5)
-  SEC            ; [2] for subtract
-  SBC #65        ; [2] make 'A' be 0
-  CMP #26        ; [2] 26 letters (CF=1 if >= 26)
-  RTS            ; [6] return CF=0 if alphabetic [12+6=18]
-
-
-; @@ scan_kw_idx
-; find a matching keyword in a table indexed by first letter
-scan_kw_idx:       ; X=input-offset A=table-low Y=table-high
-  ; find first keyword for this letter
-  STA Src          ; [3] table-low
-  STY SrcH         ; [3] table-high
-  ; start the search  
-  LDY #$FF         ; [2] search-mode: same-first-char (D7=1)
-  STY Tmp3         ; [3] set mode
-  INY              ; [2] word list offset (start of 1st word) = 0
-  BEQ scan_kw_list ; [3] -> always
-
-; @@ scan_kw_all
-; scan a list of keywords, matching all keywords in the list.
-scan_kw_all:       ; X=input-offset A=table-low Y=table-high
-  STA Src          ; [3] table-low
-  STY SrcH         ; [3] table-high
-  LDY #0           ; [2] word list offset (start of 1st word)
-  STY Tmp3         ; [3] search-mode: all-keywords (D7=0)
-  ; +++ fall through to @@ scan_kw_list +++
-
-; @@ scan_kw_list
-; find a matching keyword (terminated by a byte with the top-bit set) in a zero-terminated list
-; two search modes are supported: same-first-char (D7=1) or all-keywords (D7=0)
-scan_kw_list:    ; X=input-ofs Y=keyword-ofs Src=keyword-list Tmp3.D7=search-mode (+Tmp2)
-  STX Tmp        ; [3] save start of token (+Tmp)
-  DEX            ; [2] nullify first pre-increment
-  DEY            ; [2] nullify first pre-increment
-@next_kw:
-  LDA #0         ; [2] zero
-  STA Tmp2       ; [3] dot shorthand off (zero) (Tmp2)
-@match_lp:
-  INX            ; [2] pre-increment input position
-  INY            ; [2] pre-increment keyword position
-  LDA LineBuf,X  ; [4] next input char
-  EOR (Src),Y    ; [5] compare keyword char
-  BEQ @match_lp  ; [2] -> yes, next char [+1]
-  CMP #32        ; [2] differs only by upper/lower case? (bit 5)
-  BEQ @match_en  ; [2] -> yes, enable dot, next char [+1]
-
-  ; no match, check edge-cases
-  LDA LineBuf,X  ; [4] reload input char
-  BEQ @no_match  ; [2] -> end of input (check if we matched the current keyword) [+1]
-  CMP #46        ; [2] dot
-  BEQ @match_dot ; [2] -> check dot shorthand [+1]
-
-  ; input char didn't match
-@no_match:       ; X = offset of nonmatching character
-  LDA (Src),Y    ; [5] check keyword char's top bit
-  BMI @kw_found  ; [2] -> matched a keyword (top bit set) [+1]
-
-  ; no match, skip rest of keyword (find top-bit)
-@skip_lp:
-  INY            ; [2] pre-increment Y
-  LDA (Src),Y    ; [5] check keyword char
-  BPL @skip_lp   ; [2] -> top bit clear, keep going [+1]
-  INY            ; [2] skip byte with top-bit
-
-  ; match-mode: does next keyword start with same letter / are there more keywords?
-  LDX Tmp        ; [3] restore X = start of token (Tmp)
-  LDA (Src),Y    ; [5] first char of next keyword
-  BEQ @not_found ; [2] -> zero byte, end of list [+1]
-  BIT Tmp3       ; [3] check scan_kw_list mode
-  BPL @next_kw   ; [2] -> check next keyword (D7=0: all-keywords mode) [+1]
-  CMP LineBuf,X  ; [3] does it match first char? (D7=1: same-first-char mode)
-  BEQ @next_kw   ; [2] -> check next keyword [+1]
-
-  ; did not find a match
-@not_found:
-  CLC            ; [2] clear carry: no match found
-  RTS            ; [6] X = start of token
-
-; input and keyword chars differ by case
-; check if keyword is lowercase (otherwise input is lowercase!)
-@match_en:       ; A = 32
-  AND (Src),Y    ; is keyword lowercase? (bit 5 set)
-  BEQ @no_match  ; -> keyword not lowercase (input is lowercase)
-  STA Tmp2       ; [3] enable dot (A=32: non-zero) (Tmp2)
-  BNE @match_lp  ; [3] always jump
-
-; match a dot input char, if shorthand enabled
-@match_dot:      ; X=next-in Y=next-kw
-  LDA Tmp2       ; [3] is dot enabled for this keyword?
-  BEQ @no_match  ; [3] -> not enabled (zero), didn't match input
-  INX            ; [2] advance over the dot
-  DEY            ; [2] for pre-inc Y below
-@dot_lp:         ; advance to byte with top-bit set
-  INY            ; [2] pre-inc Y
-  LDA (Src),Y    ; [5] check keyword char
-  BPL @dot_lp    ; [3] -> top bit clear, keep going
-
-@kw_found:
-  SEC            ; [2] set carry: keyword was found
-  RTS            ; [6] X = next-character A=top-bit byte
-
-
-e_range:
-  LDY #<err_range
-  JMP pf_error
-
-
-; @@ n16_parse
-; parse a 16-bit number -> {Acc0/1}, X, ZF
-n16_parse:       ; from LineBuf,X returning {Acc0/1} X=end ZF=no-match (uses A,Y,Tmp)
-  LDA #0         ; [2] length of num
-  STA Acc0       ; [3] clear result
-  STA Acc1       ; [3]
-  STX Tmp        ; [3] save X to compare at end
-@loop:           ; -> 14+76+25 [115]
-  LDA LineBuf,X  ; [4] get next char
-  SEC            ; [2]
-  SBC #48        ; [2] make '0' be 0
-  CMP #10        ; [2]
-  BCS @done      ; [2] >= 10 -> @done
-  TAY            ; [2] save digit 0-9
-  JSR n16_mul_10 ; [12+64=76] uses A, preserves X,Y (+Acc,+Term)
-  TYA            ; [2] restore digit
-  CLC            ; [2]
-  ADC Acc0       ; [3] add digit 0-9
-  STA Acc0       ; [3]
-  LDA Acc1       ; [3]
-  ADC #0         ; [2] add carry
-  STA Acc1       ; [3]
-  BCS e_range    ; [2] -> unsigned overflow
-  INX            ; [2] advance source
-  JMP @loop      ; [3]
-@done:
-  CPX Tmp        ; [3] ZF=1 if no match
-  RTS            ; [6] return X=end
-
-; @@ n16_mul_10
-; multiply {Acc0,1} by 10 (uses Term)
-n16_mul_10:     ; Uses A, preserves X,Y (+Term)
-  LDA Acc0      ; [3] Term = Val * 2
-  ASL           ; [2]
-  STA Term0     ; [3]
-  LDA Acc1      ; [3]
-  ROL           ; [2]
-  STA Term1     ; [3]
-  BCS e_range   ; [2] -> unsigned overflow
-  ASL Term0     ; [5] Term *= 2 = Val * 4
-  ROL Term1     ; [5]
-  BCS e_range   ; [2] -> unsigned overflow
-  CLC           ; [2]
-  LDA Acc0      ; [3] Acc += Term = Val * 5
-  ADC Term0     ; [3]
-  STA Acc0      ; [3]
-  LDA Acc1      ; [3]
-  ADC Term1     ; [3]
-  STA Acc1      ; [3]
-  BCS e_range   ; [2] -> unsigned overflow
-  ASL Acc0      ; [5] Acc *= 2 = Val * 10
-  ROL Acc1      ; [5]
-  BCS e_range   ; [2] -> unsigned overflow
-  RTS           ; [6] -> [64+6]
-
-
 ; @@ n16_print
 ; print a 16-bit number {Acc0,1}
-n16_print:       ; from {Acc0,1} (uses Y +Tmp)
+n16_print:       ; from {Acc0,1} (uses Y)
   LDA #0
   PHA            ; sentinel
 @loop:
@@ -676,44 +452,6 @@ ok2:
   JMP writechar ; output char to screen (A=char, preserves X,Y)
 
 
-parse_var:       ; X -> start of token (1st char is alpha)
-@loop:
-  INX            ; [2] next char
-  LDA LineBuf,X  ; [4] next input char
-  AND #$DF       ; [2] lower -> upper (clear bit 5)
-  SEC            ; [2] for subtract
-  SBC #65        ; [2] make 'A' be 0
-  CMP #26        ; [2] 26 letters
-  BCC @loop      ; [2] is a letter -> @loop [+1]
-  STX Tmp2       ; [3] save end of token
-  JSR skip_spc   ; [24+]
-  LDA LineBuf,X  ; [4] next input char
-  CMP #$3D       ; [2] is it '='?
-  BEQ @let       ; [2] -> LET name = <expr> [+1]
-  JMP e_stmt     ; [3]
-@let:
-  INX            ; [2]
-  JSR pf_expr    ; [6] parse expr
-  LDY #<err_var
-  JMP pf_error
-
-
-e_expect:         ; A = expected character
-  STA Tmp         ; save char
-  LDY #<msg_expecting
-  JSR printmsg    ; Y=low (uses A,X,Y,Src)
-  LDA Tmp         ; restore char
-  JSR writechar
-  JSR newline
-  JMP repl
-
-e_expect_kw:      ; Tmp = keyword (low byte) in kwtab
-  LDY #<msg_expecting
-  JSR printmsg    ; Y=low (uses A,X,Y,Src)
-  LDY Tmp         ; keyword offset
-  JSR printkw     ; Y=offset (uses A,Src)
-  JMP repl
-
 printkw:          ; 13 bytes
   LDA kwtab,Y     ; [4] first char
 @loop:
@@ -723,183 +461,12 @@ printkw:          ; 13 bytes
   BPL @loop       ; [3] until top-bit is set
   RTS             ; [6] done
 
-; KEYWORD parse-function table
-; matches stmt_pb "parse function" entries
-; no special alignment requirements
-stmt_fn:             ; [41]
-  DW pfs_for      -1 ;  0 = FOR .. TO .. [ STEP .. ]
-  DW pfs_if       -1 ;  1 = IF .. THEN .. [ ELSE .. ]
-  DW pfs_print    -1 ;  2 = PRINT .. SPC .. TAB .. ~';
-  DW pfs_varlist  -1 ;  3 = var-list .. A,B
-  DW pfs_fim      -1 ;  4 = DIM .. A(n,..)
-  DW pfs_data     -1 ;  5 = DATA .. , .. (up to 255)
-  DW pfs_num      -1 ;  6 = num stmt, uses NN
-  DW pfs_def      -1 ;  7 = DEF .. FN|PROC name (a,b..)
-  DW pfs_cond     -1 ;  8 = condition
-  DW pfs_else     -1 ;  9 = ELSE
-  DW pfs_envelope -1 ; 10 = ENVELOPE (14 args)
-  DW pfs_proc     -1 ; 11 = PROC
-  DW pfs_let      -1 ; 12 = LET .. var = ..
-  DW pfs_on       -1 ; 13 = ON .. ERROR|num .. GOTO|GOSUB .. ELSE
-  DW pfs_rem      -1 ; 14 = REM ..
-  DW pfs_onoff    -1 ; 15 = on-off
-  DW pfs_str      -1 ; 16 = str stmt, uses NN
-  DW pfs_hash     -1 ; 17 = # stmt
-
-; X = input line offset
-; PtrH = parse flags for parse function
-; Ptr = bytecode write pos in LineBuf (=1)
-; LineBuf[0] = OPCode for stmt
-
-; Pack ?a,8,c -> [OP_PRINT][FVar1][1Ofs][Int8][08][FVar1][1Ofs]
-; 1Ofs -> [Base][1Ofs]
-; 2Ofs -> [Base+2Ofs][1Ofs]
-
-OP_STEP = 1
-OP_ELSE = 2
-OP_GOTO = 3
-
-pfs_for:
-  ; var "=" iexpr "TO" iexpr [ "STEP" iexpr ]
-  JSR pf_var     ; parse var
-  JSR skip_spc   ; [24+]
-  LDA #61        ; "="
-  CMP LineBuf,X  ; next char
-  BNE e_expect
-  JSR pf_expr    ; parse expr
-  LDY #<kw_to    ; "TO"
-  JSR match_kw   ; uses A,X,Y (Tmp=Y) -> CF,X
-  BCS e_expect_kw ; -> expecting TO (Tmp=kw_to)
-  JSR pf_expr    ; parse expr
-  LDY #<kw_step  ; "STEP"
-  JSR match_kw   ; uses A,X,Y (Tmp=Y) -> CF,X
-  BCS @done      ; -> no STEP
-  LDA #OP_STEP   ; write OP_STEP
-  JSR pf_opcode
-  JSR pf_expr    ; parse expr  
-@done:
-  RTS
-
-pfs_if:
-  ; expr "THEN" line|stmt* [ "ELSE" line|stmt* ]
-  JSR pf_expr    ; parse expr
-  LDY #<kw_then  ; "THEN"
-  JSR match_kw   ; uses A,X,Y (Tmp) -> CF,X
-  BCS @no_then   ; -> allow stmts, but not line no
-  JSR n16_parse  ; [12+] parse line number -> {Acc0/1}, X, EQ=no (uses A,Y,Tmp)
-  BNE @then_line ; [2] -> found line number
-@no_then:
-  JSR pf_stmts   ; parse statements
-@if_else:
-  LDY #<kw_else  ; "ELSE"
-  JSR match_kw   ; uses A,X,Y (Tmp) -> CF,X
-  BCS @done      ; -> no ELSE
-  LDA #OP_ELSE   ; write OP_ELSE
-  JSR pf_opcode
-  JSR n16_parse  ; [12+] parse line number -> {Acc0/1}, X, EQ=no (uses A,Y,Tmp)
-  BNE @else_line ; [2] -> found line number
-  JSR pf_stmts   ; parse statements
-@done:
-  RTS
-@then_line:
-  LDA #OP_GOTO   ; write OP_GOTO
-  JSR pf_opcode
-  JSR pf_line    ; write line number (find in index at runtime?)
-  JMP @if_else
-@else_line:
-  LDA #OP_GOTO   ; write OP_GOTO
-  JSR pf_opcode
-  JSR pf_line    ; write line number (find in index at runtime?)
-  RTS
-
-pfs_print:
-  ; { "str" | TAB() | SPC() | expr | ' } [;|,]
-  RTS
-
-pfs_varlist:
-  RTS
-pfs_fim:
-  RTS
-pfs_data:
-  RTS
-pfs_num:
-  RTS
-pfs_def:
-  RTS
-pfs_cond:
-  RTS
-pfs_else:
-  RTS
-pfs_envelope:
-  RTS
-pfs_proc:
-  RTS
-pfs_let:
-  RTS
-pfs_on:
-  RTS
-pfs_rem:
-  RTS
-pfs_onoff:
-  RTS
-pfs_str:
-  RTS
-pfs_hash:
-  RTS
-
-
-; Common parser functions
-; these directly output opcodes to LineBuf+Ptr
-
-pf_var:
-  JSR skip_spc  ; [24+]
-  RTS
-
-pf_expr:
-  JSR skip_spc  ; [24+]
-  RTS
-
-pf_stmts:
-  JSR skip_spc  ; [24+]
-  RTS
-
-match_kw:        ; Y = keyword low byte (on kwtab page)
-  STY Tmp        ; for e_expect_kw (error case)
-  JSR skip_spc  ; [24+] uses A (preserves Y) -> X
-  ; XXX compare it
-  SEC            ; CF=1 means not found
-  RTS
-
-pf_opcode:       ; A=opcode (preserves X)           [XXX replace with DMA write]
-  LDY Ptr        ; bytecode write pos in LineBuf
-  STA LineBuf,Y  ; append the opcode
-  INC Ptr        ; advance output pos
-  RTS
-
-; XXX do these dynamic-bind and set a bit somewhere?
-pf_line:
-  LDY Ptr        ; bytecode write pos in LineBuf
-  LDA Acc0       ; low byte
-  STA LineBuf,Y  ; append the opcode
-  INY
-  LDA Acc1       ; low byte
-  STA LineBuf,Y  ; append the opcode
-  INY
-  STY Ptr
-  RTS
-
 bas_ins_line:
   RTS
 
-
-; current version uses 6 bytes
-pf_error:         ; Y = low byte (in messages page)
-  JSR printmsg    ; Y=low
-  JMP repl
-
 ; to be a win, this needs to be smaller than adding a length byte
 ; to every message in messages (25-6 = 19 messages)
-;pf_error2:       ; Y=msg-ofs in messages page
+;p_error:         ; Y=msg-ofs in messages page
 ;  LDA messages,Y ; first char can be uppercase, print unconditionally
 ;@loop
 ;  JSR writechar  ; A=char (preserves X,Y)
@@ -911,6 +478,485 @@ pf_error:         ; Y = low byte (in messages page)
 ;  JSR writechar
 ;  JSR newline
 ;  JMP repl
+
+
+
+; ------------------------------------------------------------------------------
+; NO TEXT-OUT Utils
+; Can be used from CodeGen Land, as well as from outside.
+
+; @@ skip_spc
+; skip spaces in the input buffer [NO TEXT-OUT]
+skip_spc:        ; X=ln-ofs -> X (uses A,X)
+  LDA LineBuf,X  ; [4] next input char
+  INX            ; [2] advance (assume match)
+  CMP #32        ; [2] was it space?
+  BEQ skip_spc   ; [2] -> loop [+1]
+  DEX            ; [2] undo advance (didn't match)
+  RTS            ; [6] return X [12+6=18]
+
+; @@ is_alpha
+is_alpha:        ; X=input-ofs (uses A) -> CF=0 if alphabetic [NO TEXT-OUT]
+  LDA LineBuf,X  ; [4] next input char
+  AND #$DF       ; [2] lower -> upper (clear bit 5) detect alpha char
+  SEC            ; [2] for subtract
+  SBC #65        ; [2] make 'A' be 0
+  CMP #26        ; [2] 26 letters (CF=1 if >= 26)
+  RTS            ; [6] return CF=0 if alphabetic [12+6=18]
+
+; @@ match_kw
+; match an ad-hoc keyword (skips leading spaces) [NO TEXT-OUT]
+match_kw:        ; X=ln-ofs Y=kw-ofs[kwtab] uses A,X,Y,B (B=Y) -> CF=found A=hi-byte X=ln-ofs
+  STY B          ; [3] for error case
+  JSR skip_spc   ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
+  DEX            ; [2] set up for pre-increment
+  DEY            ; [2] set up for pre-increment
+@loop:
+  INX            ; [2] pre-increment
+  INY            ; [2] pre-increment
+  LDA kwtab,Y    ; [4] get keyword char
+  CMP LineBuf,X  ; [4] matches input char?
+  BEQ @loop      ; [3] -> continue until not equal
+  CMP #$80       ; [2] CF=(A >= $80) top-bit set
+  RTS            ; [6] -> CF=found A=hi-byte X=ln-ofs
+
+; @@ scan_kw_idx
+; find a matching keyword in a table indexed by first letter [NO TEXT-OUT]
+scan_kw_idx:       ; X=ln-ofs A,Y=table -> CF=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src)
+  ; find first keyword for this letter
+  STA Src          ; [3] table-low
+  STY SrcH         ; [3] table-high
+  ; start the search  
+  LDY #$FF         ; [2] Y = -1
+  STY D            ; [3] set search-mode: same-first-char (D7=1)
+  INY              ; [2] word list offset (start of 1st word) = 0
+  BEQ scan_kw_list ; [3] -> always
+
+; @@ scan_kw_all
+; scan a list of keywords, matching all keywords in the list [NO TEXT-OUT]
+scan_kw_all:       ; X=ln-ofs A,Y=table -> CF=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src)
+  STA Src          ; [3] table-low
+  STY SrcH         ; [3] table-high
+  LDY #0           ; [2] word list offset (start of 1st word)
+  STY D            ; [3] set search-mode: all-keywords (D7=0)
+  ; +++ fall through to @@ scan_kw_list +++
+
+; @@ scan_kw_list
+; find a matching keyword (terminated by a byte with the top-bit set) in a zero-terminated list [NO TEXT-OUT]
+; two search modes are supported: same-first-char (D7=1) or all-keywords (D7=0)
+scan_kw_list:    ; X=ln-ofs Y=kw-ofs Src=kw-list D=search-mode -> CF=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src)
+  STX B          ; [3] save start of token
+  DEX            ; [2] nullify first pre-increment
+  DEY            ; [2] nullify first pre-increment
+@next_kw:
+  LDA #0         ; [2] zero
+  STA C          ; [3] dot shorthand off (zero)
+@match_lp:
+  INX            ; [2] pre-increment input position
+  INY            ; [2] pre-increment keyword position
+  LDA LineBuf,X  ; [4] next input char
+  EOR (Src),Y    ; [5] compare keyword char
+  BEQ @match_lp  ; [2] -> yes, next char [+1]
+  CMP #32        ; [2] differs only by upper/lower case? (bit 5)
+  BEQ @match_en  ; [2] -> yes, enable dot, next char [+1]
+
+  ; no match, check edge-cases
+  LDA LineBuf,X  ; [4] reload input char
+  BEQ @no_match  ; [2] -> end of input (check if we matched the current keyword) [+1]
+  CMP #46        ; [2] dot
+  BEQ @match_dot ; [2] -> check dot shorthand [+1]
+
+  ; input char didn't match
+@no_match:       ; X = offset of nonmatching character
+  LDA (Src),Y    ; [5] check keyword char's top bit
+  BMI @kw_found  ; [2] -> matched a keyword (top bit set) [+1]
+
+  ; no match, skip rest of keyword (find top-bit)
+@skip_lp:
+  INY            ; [2] pre-increment Y
+  LDA (Src),Y    ; [5] check keyword char
+  BPL @skip_lp   ; [2] -> top bit clear, keep going [+1]
+  INY            ; [2] skip byte with top-bit
+
+  ; match-mode: does next keyword start with same letter / are there more keywords?
+  LDX B          ; [3] restore X = start of token
+  LDA (Src),Y    ; [5] first char of next keyword
+  BEQ @not_found ; [2] -> zero byte, end of list [+1]
+  BIT D          ; [3] check scan_kw_list mode
+  BPL @next_kw   ; [2] -> check next keyword (D7=0: all-keywords mode) [+1]
+  CMP LineBuf,X  ; [3] does it match first char? (D7=1: same-first-char mode)
+  BEQ @next_kw   ; [2] -> check next keyword [+1]
+
+  ; did not find a match
+@not_found:
+  CLC            ; [2] clear carry: no match found
+  RTS            ; [6] X = start of token
+
+; input and keyword chars differ by case
+; check if keyword is lowercase (otherwise input is lowercase!)
+@match_en:       ; A = 32
+  AND (Src),Y    ; is keyword lowercase? (bit 5 set)
+  BEQ @no_match  ; -> keyword not lowercase (input is lowercase)
+  STA C          ; [3] enable dot (A=32: non-zero)
+  BNE @match_lp  ; [3] always jump
+
+; match a dot input char, if shorthand enabled
+@match_dot:      ; X=next-in Y=next-kw
+  LDA C          ; [3] is dot enabled for this keyword?
+  BEQ @no_match  ; [3] -> not enabled (zero), didn't match input
+  INX            ; [2] advance over the dot
+  DEY            ; [2] for pre-inc Y below
+@dot_lp:         ; advance to byte with top-bit set
+  INY            ; [2] pre-inc Y
+  LDA (Src),Y    ; [5] check keyword char
+  BPL @dot_lp    ; [3] -> top bit clear, keep going
+
+@kw_found:
+  SEC            ; [2] set carry: keyword was found
+  RTS            ; [6] X = next-character A=hi-byte (top bit set)
+
+
+; ------------------------------------------------------------------------------
+; CodeGen Land
+; 
+; Everything below this point operates with IO_DST set up for Code output.
+; Text output is restored upon exit from CodeGen (saved in Ptr)
+
+; @@ cg_enter
+; Enter CodeGen Land: save IO_DSTL and set up Code output.
+cg_enter:            ; (uses A)
+  LDA IO_DSTL        ; IO_DSTL -> Ptr
+  STA Ptr  
+  LDA IO_DSTH        ; IO_DSTH -> Ptr
+  STA PtrH
+  LDA #<LineBuf
+  STA IO_DSTL        ; LineBuf -> IO_DSTL
+  LDA #>LineBuf
+  STA IO_DSTH        ; LineBuf -> IO_DSTH
+  LDA #DMA_Copy
+  STA IO_DCTL        ; read/write Memory
+  RTS
+
+; @@ cg_leave
+; Leave CodeGen Land: restore IO_DSTL for text output.
+cg_leave:            ; (uses A)
+  LDA Ptr  
+  STA IO_DSTL        ; IO_DSTL -> Ptr
+  LDA PtrH
+  STA IO_DSTH        ; IO_DSTH -> Ptr
+  LDA #DMA_TOV|DMA_Copy
+  STA IO_DCTL        ; write to VRAM
+  RTS
+
+; @@ cge_line
+; Parse and CodeGen a line of code in LineBuf (Point of Entry)
+cge_line:            ; X=ln-ofs
+  JSR cg_enter       ; (uses A)
+  JSR skip_spc       ; [24+] X=ln-ofs -> X (uses A,X) leading spaces [NO TEXT-OUT]
+  JSR is_alpha       ; [24] returns CF=0 if alphabetic               [NO TEXT-OUT]
+  BCS cgx_stmt       ; [2] -> not a statement (CF=1)
+
+  ; search for a matching statement keyword
+  TAY                ; [2] as an index (0-25)
+  LDA stmt_tab,Y     ; [4] offset within keyword table
+  LDY #>stmt_page    ; [2] stmt keyword table
+  JSR scan_kw_idx    ; [6] X=ln-ofs A,Y=table -> CF=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src) [NO TEXT-OUT]
+  BCC @try_let       ; [2] -> no match
+
+  ; matched a statement
+  STA IO_DDRW        ; write out statement opcode
+  AND #63            ; clear top 2 bits of hi-byte
+  CMP #41            ; ASSERT
+  BCS cgx_bounds     ; ASSERT
+  TAY                ; 0-40 as index
+  LDA stmt_pb,Y      ; A = parse byte   <---------------------- seems to go wrong here?
+  STA D              ; save parse flags for parse function
+  AND #31            ; low 5 bits
+  ASL                ; times 2 (word index)
+  TAY                ; as index
+  JSR @call_fn
+  JSR cg_leave       ; done
+  RTS
+@call_fn:
+  LDA stmt_fn+1,Y    ; parse function, high byte
+  PHA                ; push high
+  LDA stmt_fn,Y      ; parse function, low byte
+  PHA                ; push low
+  RTS                ; return to parse function
+
+@try_let:            ; implicit LET statement
+  JSR cg_name        ; X=ln-ofs (at alpha) -> X=ln-after B=start-of-name (uses A,X,B)
+  STX C              ; [3] save end of name, so we can copy the var name later
+  JSR skip_spc       ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
+  LDA #$3D           ; [2] '='
+  CMP LineBuf,X      ; [4] matches next input char?
+  BNE cgx_stmt       ; [3] -> Expecting statement
+  INX                ; [2]
+  JSR cg_expr        ; [6] parse expr
+  LDY #<err_var      ; XXX STUB
+  JMP cgx_error      ; XXX STUB
+
+cgx_stmt:
+  ; LDA #<kwt_stmt     ; "Expecting statement"
+  ; STA B
+  ; JMP cgx_expect_kw
+  LDY #<msg_expecting
+  JMP cgx_error
+
+cgx_bounds:
+  LDY #<err_bound
+  JMP cgx_error
+
+; KEYWORD parse-function table
+; matches stmt_pb "parse function" entries
+; no special alignment requirements
+stmt_fn:             ; [41]
+  DW cg_for      -1 ;  0 = FOR .. TO .. [ STEP .. ]
+  DW cg_if       -1 ;  1 = IF .. THEN .. [ ELSE .. ]
+  DW cg_print    -1 ;  2 = PRINT .. SPC .. TAB .. ~';
+  DW cg_varlist  -1 ;  3 = var-list .. A,B
+  DW cg_dim      -1 ;  4 = DIM .. A(n,..)
+  DW cg_data     -1 ;  5 = DATA .. , .. (up to 255)
+  DW cg_num      -1 ;  6 = num stmt, uses NN
+  DW cg_def      -1 ;  7 = DEF .. FN|PROC name (a,b..)
+  DW cg_cond     -1 ;  8 = condition
+  DW cg_else     -1 ;  9 = ELSE
+  DW cg_envelope -1 ; 10 = ENVELOPE (14 args)
+  DW cg_proc     -1 ; 11 = PROC
+  DW cg_let      -1 ; 12 = LET .. var = ..
+  DW cg_on       -1 ; 13 = ON .. ERROR|num .. GOTO|GOSUB .. ELSE
+  DW cg_rem      -1 ; 14 = REM ..
+  DW cg_onoff    -1 ; 15 = on-off
+  DW cg_str      -1 ; 16 = str stmt, uses NN
+  DW cg_hash     -1 ; 17 = # stmt
+
+; X = input line offset
+; D = parse flags for parse function
+; LineBuf[0] = OPCode for stmt
+
+; Pack ?a,8,c -> [OP_PRINT][FVar1][1Ofs][Int8][08][FVar1][1Ofs]
+; 1Ofs -> [Base][1Ofs]
+; 2Ofs -> [Base+2Ofs][1Ofs]
+
+; @@ cg_for
+; PARSE: var "=" iexpr "TO" iexpr [ "STEP" iexpr ]
+; WRITE: (var) (expr) (expr) [ OP_STEP (expr) ]
+cg_for:         ; X=ln-ofs
+  JSR cg_var     ; (var) X=ln-ofs -> X=ln-ofs B=start CC=found (uses A,X,B)
+  BCS cg_novar   ; -> expecting var
+  JSR skip_spc   ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
+  LDA #61        ; "="
+  CMP LineBuf,X  ; next char
+  BNE cgx_expect
+  JSR cg_expr    ; (expr) X=ln-ofs -> X
+  LDY #<kw_to    ; "TO"
+  JSR match_kw   ; X=ln-ofs Y=kw-ofs uses A,X,Y (B=Y) -> CF=found,A,X
+  BCC cgx_expect_kw ; -> expecting TO (B=kw_to)
+  JSR cg_expr    ; (expr) parse expr
+  LDY #<kw_step  ; "STEP"
+  JSR match_kw   ; X=ln-ofs Y=kw-ofs uses A,X,Y (B=Y) -> CF=found,A,X
+  BCC @done      ; -> no STEP
+  LDA #OP_STEP   ; 
+  STA IO_DDRW    ; write out OP_STEP
+  JSR cg_expr    ; (expr) X=ln-ofs -> X
+@done:
+  RTS            ; -> X=ln-ofs
+
+cg_novar:
+  LDY #<kwt_var  ; "var"
+  BNE cgx_expect_kw
+
+; @@ cg_if
+; PARSE: expr "THEN" line|stmt* [ "ELSE" line|stmt* ]
+; WRITE: (expr) (len) (stmts) [ OP_ELSE (len) (stmts) ]
+cg_if:
+  JSR cg_expr    ; (expr) parse expr
+  LDY #<kw_then  ; "THEN"
+  JSR match_kw   ; X=ln-ofs Y=kw-ofs uses A,X,Y (B=Y) -> CF=found,A,X
+  BCC @no_then   ; -> allow stmts, but not line no
+  JSR cg_n16     ; [6] parse number at X -> X,Acc01,EQ=no (uses A,Y,B)
+  BNE @then_ln   ; [2] -> found line number
+@no_then:
+  JSR cg_stmts   ; (stmts) parse statements
+@if_else:
+  LDY #<kw_else  ; "ELSE"
+  JSR match_kw   ; X=ln-ofs Y=kw-ofs uses A,X,Y (B=Y) -> CF=found,A,X
+  BCC @done      ; -> no ELSE
+  LDA #OP_ELSE   ; 
+  STA IO_DDRW    ; write out OP_ELSE
+  JSR cg_n16     ; [6] parse number at X -> X,Acc01,EQ=no (uses A,Y,B)
+  BNE @wr_goto   ; [2] -> output GOTO line
+  JMP cg_stmts   ; (stmts) parse statements
+@then_ln:
+  JSR @wr_goto
+  JMP @if_else
+@wr_goto:
+  LDA #OP_GOTO   ; 
+  STA IO_DDRW    ; write out OP_GOTO
+  LDA Acc0       ; low byte
+  STA IO_DDRW    ; write out Line low
+  LDA Acc1       ; high byte
+  STA IO_DDRW    ; write out Line high
+@done:
+  RTS
+
+; @@ cgx_expect
+; Report an "Expecting [char]" error, leaving CodeGen land.
+cgx_expect:       ; A = expected character (uses X,Y,B,Src)
+  STA B           ; save char
+  JSR cg_leave    ; (uses A)
+  LDY #<msg_expecting
+  JSR printmsg    ; Y=low (uses A,X,Y,Src)
+  LDA B           ; restore char
+  JSR writechar
+  JSR newline
+  JMP repl
+
+cgx_expect_kw:    ; B=kw-ofs[kwtab]
+  JSR cg_leave    ; (uses A)
+  LDY #<msg_expecting
+  JSR printmsg    ; Y=low (uses A,X,Y,Src)
+  LDY B           ; keyword offset
+  JSR printkw     ; Y=offset (uses A,Src)
+  JSR newline
+  JMP repl
+
+; @@ cgx_error
+; Report an error, leaving CodeGen land.
+cgx_error:        ; Y = low byte (in messages page)
+  JSR cg_leave    ; (uses A)
+  JSR printmsgln  ; Y=low
+  JMP repl
+
+cg_print:
+  ; { "str" | TAB() | SPC() | expr | ' } [;|,]
+  RTS
+
+cg_varlist:
+  RTS
+cg_dim:
+  RTS
+cg_data:
+  RTS
+cg_num:
+  RTS
+cg_def:
+  RTS
+cg_cond:
+  RTS
+cg_else:
+  RTS
+cg_envelope:
+  RTS
+cg_proc:
+  RTS
+cg_let:
+  RTS
+cg_on:
+  RTS
+cg_rem:
+  RTS
+cg_onoff:
+  RTS
+cg_str:
+  RTS
+cg_hash:
+  RTS
+
+; Common CodeGen functions.
+; These directly output opcodes.
+
+cg_var:          ; X=ln-ofs -> X=ln-ofs CC=found B=start-of-name (uses A,X,B)
+  JSR skip_spc   ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
+  JSR is_alpha   ; [24] returns CC if alphabetic (uses A)
+  BCS cg_ret     ; [2] -> not a varname (CS=not-found)
+  ; +++ fall through to @@ cg_name +++
+
+cg_name:         ; X=ln-ofs (at alpha char) -> X=ln-ofs B=start-of-name (uses A,X,B)
+  STX B          ; [3] save start of name
+@loop:
+  INX            ; [2] next char
+  LDA LineBuf,X  ; [4] next input char
+  AND #$DF       ; [2] lower -> upper (clear bit 5) detect alpha char
+  SEC            ; [2] for subtract
+  SBC #65        ; [2] make 'A' be 0
+  CMP #26        ; [2] 26 letters
+  BCC @loop      ; [2] is a letter -> @loop [+1]
+  CLC            ; [2] CC=found [for cg_var]
+cg_ret:
+  RTS            ; [6]
+
+
+cg_expr:
+  JSR skip_spc   ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
+  RTS
+
+cg_stmts:
+  JSR skip_spc   ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
+  RTS
+
+; @@ cg_n16
+; parse a 16-bit number -> {Acc0/1}, X, ZF
+cg_n16:          ; from LineBuf,X returning {Acc0/1} X=end ZF=no-match (uses A,Y,B)
+  LDA #0         ; [2] length of num
+  STA Acc0       ; [3] clear result
+  STA Acc1       ; [3]
+  STX B          ; [3] save X to compare at end
+@loop:           ; -> 14+76+25 [115]
+  LDA LineBuf,X  ; [4] get next char
+  SEC            ; [2]
+  SBC #48        ; [2] make '0' be 0
+  CMP #10        ; [2]
+  BCS @done      ; [2] >= 10 -> @done
+  TAY            ; [2] save digit 0-9
+  JSR cg_n16m10  ; [12+64=76] uses A, preserves X,Y (+Acc,+Term)
+  TYA            ; [2] restore digit
+  CLC            ; [2]
+  ADC Acc0       ; [3] add digit 0-9
+  STA Acc0       ; [3]
+  LDA Acc1       ; [3]
+  ADC #0         ; [2] add carry
+  STA Acc1       ; [3]
+  BCS cgx_range  ; [2] -> unsigned overflow
+  INX            ; [2] advance source
+  JMP @loop      ; [3]
+@done:
+  CPX B          ; [3] ZF=1 if no match
+  RTS            ; [6] return X=end
+
+; @@ cg_n16m10
+; multiply Acc01 by 10 (uses Term01)
+cg_n16m10:      ; Uses A, preserves X,Y (+Term)
+  LDA Acc0      ; [3] Term = Val * 2
+  ASL           ; [2]
+  STA Term0     ; [3]
+  LDA Acc1      ; [3]
+  ROL           ; [2]
+  STA Term1     ; [3]
+  BCS cgx_range ; [2] -> unsigned overflow
+  ASL Term0     ; [5] Term *= 2 = Val * 4
+  ROL Term1     ; [5]
+  BCS cgx_range ; [2] -> unsigned overflow
+  CLC           ; [2]
+  LDA Acc0      ; [3] Acc += Term = Val * 5
+  ADC Term0     ; [3]
+  STA Acc0      ; [3]
+  LDA Acc1      ; [3]
+  ADC Term1     ; [3]
+  STA Acc1      ; [3]
+  BCS cgx_range ; [2] -> unsigned overflow
+  ASL Acc0      ; [5] Acc *= 2 = Val * 10
+  ROL Acc1      ; [5]
+  BCS cgx_range ; [2] -> unsigned overflow
+  RTS           ; [6] -> [64+6]
+
+cgx_range:
+  LDY #<err_range
+  JMP cgx_error
+
+
+; ------------------------------------------------------------------------------
+; END of CodeGen Land
 
 
 ; REPL handler table
@@ -934,31 +980,35 @@ cmd_run:
   RTS
 
 cmd_auto:
+  JSR cg_enter       ; [6] BEGIN parsing
   LDA #10            ; [2]
   STA Line           ; [3] start from line 10
-  STA Tmp4           ; [3] step by 10
+  STA AutoInc        ; [3] step by 10
   LDA #0             ; [2]
   STA LineH          ; [3]
-  JSR skip_spc       ; [6] uses A (preserves Y) -> X
-  JSR n16_parse      ; [6] parse number at LineBuf,X -> {Acc0/1}, X, EQ=no (uses A,Y,Tmp)
-  BEQ @loop          ; [2] -> no number [+1]
+  JSR skip_spc       ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
+  JSR cg_n16         ; [6] parse number at X -> X,Acc01,EQ=no (uses A,Y,B)   XXX can it be a NO TEXT util?
+  BEQ @start         ; [2] -> no number [+1]
   LDA Acc0           ; [3]
   STA Line           ; [3] set start line
   LDA Acc1           ; [3]
   STA LineH          ; [3]
-  JSR skip_spc       ; [6] uses A (preserves Y) -> X
+  JSR skip_spc       ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
   LDA LineBuf,X      ; [4]
-  CMP #$2C           ; [2] comma
-  BNE @loop          ; [2] -> no comma
-  JSR skip_spc       ; [6] uses A (preserves Y) -> X
-  JSR n16_parse      ; [6] parse number at LineBuf,X -> {Acc0/1}, X, EQ=no (uses A,Y,Tmp)
-  BEQ @loop          ; [2] -> no number [+1]
+  CMP #$2C           ; [2] ","
+  BNE @start         ; [2] -> no comma
+  JSR skip_spc       ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
+  JSR cg_n16         ; [6] parse number at X -> X,Acc01,EQ=no (uses A,Y,B)   XXX can it be a NO TEXT util?
+  BEQ @start         ; [2] -> no number [+1]
   LDA Acc0           ; [3]
-  STA Tmp4           ; [3]
-  BEQ @range         ; [2] -> bad step (equals zero)
+  STA AutoInc        ; [3]
+  BEQ @cg_range      ; [2] -> bad step (equals zero)
   LDA Acc1           ; [3]
-  BNE @range         ; [2] -> bad step (non-zero high byte)
+  BNE @cg_range      ; [2] -> bad step (non-zero high byte)
+@start:
+  JSR cg_leave       ; [6] END parsing
 @loop:
+  ; runs OUTSIDE of CodeGen Land
   ; print the line number
   LDA Line
   STA Acc0
@@ -972,19 +1022,20 @@ cmd_auto:
   JSR newline       ; assumes text mode
   ; parse and tokenise the line
   LDX #0
-  JSR parse_line    ; corrupts text mode; returns CF=valid?
+  JSR cge_line      ; compile the line; returns CF=valid?
   ; copy tokenised line into place
   JSR bas_ins_line
   ; increment line number
+  LDA AutoInc
   CLC
-  LDA Tmp4
-  ADC Line          ; add step
+  ADC Line
   STA Line
   BCC @loop         ; -> no carry
   INC LineH
   BNE @loop         ; -> unless zero
-@range:
   JMP e_range
+@cg_range:
+  JMP cgx_range
 
 cmd_renum:
   RTS
@@ -1013,74 +1064,74 @@ stmt_page:
 
 kws_a:
 kws_b:
-  DB "BPUT",$80
+  DB "BPUT",     $C0
 kws_c:
-  DB "COLOR",$81
-  DB "COLOUR",$81
-  DB "CALL",$82
-  DB "CLEAR",$83
-  DB "CLS",$84
-  DB "CLOSE",$85
+  DB "COLOR",    $C1
+  DB "COLOUR",   $C1
+  DB "CALL",     $C2
+  DB "CLEAR",    $C3
+  DB "CLS",      $C4
+  DB "CLOSE",    $C5
 kws_d:
-  DB "DATA",$86
-  DB "DRAW",$87
-  DB "DIM",$88
-  DB "DEF",$89
+  DB "DATA",     $C6
+  DB "DRAW",     $C7
+  DB "DIM",      $C8
+  DB "DEF",      $C9
 kws_e:
-  DB "ELSE",$8A
-  DB "ENVELOPE",$8B
-  DB "END",$8C
+  DB "ELSE",     $CA
+  DB "ENVELOPE", $CB
+  DB "END",      $CC
 kws_f:
-  DB "FOR",$8D
+  DB "FOR",      $CD
 kws_g:
-  DB "GOTO",$8E
-  DB "GOSUB",$8F
+  OP_GOTO =      $CE
+  DB "GOTO",     $CE
+  DB "GOSUB",    $CF
 kws_h:
 kws_i:
-  DB "IF",$90
-  DB "INPUT",$91
+  DB "IF",       $D0
+  DB "INPUT",    $D1
 kws_j:
 kws_k:
 kws_l:
-  DB "LET",$92
-  DB "LOCAL",$93
+  DB "LET",      $D2
+  DB "LOCAL",    $D3
 kws_m:
-  DB "MOVE",$94
-  DB "MODE",$95
+  DB "MOVE",     $D4
+  DB "MODE",     $D5
 kws_n:
-  DB "NEXT",$96
+  DB "NEXT",     $D6
 kws_o:
-  DB "ON",$97
-  DB "OPT",$98
-  DB "OPEN",$99
+  DB "ON",       $D7
+  DB "OPT",      $D8
+  DB "OPEN",     $D9
 kws_p:
-  DB "PRINT",$9A
-  DB "PLOT",$9B
-  DB "PLAY",$9C
-  DB "PROC",$9D
+  DB "PRINT",    $DA
+  DB "PLOT",     $DB
+  DB "PLAY",     $DC
+  DB "PROC",     $DD
 kws_q:
 kws_r:
-  DB "READ", $9E
-  DB "REPEAT",$9F
-  DB "RECTANGLE",$A0
-  DB "RESTORE",$A1
-  DB "RETURN",$A2
-  DB "REM",$A3
-  DB "REPORT",$A4
+  DB "READ",     $DE
+  DB "REPEAT",   $DF
+  DB "RECTANGLE",$E0
+  DB "RESTORE",  $E1
+  DB "RETURN",   $E2
+  DB "REM",      $E3
+  DB "REPORT",   $E4
 kws_s:
 kws_t:
-  DB "TRIANGLE",$A5
-  DB "TRACE",$A6
+  DB "TRIANGLE", $E5
+  DB "TRACE",    $E6
 kws_u:
-  DB "UNTIL",$A7
+  DB "UNTIL",    $E7
 kws_v:
 kws_w:
-  DB "WAIT",$A8
+  DB "WAIT",     $E8
 kws_x:
 kws_y:
 kws_z:
-  DB 0
-
+  DB 0 ; end of list
 
 ; in specific OPERATOR contexts: THEN, ELSE, TO, STEP
 ; in print contexts: SPC, TAB
@@ -1170,13 +1221,20 @@ expr_z:
 ; context keywords (keep on one page for Y indexing)
 kwtab:
 kw_to:
-  DB "TO", $80
+  DB "TO",       $FF
 kw_step:
-  DB "STEP", $80
+  OP_STEP =      $E9
+  DB "STEP",     $E9
 kw_then:
-  DB "THEN", $80
+  OP_THEN =      $EA
+  DB "THEN",     $EA
 kw_else:
-  DB "ELSE", $80
+  OP_ELSE =      $EB
+  DB "ELSE",     $EB
+kwt_stmt:
+  DB "statement", $FF
+kwt_var:
+  DB "var",       $FF
 
 
 ; ------------------------------------------------------------------------------
@@ -1392,7 +1450,7 @@ expr_pb:           ; [49]
 
 ; ------------------------------------------------------------------------------
 ; PAGE 8 - INTERPRETER
-ORG ROM+$800 ; 2K
+ORG ROM+$900 ; 2K+100
 
 ; one-address opcodes would work better for 6502
 ; since we need to copy pointers/values to zp anyway
@@ -1743,10 +1801,10 @@ ORG ROM+$1000 ; 4K
 ; scan the keyboard matrix for a keypress
 ; [..ABCDE....]
 ;    ^hd  ^tl     ; empty when hd==tl, full when tl+1==hd
-keyscan:          ; uses A,X,Y returns nothing (CANNOT use normal Tmp)
+keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
   LDY #8          ; [2] last key column
   STY IO_KEYB     ; [3] set keyscan column (0-7)
-  LDA IO_KEYB     ; [3] read key state bitmap
+  LDA IO_KEYB     ; [3] read row_bitmap
   STA ModKeys     ; [3] update modifier keys
   DEY             ; [2] prev column
 ; debounce check
@@ -1754,13 +1812,13 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use normal Tmp)
   BNE keyscan     ; [2] if not -> try again
 @col_lp:          ; -> [13] cycles
   STY IO_KEYB     ; [3] set keyscan column (0-7)
-  LDX IO_KEYB     ; [3] read key state bitmap
+  LDX IO_KEYB     ; [3] read row_bitmap
   BNE @key_hit    ; [2] -> one or more keys pressed [+1]
   DEY             ; [2] prev column
   BPL @col_lp     ; [3] go again, until Y<0
   STY LastKey     ; [3] no keys pressed: clear last key pressed (to $FF)
   RTS             ; [6] TOTAL Scan 2+13*8-1+6 = [111] cycles
-@key_hit:         ; X=bitmap Y=column
+@key_hit:         ; X=row_bitmap Y=column
   STY IRQTmp      ; [3] save keyscan column for resuming later
   TYA             ; [2] active keyscan column
   ASL             ; [2] column * 8
@@ -1770,17 +1828,17 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use normal Tmp)
   CPX IO_KEYB     ; [3] check if stable 17/2Mhz = 8.5µs later
   BNE @col_lp     ; [2] if not -> try again
   TAY             ; [2] scantab offset = col*8 as index
-  TXA             ; [2] key state bitmap
+  TXA             ; [2] row_bitmap
 ; find first bit set
 ; loop WILL terminate because A is non-zero!
-@bsf_lp:          ; A=bitmap Y=scantab -> [7] cycles
+@bsf_lp:          ; A=row_bitmap Y=scantab -> [7] cycles
   INY             ; [2] count number of shifts
   ASL A           ; [2] shift keys bits left into CF
   BCC @bsf_lp     ; [3] until CF=1
 ; translate to ascii
   BIT ModKeys     ; [3] test shift key [N=Esc][V=Shf]
   BVS @shift      ; [2] -> shift is down (bit 6)
-  TAX             ; [2] save remaining bitmap
+  TAX             ; [2] save remaining row_bitmap
   LDA scantab-1,Y ; [4] translate to ASCII (Y is off by +1)
 @shft_ret:
   CMP LastKey     ; [3] one-key roll over
@@ -1802,7 +1860,7 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use normal Tmp)
   BPL @shft_ret   ; [3] top bit is never set!!
 @cont_scan:
   RTS             ; XXXXX debug
-  TXA             ; [2] restore bitmap
+  TXA             ; [2] restore row_bitmap
   BNE @bsf_lp     ; [3] -> continue bsf loop
   LDY IRQTmp      ; [3] restore keyscan column
   BNE @col_lp     ; [3] -> continue scanning key columns
@@ -1840,9 +1898,8 @@ scanshf:
 ; read a single character from the keyboard buffer
 ; AUTO-REPEAT: the last key held (save its scancode to compare)
 ; ROLLOVER: pressing a new key replaces the prior held key
-; INKEY(-K): directly scans the key (high 5:col low 3:row)
-readchar:        ; uses A,X,Y returns ASCII or zero (!Tmp)
-  ; JSR keyscan    ; scan keyboard, fill buffer     (XXX move to VSync interrupt)
+; INKEY(-K): directly scans the key (5:3 col:row)
+readchar:        ; uses A,X,Y returns ASCII or zero
   LDX KeyHd      ; [3] load keyboard buffer head
   CPX KeyTl      ; [3] Hd == Tl -> empty, @wait
   BEQ @nokey     ; [2] buffer is empty
@@ -1923,9 +1980,9 @@ wrctrl:          ; uses A, preserves X,Y
   ; XXX incomplete: go back to previous line if multiline
   RTS
 
-; @@ printmsg
+; @@ printmsgln
 ; println a string in the messages page
-printmsg:
+printmsgln:
   LDX #>messages  ; high byte
   ; +++ fall through to @@ println +++
 
@@ -1935,6 +1992,12 @@ printmsg:
 println:           ; X=high Y=low
   JSR print
   JMP newline
+
+; @@ printmsg
+; print a string in the messages page
+printmsg:
+  LDX #>messages  ; high byte
+  ; +++ fall through to @@ print +++
 
 ; @@ print, in "text mode"
 ; write a length-prefix string to the screen
@@ -1987,38 +2050,38 @@ print:           ; X=high Y=low (uses Src,A,X,Y)
 ; @@ readline
 ; read a single line of input into the line buffer (zero-terminated)
 ; XXX this will become the line editor
-readline:        ; uses A,X,Y, returns Y=length (Z=1 if zero)
+readline:        ; uses A,X,Y,B returns Y=length (Z=1 if zero)
   LDA #0
-  STA Tmp        ; init line offset [3] not [4]
+  STA B          ; init line offset [3] not [4]
 @wait:
   STA IO_YLIN    ; wait for vblank (A ignored)
   BIT ModKeys    ; check for Escape
   BMI @esc
 @more:
-  JSR readchar   ; read char from keyboard -> A (ZF) uses X,Y !Tmp
+  JSR readchar   ; read char from keyboard -> A (ZF) uses X,Y
   BEQ @wait      ; if zero -> @wait
   CMP #13        ; is it RETURN?
   BEQ @done      ; if so -> exit
-  LDY Tmp        ; load line offset [3] not [4]
+  LDY B          ; load line offset [3] not [4]
   CMP #8         ; is it BACKSPACE?
   BEQ @backsp    ; if so -> @backsp
   CPY #$FF       ; at the final byte?
   BEQ @beep      ; buffer full -> beep
   STA LineBuf,Y  ; append to line buffer
   INY            ; advance line offset
-  STY Tmp        ; save line offset [3] not [4]
+  STY B          ; save line offset [3] not [4]
   JSR writechar  ; output char to screen (A=char, preserves X,Y)
   JMP @more      ; keep reading chars
 @done:
   LDA #0         ; terminator
-  LDY Tmp        ; get line offset (ZF)
+  LDY B          ; get line offset (ZF)
   STA LineBuf,Y  ; write to line buffer
   RTS            ; returns Y=length (ZF=1 if zero)
 @backsp:
   CPY #0         ; at the first byte?
   BEQ @beep      ; buffer empty -> beep
   DEY            ; go back one place
-  STY Tmp        ; save line offset [3] not [4]
+  STY B          ; save line offset [3] not [4]
   JSR wrctrl     ; backspace the display
     ; XXX if text is selected -> from=end_of_sel; to=start_of_sel
     ; XXX else from=cursor; to=cursor-1
@@ -2080,7 +2143,7 @@ text_palette:
 ; modes 0-3 are linear APA modes, 1/2/4/8 bpp
 ; modes 4-7 are tiled "text" modes, 1/2/4/8 bpp
 ; modes 8-15 are greyscale versions of the above (no colorburst)
-mode:            ; set screen mode, X=mode (+Tmp)
+mode:            ; set screen mode, X=mode (uses A,X,Y,B)
   CPX #7         ; range-check mode number
   BCS mode_ret   ; if >= 7
   LDA modetab,X  ; screen mode config
@@ -2117,13 +2180,17 @@ mode:            ; set screen mode, X=mode (+Tmp)
 
 ; @@ cls, in "text mode"
 ; clear the text window
-; 64-40=24 wasted cycles: fill_rect saves 7 cycles per row
-cls:                     ; (+Tmp)
+cls:                     ; (uses A,X,Y,B) [~11550]
   LDX WinL               ; [3] text window left
   LDY WinT               ; [3] text window top
-  JSR text_addr_xy       ; [6] calculate DSTH,DSTL at X,Y
+  JSR text_addr_xy       ; [6] calculate DSTH,DSTL at X,Y (uses A,X,Y)
   LDY WinH               ; [3] number of rows to fill
-  STY Tmp                ; [3] row counter
+  STY B                  ; [3] row counter
+  LDA #64                ; [2]
+  SEC                    ; [2]
+  SBC WinW               ; [2] 64 - WinW
+  ASL                    ; [2] 2*(64-WinW) [safe: was <= 64]
+  STA C                  ; [3] set ADVANCE = 2*(64-WinW)       [+4 bytes]
   LDX Color              ; [3] fill attribute
 @row:
   LDA #32                ; [2] fill tile (space)
@@ -2132,26 +2199,23 @@ cls:                     ; (+Tmp)
   STA IO_DDRW            ; [3] write tile
   STX IO_DDRW            ; [3] write attribute
   DEY                    ; [2] decrement column count
-  BPL @col               ; [3] until Y=0        (BUG: out by one, FIX: BNE)
-; advance VRAM address by map width (64) - WinW
-  LDA #64
-  SEC
-  SBC WinW               ; XXX keep this in a var?
-  ASL                    ; 2x this width (safe: was <= 64)
-  CLC
-  ADC IO_DSTL
-  STA IO_DSTL
-  BCC @low_ok            ; [3] C=1 when DSTL wraps around
-  INC IO_DSTH            ; [5] address high += 1
-@low_ok:
-  DEC Tmp                ; [5] decrement row count
+  BPL @col               ; [3] -> until Y=0 [11*40=(440+22)*25=11550]    (BUG: out by one, FIX: BNE)
+; advance VRAM address to next line
+  LDA C                  ; [3] get ADVANCE
+  CLC                    ; [2]
+  ADC IO_DSTL            ; [3] DSTL += ADVANCE
+  STA IO_DSTL            ; [3]
+  BCC @noc               ; [2] -> no carry [+1]
+  INC IO_DSTH            ; [5] DSTH += 1
+@noc:
+  DEC B                  ; [5] decrement row count
   BNE @row               ; [3] until row=0
   ; +++ fall through to @@ home +++
 
 ; @@ home
 ; move the cursor to the top-left of the window
 ; update DMA address (DSTL,DSTH) for "text mode"
-; home:          ; (+Tmp)
+; home:          ; (uses A,X,Y,B)
   LDX #0         ; top-left corner of text window
   LDY #0         ; 
   BEQ tab_e2     ; skip range checks
@@ -2161,7 +2225,7 @@ cls:                     ; (+Tmp)
 ; move the cursor to X,Y in index registers (unsigned)
 ; relative to the top-left corner of the text window, zero-based.
 ; update DMA address (DSTL,DSTH) for "text mode"
-tab:             ; (+Tmp)
+tab:             ; (uses A,X,Y)
   CPX WinW       ; clamp X if out of range (WinW)
   BCC @x_ok      ; CC < WinW
   LDX WinW       ; (CS)
@@ -2193,42 +2257,35 @@ tab_e2:
   ; +++ fall through to @@ text_addr_xy +++
 
 ; @@ text_addr_xy
-; calculate the tilemap address for an X,Y coordinate; set the DMA DSTH,DSTL
-; do not change the cursor position (use `tab` for that)
-text_addr_xy:    ; (+Tmp)
-  TXA            ; X column
-  CLC            ; don't know state of CF
-  ADC IO_SCRH    ; add H scroll (in map-space) -> X column in tilemap [may set CF=1]
-  AND #63        ; modulo text map width (always 64 in "text mode")
-  CLC            ; CF may be set
-  ASL A          ; double it -> map to VRAM address-space, (tile,attr) pairs
-  STA Tmp        ; save tilemap X coord
-  TYA            ; Y row in text window
-  CLC            ; above may set CF
-  ADC IO_SCRV    ; Y row in tilemap (add V scroll offset) [may set CF=1]
-  AND #31        ; modulo tilemap height (always 32 in "text mode")
-  TAY            ; save tilemap Y cood
-; Calculate VRAM address,
-;  [00VVV000][00000000]  is a 2K boundary in VRAM
-; +[00000YYY][YY000000]  which we can combine with OR
-; +[00000000][00XXXXXX]  at 64x32 map size (assume width=64 "text mode")
-  CLC
-  AND #1         ; [0000000Y] low 1 bit of Y
-  ROR            ; [00000000] C=Y
-  ROR            ; [Y0000000] C=0
-  ORA Tmp        ; [YXXXXXX0]
-  STA IO_DSTL    ; DMA write-address low
-  TYA            ; [000YYYYY] reload TileMap Y coord
-  LSR            ; [0000YYYY]
-  ORA #>VR_TEXT  ; [VVVVYYYY] text area base address ($3000 in "text mode")
-  STA IO_DSTH    ; DMA write-address high
-  RTS
+; calculate VRAM address for an X,Y coordinate in "text mode"; set DSTH,DSTL
+;  [00VV0000][00000000]  is a 4K boundary in VRAM
+; +[0000YYYY][Y0000000]  combine with OR
+; +[00000000][0XXXXXX0]  64x32 map size, stride=128 for (tile,attr) pairs
+text_addr_xy:    ; (uses A,X,Y) [44]
+  TXA            ; [2] X column
+  CLC            ; [2] for ADC
+  ADC IO_SCRH    ; [3] add H scroll (in map-space)
+  AND #63        ; [2] modulo map width (64 in "text mode") [00XXXXXX]
+  ASL            ; [2] double it for (tile,attr) pairs [0XXXXXX0]
+  ASL            ; [2] shift again for calc below [XXXXXX00]                         [elide]
+  TAX            ; [2] save X part [XXXXXX00]                                        [elide]
+  TYA            ; [2] Y row in text window
+  CLC            ; [2] for ADC
+  ADC IO_SCRV    ; [3] Y row in tilemap (add V scroll offset)
+  AND #31        ; [2] modulo map height (32 in "text mode") [000YYYYY]
+  LSR            ; [2] [0000YYYY] -> CF=Y0                                           [elide]
+  ORA #>VR_TEXT  ; [2] [00VVYYYY] add base address ($3000 in "text mode") [CF=Y0]    [elide]
+  STA IO_DSTH    ; [3] DSTH = [00VVYYYY] [CF=Y0]
+  TXA            ; [2] [XXXXXX00] [CF=Y0]                                            [elide]
+  ROR            ; [2] [YXXXXXX0] rotate Y0 in                                       [elide]
+  STA IO_DSTL    ; [3] DSTL = [YXXXXXX0]
+  RTS            ; [6]
 
 ; @@ clear_sprites
 ; reset all 32 sprites to an offscreen (invisible) position
 ; sprites are [Y-coord][X-coord][attribs][tile-idx]
 ; YYY it would be useful (and faster) to have a DMA fill-sprites mode
-clear_sprites:
+clear_sprites:   ; (uses A,X)
   LDA #$80       ; sprite Y-coord ptr (first SBC takes us to $7C, the last sprite)
   LDX #$FF       ; offscreen Y coord
 @sprloop:
@@ -2241,7 +2298,7 @@ clear_sprites:
 
 ; @@ reset_tilebank
 ; reset all tile bank-switching to the default 1:1 mapping
-reset_tilebank:
+reset_tilebank:  ; (uses A)
   LDA #$00       ; map slot 0 to address-region 0
   CLC
 @banklp:
@@ -2253,15 +2310,15 @@ reset_tilebank:
 
 ; @@ dma_fill_rect
 ; fill VRAM rect with byte FILL at address DSTH,DSTL (changes DMA mode!)
-dma_fill_rect:           ; A=stride X=width Y=height (+Tmp)
-  STA Tmp                ; [3] save stride
-  LDA #DMA_M2V|DMA_Fill  ; [2] VRAM fill mode
+dma_fill_rect:           ; A=stride X=width Y=height (uses A,X,Y,B)
+  STA B                  ; [3] save stride
+  LDA #DMA_TOV|DMA_Fill  ; [2] VRAM fill mode
   STA IO_DCTL            ; [3] set DMA mode
   LDA IO_DSTL            ; [3] keep DSTL in A
 @loop:
   STX IO_DRUN            ; [3] start DMA (fill 'width' bytes)
   CLC                    ; [2]
-  ADC Tmp                ; [3] address += stride
+  ADC B                  ; [3] address += stride
   STA IO_DSTL            ; [3] set new DSTL
   BCC @low_ok            ; [3] C=1 when DSTL wraps around
   INC IO_DSTH            ; [5] address high += 1
@@ -2274,7 +2331,7 @@ dma_fill_rect:           ; A=stride X=width Y=height (+Tmp)
 ; fill VRAM with byte A, start at page X, fill Y pages (changes DMA mode!)
 dma_fill_vram:           ; A=byte X=base.pg Y=count
   STA IO_FILL            ; [3] DMA fill byte
-  LDA #DMA_M2V|DMA_Fill  ; [2] DMA fill mode (M2M)
+  LDA #DMA_TOV|DMA_Fill  ; [2] DMA fill mode (M2M)
   STA IO_DCTL            ; [3] set fill mode
   STX IO_DSTH            ; [3] DMA dest high (page)
   LDA #0                 ; [2]
@@ -2300,7 +2357,7 @@ ORG BOOT
 ; Gfx in VRAM are 2bpp as HLHLHLHL (4 pixels)
 ; Gfx in ROM are 1bpp interleaved as BABABABA (8 pixels, A then B)
 chrcpy:          ; copy 2K charmap to 4K CHAR RAM  [[ 51 bytes ]]
-  LDA #DMA_M2V|DMA_Copy
+  LDA #DMA_TOV|DMA_Copy
   STA IO_DCTL    ; [3] set DMA mode: write to VRAM
   LDY #0         ; [2] zero
   STY IO_DSTH    ; [3] VRAM dest, high byte
@@ -2342,7 +2399,7 @@ reset_hard:
   LDA #0
   STA IO_DSTL
   STA IO_DSTH
-  LDA #DMA_M2V|DMA_Fill  ; DMA fill VRAM
+  LDA #DMA_TOV|DMA_Fill  ; DMA fill VRAM
   STA IO_DCTL
 ; memory check: don't start up if RAM is bad.
 ; test zero page, without using zero-page indirect
