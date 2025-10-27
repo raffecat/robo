@@ -675,8 +675,7 @@ cge_line:            ; X=ln-ofs
   ASL                ; times 2 (word index)
   TAY                ; as index
   JSR @call_fn
-  JSR cg_leave       ; done
-  RTS
+  JMP cg_leave       ; -> RTS
 @call_fn:
   LDA stmt_fn+1,Y    ; parse function, high byte
   PHA                ; push high
@@ -697,11 +696,9 @@ cge_line:            ; X=ln-ofs
   JMP cgx_error      ; XXX STUB
 
 cgx_stmt:
-  ; LDA #<kwt_stmt     ; "Expecting statement"
-  ; STA B
-  ; JMP cgx_expect_kw
-  LDY #<msg_expecting
-  JMP cgx_error
+  LDA #<kw_stmt      ; "Expecting statement"
+  STA B
+  JMP cgx_expect_kw
 
 cgx_bounds:
   LDY #<err_bound
@@ -763,7 +760,7 @@ cg_for:         ; X=ln-ofs
   RTS            ; -> X=ln-ofs
 
 cg_novar:
-  LDY #<kwt_var  ; "var"
+  LDY #<kw_var   ; "var"
   BNE cgx_expect_kw
 
 ; @@ cg_if
@@ -1139,6 +1136,7 @@ kws_z:
 ; ------------------------------------------------------------------------------
 ; EXPRESSION KEYWORDS - MUST be page aligned (Y indexing)
 ALIGN $100
+kwtab:
 expr_page:
 
 expr_a:
@@ -1219,7 +1217,7 @@ expr_z:
   DB 0
 
 ; context keywords (keep on one page for Y indexing)
-kwtab:
+; note: `kwtab` is at start of page
 kw_to:
   DB "TO",       $FF
 kw_step:
@@ -1231,9 +1229,9 @@ kw_then:
 kw_else:
   OP_ELSE =      $EB
   DB "ELSE",     $EB
-kwt_stmt:
+kw_stmt:
   DB "statement", $FF
-kwt_var:
+kw_var:
   DB "var",       $FF
 
 
@@ -1308,47 +1306,47 @@ stmt_tab:
 ; 16 = str stmt, uses NN
 ; 17 = # stmt
 stmt_pb:           ; [41]
-  DB 17+(2<<5)     ; "BPUT",$80      # stmt (7,2)
-  DB 6+(1<<5)      ; "COLOR",$81     num stmt (6,1)
-  DB 6+(1<<5)+$80  ; "CALL",$82      num stmt (6,1+) XXX F also means optional
-  DB 6             ; "CLEAR",$83     num stmt (6,0)
-  DB 6             ; "CLS",$84       num stmt (6,0)
-  DB 17+(2<<5)     ; "CLOSE",$85     # stmt (7,2)
-  DB 5             ; "DATA",$86      data (5)
-  DB 6+(2<<5)      ; "DRAW",$87      num stmt (6,2)
-  DB 4             ; "DIM",$88       dim (4)
-  DB 7             ; "DEF",$89       def (7)
-  DB 9             ; "ELSE",$8A      else (9)
-  DB 10            ; "ENVELOPE",$8B  envelope (10)
-  DB 6             ; "END",$8C       num stmt (6,0)
-  DB 0             ; "FOR",$8D       for (0)
-  DB 6+(1<<5)      ; "GOTO",$8E      num stmt (6,1)
-  DB 6+(1<<5)      ; "GOSUB",$8F     num stmt (6,1)
-  DB 1             ; "IF",$90        if (1)
-  DB 2+$80         ; "INPUT",$91     print (2 N=1)
-  DB 12            ; "LET",$92       let (12)
-  DB 3             ; "LOCAL",$93     var-list (3 N=0)
-  DB 6+(2<<5)      ; "MOVE",$94      num stmt (6,2)
-  DB 6+(1<<5)      ; "MODE",$95      num stmt (6,1)
-  DB 3+$80         ; "NEXT",$96      var-list (3 N=1) with indices
-  DB 13            ; "ON",$97        on (13)
-  DB 6+(2<<5)      ; "OPT",$98       num stmt (6,2)
-  DB 16+(1<<5)     ; "OPEN",$99      str stmt (5,1)
-  DB 2             ; "PRINT",$9A     print (2 N=0)
-  DB 6+(2<<5)      ; "PLOT",$9B      num stmt (6,2)
-  DB 6             ; "PLAY",$9C      num stmt (6,?) XXX
-  DB 11            ; "PROC",$9D      proc (11)
-  DB 3+$80         ; "READ", $9E     var-list (3 N=1) with indices
-  DB 6             ; "REPEAT",$9F    num stmt (6,0)
-  DB 6+(2<<5)      ; "RECTANGLE",$A0 num stmt (6,2)
-  DB 6+(1<<5)+$80  ; "RESTORE",$A1   num stmt (6,1 F=1) optional arg
-  DB 6             ; "RETURN",$A2    num stmt (6,0)
-  DB 14            ; "REM",$A3       rem (14)
-  DB 6             ; "REPORT",$A4    num stmt (6,0)
-  DB 6+(2<<5)      ; "TRIANGLE",$A5  num stmt (6,2)
-  DB 15            ; "TRACE",$A6     on-off (15)
-  DB 8             ; "UNTIL",$A7     condition (8)
-  DB 6             ; "WAIT",$A8      num stmt (6,0)
+  DB 17+(2<<5)     ; "BPUT",$C0      # stmt (7,2)
+  DB 6+(1<<5)      ; "COLOR",$C1     num stmt (6,1)
+  DB 6+(1<<5)+$80  ; "CALL",$C2      num stmt (6,1+) XXX F also means optional
+  DB 6             ; "CLEAR",$C3     num stmt (6,0)
+  DB 6             ; "CLS",$C4       num stmt (6,0)
+  DB 17+(2<<5)     ; "CLOSE",$C5     # stmt (7,2)
+  DB 5             ; "DATA",$C6      data (5)
+  DB 6+(2<<5)      ; "DRAW",$C7      num stmt (6,2)
+  DB 4             ; "DIM",$C8       dim (4)
+  DB 7             ; "DEF",$C9       def (7)
+  DB 9             ; "ELSE",$CA      else (9)
+  DB 10            ; "ENVELOPE",$CB  envelope (10)
+  DB 6             ; "END",$CC       num stmt (6,0)
+  DB 0             ; "FOR",$CD       for (0)
+  DB 6+(1<<5)      ; "GOTO",$CE      num stmt (6,1)
+  DB 6+(1<<5)      ; "GOSUB",$CF     num stmt (6,1)
+  DB 1             ; "IF",$D0        if (1)
+  DB 2+$80         ; "INPUT",$D1     print (2 N=1)
+  DB 12            ; "LET",$D2       let (12)
+  DB 3             ; "LOCAL",$D3     var-list (3 N=0)
+  DB 6+(2<<5)      ; "MOVE",$D4      num stmt (6,2)
+  DB 6+(1<<5)      ; "MODE",$D5      num stmt (6,1)
+  DB 3+$80         ; "NEXT",$D6      var-list (3 N=1) with indices
+  DB 13            ; "ON",$D7        on (13)
+  DB 6+(2<<5)      ; "OPT",$D8       num stmt (6,2)
+  DB 16+(1<<5)     ; "OPEN",$D9      str stmt (5,1)
+  DB 2             ; "PRINT",$DA     print (2 N=0)
+  DB 6+(2<<5)      ; "PLOT",$DB      num stmt (6,2)
+  DB 6             ; "PLAY",$DC      num stmt (6,?) XXX
+  DB 11            ; "PROC",$DD      proc (11)
+  DB 3+$80         ; "READ", $DE     var-list (3 N=1) with indices
+  DB 6             ; "REPEAT",$DF    num stmt (6,0)
+  DB 6+(2<<5)      ; "RECTANGLE",$E0 num stmt (6,2)
+  DB 6+(1<<5)+$80  ; "RESTORE",$E1   num stmt (6,1 F=1) optional arg
+  DB 6             ; "RETURN",$E2    num stmt (6,0)
+  DB 14            ; "REM",$E3       rem (14)
+  DB 6             ; "REPORT",$E4    num stmt (6,0)
+  DB 6+(2<<5)      ; "TRIANGLE",$E5  num stmt (6,2)
+  DB 15            ; "TRACE",$E6     on-off (15)
+  DB 8             ; "UNTIL",$E7     condition (8)
+  DB 6             ; "WAIT",$E8      num stmt (6,0)
 
 ; EXPRESSION KEYWORDS
 expr_tab:
