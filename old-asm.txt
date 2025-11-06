@@ -155,3 +155,670 @@ acc_mul_10:     ; Uses A (+Term)
   ROL Term3     ; [5] 20
   RTS           ; [6] -> [116]
 
+
+
+
+
+
+
+; ------------------------------------------------------------------------------
+; PAGE 9 - Statement Parsing
+ORG ROM+$900
+
+;parse_stmt:        ; X=ln-ofs A=$OP
+;  AND #$3F         ; drop top two bits (0xC0)
+;  TAY              ; 0-63 as index
+;  LDA stmt_ep,Y    ; A = entry point
+;  TAY              ; offset in Statement Parsing Tables
+;  STY D            ; save initial offset for reset
+;th_loop:           ; X=ln-ofs Y=pt-ofs
+;  JSR skip_spc     ; advance X to next token (uses A)
+;  LDA stmt_pt,Y    ; next parse table byte
+;  STA B            ; save parse table byte
+;  INY              ; advance in parse table
+;  STY C            ; save parse table offset
+;  AND #7           ; isolate token handler index
+;  ASL              ; times 2 (word index)
+;  TAY              ; as index
+;  LDA stmt_th+1,Y  ; token handler, high byte
+;  PHA              ; push high
+;  LDA stmt_th,Y    ; token handler, low byte
+;  PHA              ; push low
+;  LDY C            ; restore parse table offset
+;th_done:
+;  RTS              ; return to token handler
+;
+;th_reset:
+;  LDY D
+;  JMP th_loop
+;
+; A = free
+; X = ln-ofs
+; Y = parsing table offset
+; B = parsing byte (flags)
+; C = parsing table offset (also)
+;stmt_th:
+;  DW th_custom ; tk_custom  none=0 push=1 endif=2 data=3 next=4 rem=5 str=6 else=7 until=8
+;  DW th_var    ; tk_var  :Rst:Name:Lst:Op:Proc:Fn:Ind  (7)  Ind allows array indices
+;  DW th_ch     ; tk_ch   :X:Skp3:Op:Rst                (4)  Skp3 skips 3 bytes on no-match
+;  DW th_expr   ; tk_expr :End:Lst:N:Rst:Cond <n>       (5)
+;  DW th_kw     ; tk_kw   :Psh:Or:X:GoLen:Proc          (5)  outputs opcode unless $FF
+;  DW th_stmt   ; tk_stmt :End:Lst                      (2)
+;  DW th_fn     ; tk_fn   :Rst:2 <kw>                   (2)
+;
+;th_xxx:        ; X=ln-ofs A=$OP
+;  RTS
+;
+;th_var:
+;  RTS
+;
+;th_ch:
+;  LDA LineBuf,X  ; next input char
+;  BEQ @nomatch   ; -> end of input
+;  CMP stmt_pt,Y  ; equals next parsing byte?
+;  BNE @nomatch   ; -> not equal
+;  INY            ; advance parsing table offset
+;  INX            ; advance ln-ofs
+;  ; success options
+;  LDA B          ; get parsing byte
+;  ASL
+;  ASL            ; N=Op 6=Rst
+;  BMI @emit_op
+;  ASL            ; N=Rst
+;  BMI th_reset   ; -> reset parse table (used for PRINT,INPUT)
+;  JMP th_loop    ; -> continue parsing
+;@emit_op:
+;  LDA stmt_pt,Y  ; parsing byte (the expected char)
+;
+;@nomatch:        ; fail options
+;  BIT B          ; N=X V=Skp3
+;  BMI th_done    ; -> X flag: exit statement parse
+;  BVS @skip3     ; -> skip 3 parse bytes instead
+;  LDA stmt_pt,Y  ; parsing byte (the expected char)s
+;  JMP cgx_expect ; -> "Expecting" ch:A
+;@skip3:
+;  INY            ; char to match
+;  INY            ; skip 1 byte
+;  INY            ; skip 2 bytes
+;  INY            ; skip 3 bytes
+;  JMP th_loop    ; -> continue parsing
+;
+;th_expr:
+;  RTS
+;
+;th_kw:
+;  RTS
+;
+;th_stmt:
+;  RTS
+;
+;th_fn:
+;  RTS
+;
+;th_custom:
+;  LDA B           ; get parsing byte
+;  LSR
+;  LSR             ; [00ccccc0] (note: th_custom low 3 bits are 0)
+;  TAY
+;  LDA cust_th+1,Y ; custom handler, high byte
+;  PHA             ; push high
+;  LDA cust_th,Y   ; custom handler, low byte
+;  PHA             ; push low
+;  RTS             ; return to custom handler
+;
+;cust_th:
+;  DW thc_none   ; 
+;  DW thc_push   ; 
+;  DW thc_endif  ; 
+;  DW thc_data   ; 
+;  DW thc_next   ; 
+;  DW thc_rem    ; 
+;  DW thc_str    ; 
+;  DW thc_else   ; 
+;  DW thc_until  ; 
+;
+;thc_none:
+;  RTS
+;
+;thc_push:
+;  RTS
+;
+;thc_endif:
+;  RTS
+;
+;thc_data:
+;  RTS
+;
+;thc_next:
+;  RTS
+;
+;thc_rem:
+;  RTS
+;
+;thc_str:
+;  RTS
+;
+;thc_else:
+;  RTS
+;
+;thc_until:
+;  RTS
+
+
+; ------------------------------------------------------------------------------
+; PAGE A - Statement Keywords
+ALIGN ROM+$A00
+stmt_page:
+kws_a:
+kws_b:
+  DB "BPUT",     $C0  ; [#ch,]byte
+kws_c:
+  DB "COLOR",    $C1
+  DB "CALL",     $C2
+  DB "CLEAR",    $C3
+  DB "CLS",      $C4
+  DB "CIRCLE",   $EF
+  DB "CLOSE",    $C5  ; #ch
+kws_d:
+  DB "DATA",     $C6
+  DB "DRAW",     $C7
+  DB "DIM",      $C8
+  DB "DEF",      $C9
+kws_e:
+  DB "ELSE",     $CA
+  DB "ENVELOPE", $CB
+  DB "END",      $CC
+kws_f:
+  DB "FOR",      $CD
+kws_g:
+  OP_GOTO =      $CE
+  DB "GOTO",     $CE
+  DB "GOSUB",    $CF
+kws_h:
+kws_i:
+  DB "IF",       $D0
+  DB "INPUT",    $D1  ; [#ch,]
+kws_j:
+kws_k:
+kws_l:
+  DB "LET",      $D2
+  DB "LOCAL",    $D3
+kws_m:
+  DB "MOVE",     $D4
+  DB "MODE",     $D5
+kws_n:
+  DB "NEXT",     $D6
+kws_o:
+  DB "ON",       $D7
+  DB "OPT",      $D8
+  DB "ORIGIN",   $EB
+  DB "OPEN",     $D9
+kws_p:
+  DB "PRINT",    $DA  ; [#ch,]
+  DB "PLOT",     $DB
+  DB "PUT",      $EA  ; vs AT(X,Y)
+  DB "PLAY",     $DC
+  DB "PROC",     $DD
+  DB "PATTERN",  $E9
+kws_q:
+kws_r:
+  DB "READ",     $DE
+  DB "REPEAT",   $DF
+  DB "RECT",     $E0
+  DB "RESTORE",  $E1
+  DB "RETURN",   $E2
+  DB "REM",      $E3
+  DB "REPORT",   $E4
+kws_s:
+  DB "SPRITE",   $EE
+  DB "SCROLL",   $F0
+  DB "SOUND",    $EC
+  DB "SEEK",     $F1  ; [#ch,]ofs
+kws_t:
+  DB "TRIANGLE", $E5
+kws_u:
+  DB "UNTIL",    $E7
+kws_v:
+kws_w:
+  DB "WHILE",    $F2   ; $F2=WHILE
+  DB "WEND",     $F3   ; $F3=WEND
+  DB "WAIT",     $E8
+  DB "WINDOW",   $ED   ; $E9=PATTERN $EA=PUT $EB=ORIGIN $EC=SOUND $EE=SPRITE $EF=CIRCLE $F0=SCROLL $F1=SEEK
+;kws_x:
+;kws_y:
+;kws_z:
+  DB 0 ; end of list
+
+; ------------------------------------------------------------------------------
+; PAGE B - Statement Parsing Tables
+ORG ROM+$C00
+; stmt_pt:
+
+; STATEMENT parse bytes: [FFFFFPPP]
+;tk_custom = 0  ; tcs_*
+;tk_var    = 1  ; :Rst:Name:Lst:Op:Proc:Fn:Ind  (7)  Ind allows array indices
+;tk_ch     = 2  ; :X:Skp3:Rst:Op                (4)  Skp3 skips 3 bytes on no-match
+;tk_expr   = 3  ; :End:Lst:N:Rst:Cond <n>       (5)
+;tk_kw     = 4  ; :Psh:Or:X:GoLen:Proc          (5)  outputs opcode unless $FF
+;tk_stmt   = 5  ; :End:Lst                      (2)
+;tk_fn     = 6  ; :Rst:2 <kw>                   (2)
+;tk_var_a  = 7  ; var name, optional array indices
+;tk_mode   = 8  ; tkm_rst (reset after tk_op)
+;tk_op     = 9  ; emit opcode <n>
+;
+;tcs_none  = 0<<4 ; nothing
+;tcs_push  = 1<<4 ; push IF/FOR/REPEAT/DEF
+;tcs_endif = 2<<4 ; pop IF, set LEN
+;tcs_data  = 3<<4 ; custom parser
+;tcs_next  = 4<<4 ; pop FOR, match vars        XXX usually done at runtime (what if multiple? gotos?)
+;tcs_rem   = 5<<4
+;tcs_str   = 6<<4
+;tcs_else  = 7<<4 ; pop IF/ON, set LEN, push LEN
+;tcs_until = 8<<4 ; pop REPEAT, output line
+;tkm_rst   = 1<<4 ; mode: reset after match
+;; common control bits
+;tfc_new   = $20  ; bit 5  start of new parse table (end of prior)
+;tfc_adv   = $10  ; bit 4  skip <n> bytes if no match (x, rst, skp3)
+;; handler options
+;tfe_lst   = $40  ; bit 6
+;tfe_cond  = $08  ; bit 3
+;tfk_psh   = $80  ; bit 7
+;tfk_or    = $40  ; bit 6
+;tfk_len   = $10  ; bit 4
+;tfk_proc  = $08  ; bit 3
+;tfv_name  = $40  ; bit 6
+;tfv_lst   = $20  ; bit 5
+;tfv_op    = $10  ; bit 4
+;tfv_ind   = $08  ; bit 3
+;tkv_proc  = $08  ; XXX
+;tkv_fn    = $08  ; XXX
+;tfh_op    = $20  ; bit 5  emit op and reset parse
+;tfs_lst   = $40  ; bit 6
+;tff_rst   = $80  ; bit 7
+;tff_2     = $40  ; bit 6
+;
+;sp_none  DB tk_custom|tcs_none                                          ; "CLEAR",$C3     -          (used for CLEAR,CLS,RETURN,END,REPORT,WAIT)
+;sp_num1  DB tk_expr|tfe_end,1                                           ; "GOTO",$CE      num        (used for GOTO,GOSUB,RESTORE,COLOR,MODE)
+;sp_num2  DB tk_expr|tfe_end,2                                           ; "DRAW",$C7      num,num    (used for DRAW,MOVE,PLOT,RECT,TRIANGLE,OPT)
+;sp_bput  DB tk_ch,'#', tk_expr, tk_ch,',', tk_expr|tfe_end              ; "BPUT",$C0      #num, num
+;sp_call  DB tk_expr|tfe_lst|tfe_end                                     ; "CALL",$C2      num {,num}
+;sp_chan  DB tk_ch,'#', tk_expr|tfe_end                                  ; "CLOSE",$C5     #num
+;sp_data  DB tk_custom|tcs_data                                          ; "DATA",$C6      Data
+;sp_dim   DB tk_var_a|tfv_lst                                            ; "DIM",$C8       var(n{,n})  XXX byte only?
+;sp_def   DB tk_kw|tfk_psh|tfk_or,<st_fn,<st_proc, tk_var|tfv_name       ; "DEF",$C9
+;         DB       tk_ch|tfh_x,'(', tk_var|tfv_lst, tk_ch|tfh_end,')'
+;sp_else  DB tk_custom|tcs_else, tk_stmt|tfs_lst|tfs_end                 ; "ELSE",$CA      stmts     find prior IF/ON
+;sp_enve  DB tk_expr|tfe_lst|tfe_n|tfe_end,14                            ; "ENVELOPE",$CB  num, num, ...
+;sp_for   DB tk_var, tk_ch,'=', tk_expr, tk_kw|tfk_psh,<st_to            ; "FOR",$CD
+;         DB         tk_expr, tk_kw|tfk_x,<st_step, tk_expr
+;sp_if    DB tk_expr, tk_kw|tfk_psh|tfk_len,<st_then, tk_stmt|tfs_lst    ; "IF",$D0
+;sp_input DB tk_mode|tkm_rst                                             ; "INPUT",$D1
+;         DB        tk_var_a, tk_op,$F3
+;         DB        tk_strlit, tk_op,$F4
+;         DB        tk_ch,';', tk_op,$F5
+;         DB        tk_ch,',', tk_op,$F6
+;         DB        tk_ch,39, tk_op,$F7
+;         DB        tk_fn,<st_spc, tk_op,$F8
+;         DB        tk_fn,<st_tab, tk_op,$F9
+;sp_let   DB tk_var, tk_ch,'=', tk_expr|tfe_end                          ; "LET",$D2       var = num
+;sp_local DB tk_var|tfv_lst|tfv_end                                      ; "LOCAL",$D3     var {,var}
+;sp_next  DB tk_var|tfv_lst, tk_custom|tcs_next                          ; "NEXT",$D6      var {,var}  match vars in tcs_next
+;sp_ongo  DB tk_var, tk_kw|tfk_or|tfk_proc,<st_goto,<st_gosub,<st_proc   ; "ON var GOTO|GOSUB",$D7
+;         DB         tk_expr|tfe_lst|tfe_end
+;sp_open  DB tk_ch|tfh_skp3,'#', tk_expr,tk_ch,',', tk_expr|tfe_end      ; "OPENIN",$D9    [ # num , ] str  (used for OPENIN,OPENUP,OPENOUT)
+;sp_print DB tk_mode|tkm_rst                                             ; "PRINT",$DA
+;         DB        tk_expr, tk_op,$F0
+;         DB        tk_ch,';', tk_op,$F5
+;         DB        tk_ch,',', tk_op,$F6
+;         DB        tk_ch,39, tk_op,$F7
+;         DB        tk_fn,<st_spc, tk_op,$F8
+;         DB        tk_fn,<st_tab, tk_op,$F9
+;         DB                  tk_custom|tcs_endif
+;sp_proc  DB tk_var|tkv_proc, tk_ch|tfh_x,'('                            ; "PROC",$DD      PROCname | PROCname(X,Y)
+;         DB                  tk_expr|tfe_lst, tk_ch|tfh_end,')'
+;sp_read  DB tk_var_a|tfv_lst                                            ; "READ", $DE     var-list with indices
+;sp_rept  DB tk_custom|tcs_push                                          ; "REPEAT",$DF    push opcode
+;sp_rem   DB tk_custom|tcs_rem                                           ; "REM",$E3       rem (14)
+;sp_until DB tk_expr|tfe_cond, tk_custom|tcs_until                       ; "UNTIL",$E7     condition (8)
+;
+;; STATEMENT Entry-Points
+;stmt_ep:
+;  DB <sp_bput      ; "BPUT",$C0
+;  DB <sp_num1      ; "COLOR",$C1     num stmt (1)
+;  DB <sp_call      ; "CALL",$C2      num stmt (1+)
+;  DB <sp_none      ; "CLEAR",$C3     num stmt (0)
+;  DB <sp_none      ; "CLS",$C4       num stmt (0)
+;  DB <sp_chan      ; "CLOSE",$C5     # stmt (2)
+;  DB <sp_data      ; "DATA",$C6      data
+;  DB <sp_num2      ; "DRAW",$C7      num stmt (2)
+;  DB <sp_dim       ; "DIM",$C8       dim
+;  DB <sp_def       ; "DEF",$C9       def
+;  DB <sp_else      ; "ELSE",$CA      else
+;  DB <sp_enve      ; "ENVELOPE",$CB  envelope
+;  DB <sp_none      ; "END",$CC       num stmt (0)
+;  DB <sp_for       ; "FOR",$CD       for
+;  DB <sp_num1      ; "GOTO",$CE      num stmt (1)
+;  DB <sp_num1      ; "GOSUB",$CF     num stmt (1)
+;  DB <sp_if        ; "IF",$D0        if
+;  DB <sp_input     ; "INPUT",$D1     print
+;  DB <sp_let       ; "LET",$D2       let
+;  DB <sp_local     ; "LOCAL",$D3     var-list (N=0) no indices
+;  DB <sp_num2      ; "MOVE",$D4      num stmt (2)
+;  DB <sp_num1      ; "MODE",$D5      num stmt (1)
+;  DB <sp_next      ; "NEXT",$D6      var-list (N=1) with indices
+;  DB <sp_ongo      ; "ON",$D7        on
+;  DB <sp_num2      ; "OPT",$D8       num stmt (2)
+;  DB <sp_open      ; "OPENIN",$D9    str stmt (1)
+;  DB <sp_print     ; "PRINT",$DA     print (N=0)
+;  DB <sp_num2      ; "PLOT",$DB      num stmt (2)
+;  DB <sp_num2      ; "PLAY",$DC      num stmt (?) XXX
+;  DB <sp_proc      ; "PROC",$DD      proc
+;  DB <sp_read      ; "READ", $DE     var-list (N=1) with indices
+;  DB <sp_rept      ; "REPEAT",$DF    num stmt (0)
+;  DB <sp_num2      ; "RECT",$E0      num stmt (2)
+;  DB <sp_num1      ; "RESTORE",$E1   num stmt (1) optional
+;  DB <sp_none      ; "RETURN",$E2    num stmt
+;  DB <sp_rem       ; "REM",$E3       rem
+;  DB <sp_none      ; "REPORT",$E4    num stmt (0)
+;  DB <sp_num2      ; "TRIANGLE",$E5  num stmt (2)
+;  DB <sp_until     ; "UNTIL",$E7     condition
+;  DB <sp_none      ; "WAIT",$E8      num stmt (0)
+;  DB <sp_open      ; "OPENUP",$E9    str stmt (1)
+;  DB <sp_open      ; "OPENOUT",$EA   str stmt (1)
+
+
+; STATEMENT KEYWORDS
+stmt_tab:
+  DB (kws_a - stmt_page) ; A
+  DB (kws_b - stmt_page) ; B
+  DB (kws_c - stmt_page) ; C
+  DB (kws_d - stmt_page) ; D
+  DB (kws_e - stmt_page) ; E
+  DB (kws_f - stmt_page) ; F
+  DB (kws_g - stmt_page) ; G
+  DB (kws_h - stmt_page) ; H
+  DB (kws_i - stmt_page) ; I
+  DB (kws_j - stmt_page) ; J
+  DB (kws_k - stmt_page) ; K
+  DB (kws_l - stmt_page) ; L
+  DB (kws_m - stmt_page) ; M
+  DB (kws_n - stmt_page) ; N
+  DB (kws_o - stmt_page) ; O
+  DB (kws_p - stmt_page) ; P
+  DB (kws_q - stmt_page) ; Q
+  DB (kws_r - stmt_page) ; R
+  DB (kws_s - stmt_page) ; S
+  DB (kws_t - stmt_page) ; T
+  DB (kws_u - stmt_page) ; U
+  DB (kws_v - stmt_page) ; V
+  DB (kws_w - stmt_page) ; W
+
+;kw_tab2:
+;st_fn    DB "FN",$80
+;st_proc  DB "PROC",$80
+;st_to    DB "TO",$80
+;st_step  DB "STEP",$80
+;st_then  DB "THEN",$80
+;st_spc   DB "SPC",$80
+;st_tab   DB "TAB",$80
+;st_goto  DB "GOTO",$80
+;st_gosub DB "GOSUB",$80
+
+
+
+
+
+
+
+
+
+
+; @@ cg_n16
+; parse a 16-bit number -> {Acc0/1}, X, ZF
+cg_n16:          ; from LineBuf,X returning {Acc0/1} X=end ZF=no-match (uses A,Y,B) -> CS=overflow
+  LDA #0         ; [2] length of num
+  STA Acc0       ; [3] clear result
+  STA Acc1       ; [3]
+  STX B          ; [3] save X to compare at end
+@loop:           ; -> 14+76+25 [115]
+  LDA LineBuf,X  ; [4] get next char
+  SEC            ; [2]
+  SBC #48        ; [2] make '0' be 0
+  CMP #10        ; [2]
+  BCS @done      ; [2] >= 10 -> @done
+  TAY            ; [2] save digit 0-9
+  JSR cg_n16m10  ; [12+64=76] uses A, preserves X,Y (+Acc,+Term)
+  BCS @ovf       ; [2] -> CF=unsigned-overflow
+  TYA            ; [2] restore digit
+  CLC            ; [2]
+  ADC Acc0       ; [3] add digit 0-9
+  STA Acc0       ; [3]
+  LDA Acc1       ; [3]
+  ADC #0         ; [2] add carry
+  STA Acc1       ; [3]
+  BCS @ovf       ; [2] -> CF=unsigned-overflow
+  INX            ; [2] advance source
+  JMP @loop      ; [3]
+@done:
+  CPX B          ; [3] ZF=1 if no match
+@ovf:
+  RTS            ; [6] return CS=overflow, NE=found, X=end
+
+; @@ cg_n16m10
+; multiply Acc01 by 10 (uses Term01)
+cg_n16m10:      ; Uses A, preserves X,Y (+Term) -> CS=overflow
+  LDA Acc0      ; [3] Term = Val * 2
+  ASL           ; [2]
+  STA Term0     ; [3]
+  LDA Acc1      ; [3]
+  ROL           ; [2]
+  STA Term1     ; [3]
+  BCS @ovf      ; [2] -> CS=unsigned-overflow
+  ASL Term0     ; [5] Term *= 2 = Val * 4
+  ROL Term1     ; [5]
+  BCS @ovf      ; [2] -> CS=unsigned-overflow
+  CLC           ; [2]
+  LDA Acc0      ; [3] Acc += Term = Val * 5
+  ADC Term0     ; [3]
+  STA Acc0      ; [3]
+  LDA Acc1      ; [3]
+  ADC Term1     ; [3]
+  STA Acc1      ; [3]
+  BCS @ovf      ; [2] -> CS=unsigned-overflow
+  ASL Acc0      ; [5] Acc *= 2 = Val * 10
+  ROL Acc1      ; [5] CS=unsigned-overflow
+@ovf:
+  RTS           ; [6] -> CS=overflow [64+6]
+
+
+
+
+
+
+; @@ sym_scan
+; scan a symbol table -> CS=found, A=opcode
+otab_scan:         ; Y=tab-1 (uses A,X,Y)
+@loop:
+  DEX
+  BEQ @nf
+  INY
+  CMP optabs,Y
+  BNE @loop
+  SEC
+  RTS
+@nf:
+  CLC
+  RTS
+
+optabs:
+otb_inf DB '^','*','/','+','-','=','<','>'
+otb_pre DB '-','+'
+
+; ^  *,/,DIV,MOD  +,-  =,<>,<=,<,>=,>  AND  OR,EOR
+
+
+
+table length         (0-63)
+literal alpha char   (64-127)
+hi-byte opcode, done (128-255)
+
+if table length:
+  8-bit base_letter to subtract
+  8-bit { table offset } x length
+
+
+; @@ table_match
+; searches a structured keyword table
+; set up by table_index or table_search
+table_match:        ; X=ln Src=table Y=tblofs -> CS=found, A=hi-byte (uses A,Y,B,C)
+  STX B             ; save input pos, in case we fail to match
+  DEX               ; set up for pre-inc
+@loop:
+  LDA (Src),Y       ; [5] next table byte
+  INY               ; [2] post-inc
+  INX               ; [2] pre-inc
+  CMP #64           ; [2] < 64
+  BCC @jmptab       ; [2] -> less, use jump table [+1]
+  CMP LineBuf,X     ; [4] matches next input char? ASSUMES input chars <128
+  BEQ @loop         ; [2] -> yes, continue [+1] [20]
+  BMI @found        ; [2] >= 128 (bit-7 set, hi-byte) [+1]
+@no_match:
+  LDX B             ; rewind input
+  CLC
+  RTS               ; CC=no-match
+@found:
+  SEC
+  RTS               ; CS=found, A=hi-byte
+@jmptab:
+  ; scan the table for a matching char
+  STA C             ; [3] save length as counter
+  LDA LineBuf,X     ; [4] get next input char
+  DEY               ; [2] set up for pre-inc
+  DEY               ; [2] set up for pre-inc
+@find:
+  DEC C             ; [5] decrement counter
+  BMI @no_match     ; [2] -> end of table [+1]
+  INY               ; [2] pre-inc (ofs)
+  INY               ; [2] pre-inc (char)
+  CMP (Src),Y       ; [5] equals next table char?
+  BNE @find         ; [2] -> keep searching [+1] [19]
+  ; match found, perform jump
+  INY               ; [2] advance to offset (next byte)
+  TYA               ; [2] relative to this address
+  CLC               ; [2]
+  ADC (Src),Y       ; [5] add the offset byte
+  TAY               ; [2] new table index, ASSUMES new index != 0
+  BNE @loop         ; -> always
+
+
+
+ALIGN $100
+kwtab2:
+rv_bput DB "B"
+kw_b:
+  DB "PUT", $C0
+kw_c:
+  DB 4, "A",kw_ca-$, "I",kw_ci-$, "L",kw_cl-$, "O",kw_co-$
+rv_call DB "CA"
+kw_ca:
+  DB "LL", $C2
+rv_circ DB "CI"
+kw_ci:
+  DB "RCLE", $C5
+kw_cl:
+  DB 3, "E",kw_cle-$, "S",$C4, "O",kw_clo-$
+rv_clr  DB "CLE"
+kw_cle:
+  DB "AR", $C3
+rv_clos DB "CLO"
+kw_clo:
+  DB "SE", $C6
+rv_col DB "CO"
+kw_co:
+  DB "LOR", $C1
+kw_d:
+  DB 4, "A",kw_da-$, "E",kw_de-$, "I",kw_di-$, "R",kw_dr-$
+rv_data DB "DA"
+kw_da:
+  DB "TA", $C7
+rv_def DB "DE"
+kw_de:
+  DB "F", $CA
+rv_dim DB "DI"
+kw_di:
+  DB "M", $C9
+rv_draw DB "DR"
+kw_dr:
+  DB "AW", $C8
+kw_e:
+  DB 2, "L",kw_el-$, "N",kw_en-$
+rv_else DB "EL"
+kw_el:
+  DB "SE", $CB
+kw_en:
+  DB 2, "V",kw_env-$, "D",$CD
+rv_enve DB "ENV"
+kw_env:
+  DB "ELOPE", $CC
+; $66
+
+
+ALIGN $100
+kwtab2:
+kw_b:
+  DB "PUT", $C0, "B"
+kw_c:
+  DB 4, "A",kw_ca-$, "I",kw_ci-$, "L",kw_cl-$, "O",kw_co-$, "C"
+kw_ca:
+  DB "LL", $C2, kw_c-$
+kw_ci:
+  DB "RCLE", $C5, kw_c-$
+kw_cl:
+  DB 3, "E",kw_cle-$, "S",$C4, "O",kw_clo-$, kw_c-$
+kw_cle:
+  DB "AR", $C3, kw_cl-$
+kw_clo:
+  DB "SE", $C6, kw_cl-$
+kw_co:
+  DB "LOR", $C1, kw_cl-$
+kw_d:
+  DB 4, "A",kw_da-$, "E",kw_de-$, "I",kw_di-$, "R",kw_dr-$, "D"
+kw_da:
+  DB "TA", $C7, kw_d-$
+kw_de:
+  DB "F", $CA, kw_d-$
+kw_di:
+  DB "M", $C9, kw_d-$
+kw_dr:
+  DB "AW", $C8, kw_d-$
+kw_e:
+  DB 2, "L",kw_el-$, "N",kw_en-$, "E"
+kw_el:
+  DB "SE", $CB, kw_e-$
+kw_en:
+  DB 2, "V",kw_env-$, "D",$CD, kw_e-$
+kw_env:
+  DB "ELOPE", $CC, kw_en-$
+; $5D -9
+
+
+; reverse index points to the partial-end keyword above
+; 26 offsets 26*2 = 52 words
+; or two halves with single-byte indices (into different pages)
+
+; top-bit in the last letter means jump?
+; but how do you find each entry? another 26 bytes
+kwrev:
+  DB "B",0,0, <kw_b      ; 3
+  DB "CA",0, <kw_ca      ; 2
+  DB "CI",0, <kw_ci      ; 4
+  DB "CLE", <kw_cle      ; 2
+  DB "CLO", <kw_clo      ; 2
+  DB "DA",0, <kw_da
+  DB "DE",0, <kw_de
+  DB "DI",0, <kw_di
+  DB "DR",0, <kw_dr
+  DB "EL",0, <kw_el
+  DB "ENV", <kw_env
+  DB "END", <kw_end
+

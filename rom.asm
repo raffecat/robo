@@ -336,7 +336,7 @@ parse_cmd:
   LDX #0           ; [2]
   JSR skip_spc     ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
 
-  ; parse line number
+  ; parse line number  (XXX move this inside CodeGen Land)
   JSR cg_enter     ; XXX
   JSR cg_n16       ; [6] parse number at X -> X,Acc01,EQ=no (uses A,Y,B)
   BNE @haveline    ; [2] -> found line number [+1]
@@ -375,6 +375,9 @@ parse_cmd:
   JSR cge_line     ; [6]
   ; copy tokenised line into place
   JMP bas_ins_line ; [3]
+
+
+DB "PRINT"
 
 
 ; @@ n16_print
@@ -480,9 +483,11 @@ bas_ins_line:
 ;  JMP repl
 
 
+DB "NOTXT"
+
 
 ; ------------------------------------------------------------------------------
-; NO TEXT-OUT Utils
+; Scanner (NO TEXT-OUT)
 ; Can be used from CodeGen Land, as well as from outside.
 
 ; @@ skip_spc
@@ -493,36 +498,20 @@ skip_spc:        ; X=ln-ofs -> X (uses A,X)
   CMP #32        ; [2] was it space?
   BEQ skip_spc   ; [2] -> loop [+1]
   DEX            ; [2] undo advance (didn't match)
-  RTS            ; [6] return X [12+6=18]
+  RTS            ; [6] return X=ln-ofs, A=next-char [12+6=18]
 
 ; @@ is_alpha
-is_alpha:        ; X=input-ofs (uses A) -> CF=0 if alphabetic [NO TEXT-OUT]
+is_alpha:        ; X=input-ofs (uses A) -> CC=alphabetic [NO TEXT-OUT]
   LDA LineBuf,X  ; [4] next input char
   AND #$DF       ; [2] lower -> upper (clear bit 5) detect alpha char
   SEC            ; [2] for subtract
   SBC #65        ; [2] make 'A' be 0
-  CMP #26        ; [2] 26 letters (CF=1 if >= 26)
-  RTS            ; [6] return CF=0 if alphabetic [12+6=18]
-
-; @@ match_kw
-; match an ad-hoc keyword (skips leading spaces) [NO TEXT-OUT]
-match_kw:        ; X=ln-ofs Y=kw-ofs[kwtab] uses A,X,Y,B (B=Y) -> CF=found A=hi-byte X=ln-ofs
-  STY B          ; [3] for error case
-  JSR skip_spc   ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
-  DEX            ; [2] set up for pre-increment
-  DEY            ; [2] set up for pre-increment
-@loop:
-  INX            ; [2] pre-increment
-  INY            ; [2] pre-increment
-  LDA kwtab,Y    ; [4] get keyword char
-  CMP LineBuf,X  ; [4] matches input char?
-  BEQ @loop      ; [3] -> continue until not equal
-  CMP #$80       ; [2] CF=(A >= $80) top-bit set
-  RTS            ; [6] -> CF=found A=hi-byte X=ln-ofs
+  CMP #26        ; [2] 26 letters (CS if >= 26)
+  RTS            ; [6] return A=alphabet-index CC=alphabetic [12+6=18]
 
 ; @@ scan_kw_idx
 ; find a matching keyword in a table indexed by first letter [NO TEXT-OUT]
-scan_kw_idx:       ; X=ln-ofs A,Y=table -> CF=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src)
+scan_kw_idx:       ; X=ln-ofs A,Y=table -> CS=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src)
   ; find first keyword for this letter
   STA Src          ; [3] table-low
   STY SrcH         ; [3] table-high
@@ -534,7 +523,7 @@ scan_kw_idx:       ; X=ln-ofs A,Y=table -> CF=found, X=ln-ofs, A=hi-byte (uses A
 
 ; @@ scan_kw_all
 ; scan a list of keywords, matching all keywords in the list [NO TEXT-OUT]
-scan_kw_all:       ; X=ln-ofs A,Y=table -> CF=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src)
+scan_kw_all:       ; X=ln-ofs A,Y=table -> CS=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src)
   STA Src          ; [3] table-low
   STY SrcH         ; [3] table-high
   LDY #0           ; [2] word list offset (start of 1st word)
@@ -593,7 +582,7 @@ scan_kw_list:    ; X=ln-ofs Y=kw-ofs Src=kw-list D=search-mode -> CF=found, X=ln
   RTS            ; [6] X = start of token
 
 ; input and keyword chars differ by case
-; check if keyword is lowercase (otherwise input is lowercase!)
+; check if keyword is lowercase (otherwise input is lowercase)
 @match_en:       ; A = 32
   AND (Src),Y    ; is keyword lowercase? (bit 5 set)
   BEQ @no_match  ; -> keyword not lowercase (input is lowercase)
@@ -616,6 +605,11 @@ scan_kw_list:    ; X=ln-ofs Y=kw-ofs Src=kw-list D=search-mode -> CF=found, X=ln
   RTS            ; [6] X = next-character A=hi-byte (top bit set)
 
 
+
+
+
+DB "CGLAND"
+
 ; ------------------------------------------------------------------------------
 ; CodeGen Land
 ; 
@@ -635,7 +629,14 @@ cg_enter:            ; (uses A)
   STA IO_DSTH        ; LineBuf -> IO_DSTH
   LDA #DMA_Copy
   STA IO_DCTL        ; read/write Memory
+  ; XXX save current vars table size (or undo location)
   RTS
+
+; @@ cg_abort
+; Leave CodeGen Land: undo any vars added during parsing.
+cg_abort:
+  ; XXX undo additions to vars table (discard new vars)
+  ; +++ fall throug to @@ cg_leave +++
 
 ; @@ cg_leave
 ; Leave CodeGen Land: restore IO_DSTL for text output.
@@ -652,71 +653,88 @@ cg_leave:            ; (uses A)
 ; Parse and CodeGen a line of code in LineBuf (Point of Entry)
 cge_line:            ; X=ln-ofs
   JSR cg_enter       ; (uses A)
+  JSR @main
+  JMP cg_leave
+@main:
   JSR skip_spc       ; [24+] X=ln-ofs -> X (uses A,X) leading spaces [NO TEXT-OUT]
-  JSR is_alpha       ; [24] returns CF=0 if alphabetic               [NO TEXT-OUT]
+  JSR is_alpha       ; [24] CC=alphabetic A=alphabet-index           [NO TEXT-OUT]
   BCS cgx_stmt       ; [2] -> not a statement (CF=1)
 
   ; search for a matching statement keyword
-  TAY                ; [2] as an index (0-25)
-  LDA stmt_tab,Y     ; [4] offset within keyword table
+  CMP #22            ; [2] "W" of Alphabet
+  BCS @stmt_pg2      ; [2] -> is >= "W"
+  TAY                ; [2] as an index (0-21) "A"-"V"
+  LDA stmt_idx,Y     ; [4] offset in stmt_page
   LDY #>stmt_page    ; [2] stmt keyword table
+@doscan:
   JSR scan_kw_idx    ; [6] X=ln-ofs A,Y=table -> CF=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src) [NO TEXT-OUT]
   BCC @try_let       ; [2] -> no match
 
   ; matched a statement
-  STA IO_DDRW        ; write out statement opcode
+  STA IO_DDRW        ; write statement opcode (hi-byte)
   AND #63            ; clear top 2 bits of hi-byte
   CMP #41            ; ASSERT
   BCS cgx_bounds     ; ASSERT
   TAY                ; 0-40 as index
-  LDA stmt_pb,Y      ; A = parse byte   <---------------------- seems to go wrong here?
-  STA D              ; save parse flags for parse function
+  LDA stmt_pb,Y      ; A = parse byte (indexed by opcode)
+  STA E              ; save parse flags for parse function
   AND #31            ; low 5 bits
   ASL                ; times 2 (word index)
   TAY                ; as index
-  JSR @call_fn
-  JMP cg_leave       ; -> RTS
-@call_fn:
   LDA stmt_fn+1,Y    ; parse function, high byte
   PHA                ; push high
   LDA stmt_fn,Y      ; parse function, low byte
   PHA                ; push low
   RTS                ; return to parse function
 
+@stmt_pg2:           ;                                         +4
+  ;CMP #23            ; [2] "X"                                +2
+  ;BCS cgx_bounds     ; [2] -> no kw for "X","Y","Z"           +2
+  LDA #<kws_w        ; [4] offset "W" within stmt_page2        +2
+  LDY #>stmt_page2   ; [2] stmt_page2 table                    +2
+  BNE @doscan        ;                                         +2 = +14 (<26)
+
 @try_let:            ; implicit LET statement
-  JSR cg_name        ; X=ln-ofs (at alpha) -> X=ln-after B=start-of-name (uses A,X,B)
-  STX C              ; [3] save end of name, so we can copy the var name later
-  JSR skip_spc       ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
-  LDA #$3D           ; [2] '='
-  CMP LineBuf,X      ; [4] matches next input char?
-  BNE cgx_stmt       ; [3] -> Expecting statement
-  INX                ; [2]
-  JSR cg_expr        ; [6] parse expr
-  LDY #<err_var      ; XXX STUB
-  JMP cgx_error      ; XXX STUB
+  LDY #$3D           ; '='
+  JSR cg_chr_o       ; X=ln Y=ch (uses A) CS=found
+  BCS @fn_ret
+  JMP cg_let         ; -> parse the LET
+
+@fn_ret:
+  ; XXX check if we're inside a FN (pop stmts)
+  LDA #OP_RETURN
+  STA IO_DDRW
+  JMP cg_expr        ; (uses A,X,Y,B,C,D,Src,Acc)
 
 cgx_stmt:
-  LDA #<kw_stmt      ; "Expecting statement"
-  STA B
-  JMP cgx_expect_kw
+  LDY #<kw_stmt      ; "Expecting statement"
+  JMP cgx_expect_y
 
 cgx_bounds:
   LDY #<err_bound
-  JMP cgx_error
+  ; +++ fall throug to @@ cgx_error +++
+
+; @@ cgx_error
+; Report an error, leaving CodeGen land.
+cgx_error:        ; Y = low byte (in messages page)
+  JSR cg_abort    ; (uses A)
+  JSR printmsgln  ; Y=low
+  JMP repl
+
 
 ; KEYWORD parse-function table
-; matches stmt_pb "parse function" entries
-; no special alignment requirements
-stmt_fn:             ; [41]
+; matches stmt_pb entries
+; no special alignment requirements         (XXX avoid crossing page boundary though)
+stmt_fn:            ; [20]
   DW cg_for      -1 ;  0 = FOR .. TO .. [ STEP .. ]
   DW cg_if       -1 ;  1 = IF .. THEN .. [ ELSE .. ]
   DW cg_print    -1 ;  2 = PRINT .. SPC .. TAB .. ~';
   DW cg_varlist  -1 ;  3 = var-list .. A,B
   DW cg_dim      -1 ;  4 = DIM .. A(n,..)
   DW cg_data     -1 ;  5 = DATA .. , .. (up to 255)
-  DW cg_num      -1 ;  6 = num stmt, uses NN
+  DW cg_args     -1 ;  6 = expr x NN
   DW cg_def      -1 ;  7 = DEF .. FN|PROC name (a,b..)
-  DW cg_cond     -1 ;  8 = condition
+  DW cg_none     -1 ;  8 = none
   DW cg_else     -1 ;  9 = ELSE
   DW cg_envelope -1 ; 10 = ENVELOPE (14 args)
   DW cg_proc     -1 ; 11 = PROC
@@ -724,93 +742,659 @@ stmt_fn:             ; [41]
   DW cg_on       -1 ; 13 = ON .. ERROR|num .. GOTO|GOSUB .. ELSE
   DW cg_rem      -1 ; 14 = REM ..
   DW cg_onoff    -1 ; 15 = on-off
-  DW cg_str      -1 ; 16 = str stmt, uses NN
+  DW cg_expr14   -1 ; 16 = expr x 1-4
   DW cg_hash     -1 ; 17 = # stmt
+  DW cg_sprite   -1 ; 18 = n[,x,y][,t][,a]
+  DW cg_pattern  -1 ; 19 = {num,}8/16 | ${xx}8/16
 
 ; X = input line offset
-; D = parse flags for parse function
-; LineBuf[0] = OPCode for stmt
-
-; Pack ?a,8,c -> [OP_PRINT][FVar1][1Ofs][Int8][08][FVar1][1Ofs]
-; 1Ofs -> [Base][1Ofs]
-; 2Ofs -> [Base+2Ofs][1Ofs]
+; E = parse flags for parse function
+; [writes OPCode] for stmt
 
 ; @@ cg_for
 ; PARSE: var "=" iexpr "TO" iexpr [ "STEP" iexpr ]
 ; WRITE: (var) (expr) (expr) [ OP_STEP (expr) ]
-cg_for:         ; X=ln-ofs
-  JSR cg_var     ; (var) X=ln-ofs -> X=ln-ofs B=start CC=found (uses A,X,B)
-  BCS cg_novar   ; -> expecting var
-  JSR skip_spc   ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
-  LDA #61        ; "="
-  CMP LineBuf,X  ; next char
-  BNE cgx_expect
-  JSR cg_expr    ; (expr) X=ln-ofs -> X
+cg_for:          ; X=ln-ofs
+  JSR cg_var     ; X=ln (uses A,Y,B)  [writes var-index]
+  LDY #61        ; "="
+  JSR cg_chr     ; X=ln Y=ch (uses A)
+  JSR cg_expr    ; (uses A,X,Y,B,C,D,Src,Acc) [writes expr-code]
   LDY #<kw_to    ; "TO"
-  JSR match_kw   ; X=ln-ofs Y=kw-ofs uses A,X,Y (B=Y) -> CF=found,A,X
-  BCC cgx_expect_kw ; -> expecting TO (B=kw_to)
-  JSR cg_expr    ; (expr) parse expr
+  JSR cg_kw      ; X=ln Y=kw (uses A,Y,B,C)
+  JSR cg_expr    ; (uses A,X,Y,B,C,D,Src,Acc) [writes expr-code]
   LDY #<kw_step  ; "STEP"
-  JSR match_kw   ; X=ln-ofs Y=kw-ofs uses A,X,Y (B=Y) -> CF=found,A,X
-  BCC @done      ; -> no STEP
+  JSR cg_kw_o    ; X=ln Y=kw (uses A,Y,B,C) -> CS=found
+  BCC @no_step   ; -> no STEP
   LDA #OP_STEP   ; 
-  STA IO_DDRW    ; write out OP_STEP
-  JSR cg_expr    ; (expr) X=ln-ofs -> X
-@done:
-  RTS            ; -> X=ln-ofs
-
-cg_novar:
-  LDY #<kw_var   ; "var"
-  BNE cgx_expect_kw
+  STA IO_DDRW    ;                            [writes OP_STEP]
+  JSR cg_expr    ; (uses A,X,Y,B,C,D,Src,Acc) [writes expr-code]
+@no_step:
+cg_none:
+  RTS            ; -> X=ln
 
 ; @@ cg_if
 ; PARSE: expr "THEN" line|stmt* [ "ELSE" line|stmt* ]
 ; WRITE: (expr) (len) (stmts) [ OP_ELSE (len) (stmts) ]
 cg_if:
-  JSR cg_expr    ; (expr) parse expr
+  JSR cg_expr    ; (uses A,X,Y,B,C,D,Src,Acc) [writes expr-code]
   LDY #<kw_then  ; "THEN"
-  JSR match_kw   ; X=ln-ofs Y=kw-ofs uses A,X,Y (B=Y) -> CF=found,A,X
-  BCC @no_then   ; -> allow stmts, but not line no
-  JSR cg_n16     ; [6] parse number at X -> X,Acc01,EQ=no (uses A,Y,B)
-  BNE @then_ln   ; [2] -> found line number
+  JSR cg_kw_o    ; X=ln Y=kw (uses A,Y,B,C) -> CS=found, A=OP
+  BCC @no_then   ; -> no THEN
+  JSR cg_n16     ; X=ln (uses A,Y,B,Acc01) -> NE=found
+  BNE @then_ln   ; -> THEN <line>
+  LDA #OP_THEN   ;
+  STA IO_DDRW    ;                    [writes OP_THEN]
 @no_then:
-  JSR cg_stmts   ; (stmts) parse statements
+  ; XXX reserve a byte for THEN length
+  JSR cg_stmts   ;                    [writes stmt-code]
 @if_else:
   LDY #<kw_else  ; "ELSE"
-  JSR match_kw   ; X=ln-ofs Y=kw-ofs uses A,X,Y (B=Y) -> CF=found,A,X
-  BCC @done      ; -> no ELSE
-  LDA #OP_ELSE   ; 
-  STA IO_DDRW    ; write out OP_ELSE
-  JSR cg_n16     ; [6] parse number at X -> X,Acc01,EQ=no (uses A,Y,B)
-  BNE @wr_goto   ; [2] -> output GOTO line
-  JMP cg_stmts   ; (stmts) parse statements
+  JSR cg_kw_o    ; X=ln Y=kw (uses A,Y,B,C) -> CS=found, A=OP
+  BCC @no_else   ; -> no ELSE
+  JSR cg_n16     ; X=ln (uses A,Y,B,Acc01) -> NE=found
+  BNE @else_ln   ; -> ELSE <line>
+  LDA #OP_ELSE   ;
+  STA IO_DDRW    ;                    [writes OP_ELSE]
+  ; XXX reserve a byte for ELSE length
+  JMP cg_stmts   ;                    [writes stmt-code]
 @then_ln:
+  LDA #OP_THENG  ;
   JSR @wr_goto
   JMP @if_else
+@else_ln:
+  LDA #OP_ELSEG  ;
 @wr_goto:
-  LDA #OP_GOTO   ; 
-  STA IO_DDRW    ; write out OP_GOTO
+  STA IO_DDRW    ;                    [writes OP_THENG]
   LDA Acc0       ; low byte
-  STA IO_DDRW    ; write out Line low
+  STA IO_DDRW    ;                    [writes Line lo]
   LDA Acc1       ; high byte
-  STA IO_DDRW    ; write out Line high
+  STA IO_DDRW    ;                    [writes Line hi]
+@no_else:
+  RTS
+
+; @@ cg_print
+; Print statement.
+; Ends only when no EXPR and no CTRL symbol.
+; how do we decode this?
+; OP_PRINT,OP_STR,OP_SEMI,OP_VAR,OP_COMMA,OP_PAREN,OP_PEND|OP_PENDS
+; ^ if stmts have top-bit, next stmt ends print (semi changes OP_PRINT to OP_PRINTS)
+; ^ if print ends with ' is it elided?
+cg_print:
+@loop:
+  JSR skip_spc    ; X=ln (uses A)
+  LDA LineBuf,X   ; get next char (spaces skipped in cg_expr)
+  CMP #$2C        ; ","
+  BEQ @comma      ; -> write OP_COMMA (to colum mode)
+  CMP #$3B        ; ";"                            (flag:optional flag:restart)
+  BEQ @semi       ; -> write OP_SEMI (to compact mode)
+  CMP #$27        ; "'"
+  BEQ @eol        ; -> write OP_EOL (end of line)
+  CMP #$53        ; "S"
+  BEQ @spc
+  CMP #$54        ; "T"
+  BEQ @tab
+@try_ex:
+  JSR cg_expr_o   ; (uses A,X,Y,B,C,D,Src,Acc) -> CS=found
+  BCS @loop       ; -> found expr
+  ; CMP #OP_SEMI  ; was the last opcode a semi?    (token:endif)
+                  ; ^ won't work, EXPR OPs end with data bytes
+                  ;   need to store last opcode written (or similar)
+  ; add OP_EIF, or OP_EIFS if last opcode was OP_SEMI (replace it?)
+  RTS             ; end of print
+@comma:
+  LDA #OP_COMMA
+  STA IO_DDRW     ; [write OP_COMMA]
+  BNE @loop
+@semi:
+  LDA #OP_SEMI
+  STA IO_DDRW     ; [write OP_SEMI]
+  BNE @loop
+@eol:
+  LDA #OP_EOL
+  STA IO_DDRW     ; [write OP_EOL]
+  BNE @loop
+@spc:
+  LDY #<kw_spc
+  BNE @spc_e
+@tab:
+  LDY #<kw_tab
+@spc_e:
+  JSR cg_kw_o     ; X=ln Y=kw (uses A,Y,B) -> CS=found A=OP
+  BCC @try_ex     ; -> try expr
+  STA IO_DDRW     ; [write OP_SPC/OP_TAB]
+  ; XXX <---- parse param
+  BNE @loop
+
+; @@ cg_varlist (3)
+; comma separated list of vars; $80 allow indices
+; Code: LOCAL/NEXT/READ 
+cg_varlist:
+  LDA IO_DSTL     ; Src = write pos
+  STA Src
+  LDA IO_DSTH
+  STA SrcH
+  LDA #0
+  STA IO_DDRW     ; placeholder
+  STA D           ; length counter
+@loop:
+  JSR cg_var      ; X=ln (uses A,B)
+  INC D           ; increment length
+  LDY #$2C        ; ','
+  JSR cg_chr_o    ; X=ln Y=ch (uses A)
+  BCS @loop       ; -> another
+  LDA D           ; get length counter
+  LDY #0          ;
+  STA (Src),Y     ; set opcode length
+  RTS             ;
+
+; @@ cg_dim ()
+cg_dim:
+  JSR cg_var      ; X=ln (uses A,B)
+  LDY #$28        ; '('
+  JSR cg_chr      ; X=ln Y=ch (uses A)
+  JSR cg_varlist  ; (uses A,Y,B)
+  LDY #$29        ; ')'
+  JSR cg_chr      ; X=ln Y=ch (uses A)
+  RTS
+
+; @@ cg_data ()
+cg_data:
+@loop:
+  JSR cg_num_o    ; output num  XXX opcode?
+  BCS @comma
+  JSR cg_str_o    ; output str
+  BCS @comma
+  ; XXX advance until COMMA/COLON/EOL -> string
+@comma:
+  LDY #$2C        ; ','
+  JSR cg_chr_o    ; X=ln Y=ch (uses A)
+  BCS @loop
+  RTS
+
+; @@ cg_args ()
+cg_args:
+  LDA E           ; get parse flags [NNNPPPPP]
+  ROL             ; N[NNPPPPPC]
+  ROL             ; N[NPPPPPCN]
+  ROL             ; N[PPPPPCNN]
+  ROL             ; P[PPPPCNNN]
+  AND #7          ;  [00000NNN]
+  STA E           ; number of args
+@loop:
+  JSR cg_expr     ; (uses A,X,Y,B,C,D,Src,Acc)
+  DEC E           ; count down args
+  BEQ @done       ; -> have all expected args
+  JSR skip_spc
+  LDA LineBuf,X   ; next input char
+  INX             ; advance (assume match)
+  CMP #$2C        ; is it ','?
+  BEQ @loop       ; -> found comma, go again
+  DEX             ; undo advance
+  LDA #$2C        ; ','
+  JMP cgx_expect  ; -> "Expecting ," (A)
 @done:
   RTS
 
-; @@ cgx_expect
-; Report an "Expecting [char]" error, leaving CodeGen land.
-cgx_expect:       ; A = expected character (uses X,Y,B,Src)
-  STA B           ; save char
-  JSR cg_leave    ; (uses A)
-  LDY #<msg_expecting
-  JSR printmsg    ; Y=low (uses A,X,Y,Src)
-  LDA B           ; restore char
-  JSR writechar
-  JSR newline
-  JMP repl
+; @@ cg_def
+cg_def:
+  ; XXX try PROC
+  ; XXX try FN
+  ; XXX expect "("
+  ; XXX var_list    (names, types, dims)
+  ; XXX expect ")"
+  RTS
+
+; @@ cg_else
+cg_else:
+  ; XXX find last enclosing IF statement
+  ; XXX length-prefix
+  ; XXX stmt_list
+  RTS
+
+; @@ cg_envelope
+cg_envelope:
+  ; XXX parse 14 numbers as bytes
+  RTS
+
+; @@ cg_proc
+cg_proc:
+  ; XXX parse a name
+  ; XXX expect "("
+  ; XXX expr_list    (untyped, match to PROC at runtime?)
+  ; XXX expect ")"
+  RTS
+
+; @@ cg_let
+cg_let:
+  JSR cg_var         ; X=ln (uses A,B)
+  LDY #$3D           ; '='
+  JSR cg_chr         ; X=ln Y=ch (uses A)
+  JSR cg_expr        ; (uses A,X,Y,B,C,D,Src,Acc)
+  RTS
+
+; @@ cg_on
+cg_on:
+  ; XXX GOTO or GOSUB or PROC ...
+  RTS
+
+; @@ cg_rem
+cg_rem:
+  ; XXX chomp rest of line
+  RTS
+
+; @@ cg_onoff
+cg_onoff:
+  ; XXX parse ON or OFF, encode as byte?
+  RTS
+
+cg_expr14:   ; expr x 1-4  (uses A,X,Y,B,C,D,Src,Acc)
+  RTS
+
+cg_hash:     ; # stmt
+  RTS
+
+cg_sprite:   ; n[,x,y][,t][,a]
+  RTS
+
+cg_pattern:  ; {num,}8/16 | ${xx}8/16
+  RTS
+
+
+
+
+DB "EXPR"
+
+; EXPRESSION Parsing
+; ^  *,/,DIV,MOD  +,-  =,<>,<=,<,>=,>  AND  OR,EOR
+
+; @@ cg_expr
+cg_expr:           ; (uses A,X,Y,B,C,D,Src,Acc)
+  JSR cg_expr_o    ;
+  BCC @no_expr     ; -> no match
+  RTS
+@no_expr:
+  LDY #<kw_expr
+  JMP cgx_expect_y
+
+; @@ cg_expr_o
+cg_expr_o:         ; (uses A,X,Y,B,C,D,Src,Acc) -> CS=found
+  JSR skip_spc     ; X=ln (uses A)
+  JSR is_alpha     ; CC=alphabetic A=alphabet-index (uses A)
+  BCS @not_kw      ; -> not a keyword
+  ; keyword lookup
+  TAY              ; as an index (0-25)
+  LDA expr_idx,Y   ; offset within keyword table
+  LDY #>expr_page  ; expr keyword table
+  JSR scan_kw_idx  ; X=ln A,Y=table -> CS=found, A=hi-byte (uses A,X,Y,B,C,D,Src)
+  BCC @not_kw      ; -> no match
+  ; matched keyword
+  AND #63          ; low 6 bits
+  CMP #50          ; ASSERT <50
+  BCS @bounds      ; ASSERT
+  TAY              ; as index
+  LDA expr_pb,Y    ; A = parse byte
+  STA D            ; save parse flags for parse function
+  AND #15          ; low 4 bits
+  JSR @call        ; -> call handler and return here
+  JMP @infix
+@bounds
+  JMP cgx_bounds
+@not_kw:
+  LDA LineBuf,X    ; get next char
+  CMP #$28         ; "("
+  BEQ @subexpr     ; -> subexpression
+  CMP #$2D         ; "-"
+  BEQ @minus       ; -> minus
+  CMP #$2B         ; "+"
+  BEQ @plus        ; -> plus
+  CMP #$22         ; '"'
+  BEQ @str         ; -> string literal
+  SEC
+  SBC #48          ; '0'
+  CMP #10          ; digits
+  BCC @num         ; -> digits 0-9
+  JSR cg_var_o     ; must be a var
+  BCS @infix       ; -> matched a var
+  CLC              ; CC=not-found
+  RTS
+@call:
+  ASL              ; times 2 (word index)
+  TAY              ; as index
+  LDA expr_fn+1,Y  ; parse function, high byte
+  PHA              ; push high
+  LDA expr_fn,Y    ; parse function, low byte
+  PHA              ; push low
+  RTS              ; return to parse function
+@subexpr:
+  INX              ; skip "("
+  JSR cg_expr      ; require expression
+  LDY #$29         ; ")"
+  JSR cg_chr       ; require ")"
+  JMP @infix
+@minus:
+  INX              ; skip "-"
+  JSR cg_expr      ; require expression
+  ; XXX check if Acc holds num
+  LDA #OP_NEG      ; negate Acc
+  STA IO_DDRW
+  BNE @infix       ; always
+@plus:
+  INX              ; skip "+"
+  JSR cg_expr      ; require expression
+  ; XXX check if Acc holds num/str
+  LDA #OP_UPLUS    ; numerify Acc
+  STA IO_DDRW
+  BNE @infix       ; always
+@str:
+  INX              ; skip '"'
+  JSR cg_str_lp    ; -> rest of string
+  JMP @infix
+@num:
+  JSR cg_num_o     ; parse and output number
+  JMP @infix
+@rhs:
+  STA E            ; set rbp for cg_expr
+  JSR cg_expr
+@infix:
+  ; infix operators
+  JSR skip_spc
+  LDA LineBuf,X    ; get next char
+  INX              ; pre-advance
+  CMP #$5E         ; '^' [8*4=32]  or [8*(4+2+2)=64] with a table (smaller [32 vs 16], 1/2 speed)
+  BEQ @ifx_pow
+  CMP #$2A         ; '*'
+  BEQ @ifx_mul
+  CMP #$2B         ; '+'
+  BEQ @ifx_div
+  CMP #$3D         ; '='
+  BEQ @ifx_add
+  CMP #$3C         ; '<'
+  BEQ @ifx_sub
+  CMP #$2F         ; '/'
+  BEQ @ifx_lt
+  CMP #$2D         ; '-'
+  BEQ @ifx_eq
+  CMP #$3E         ; '>'
+  BEQ @ifx_gt
+  DEX              ; undo pre-advance
+  LDA #<kw_infix
+  LDY #>kw_infix
+  JSR scan_kw_all  ; X=ln A,Y=table -> CS=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src)
+  BCS @ifx_kw
+  ; end of expression
+  SEC              ; CS=found
+  RTS              ; CS=found
+@ifx_pow:
+  LDA #OP_POW
+  STA IO_DDRW
+  LDA #1
+  CMP E            ; compare rbp
+  BNE @rhs
+@ifx_mul:
+  LDA #OP_MUL
+  STA IO_DDRW
+  LDA #2
+  BNE @rhs
+@ifx_div:
+  LDA #OP_DIV
+  STA IO_DDRW
+  LDA #2
+  BNE @rhs
+@ifx_add:
+  LDA #OP_ADD
+  STA IO_DDRW
+  LDA #3
+  BNE @rhs
+@ifx_sub:
+  LDA #OP_SUB
+  STA IO_DDRW
+  LDA #3
+  BNE @rhs
+@ifx_lt:
+  LDA LineBuf,X    ; get next char
+  INX              ; pre-advance
+  CMP #$3D         ; '='
+  BEQ @ifx_le
+  CMP #$3E         ; '>'
+  BEQ @ifx_ne
+  DEX              ; undo pre-advance
+  ; less than
+  LDA #OP_LT
+  STA IO_DDRW
+  JSR cg_expr      ; require expression -> done
+  JMP @infix
+@ifx_eq:
+  LDA #OP_EQ
+  STA IO_DDRW
+  JSR cg_expr      ; require expression -> done
+  JMP @infix
+@ifx_gt:
+  LDA LineBuf,X    ; get next char
+  INX              ; pre-advance
+  CMP #$3D         ; '='
+  BEQ @ifx_ge
+  DEX              ; undo pre-advance
+  ; greater than
+  LDA #OP_GT
+  STA IO_DDRW
+  JSR cg_expr      ; require expression -> done
+  JMP @infix
+@ifx_kw:
+  STA IO_DDRW      ; [write OPCODE]
+  JSR cg_expr      ; require expression -> done
+  JMP @infix
+@ifx_le:
+  LDA #OP_LE
+  STA IO_DDRW
+  JSR cg_expr      ; require expression -> done
+  JMP @infix
+@ifx_ne:
+  LDA #OP_NE
+  STA IO_DDRW
+  JSR cg_expr      ; require expression -> done
+  JMP @infix
+@ifx_ge:
+  LDA #OP_GE
+  STA IO_DDRW
+  JSR cg_expr      ; require expression -> done
+  JMP @infix
+
+
+;  0 = () function, uses NN
+;  1 = $() function, uses NN
+;  2 = # function, uses NN
+;  3 = no-arg
+;  4 = infix operator (AND OR)
+;  5 = prefix operator (NOT)
+;  6 = fn-or-fn$ ()
+;  7 = function call prefix
+;  8 = fn-or-fn#
+expr_fn:
+  DW cge_nfunc
+  DW cge_sfunc
+  DW cge_chfunc
+  DW cge_none
+  DW cge_infix
+  DW cge_prefix
+  DW cge_snfunc
+  DW cge_fn
+  DW cge_nchfunc
+
+
+cge_nfunc:
+  RTS
+
+cge_sfunc:
+  RTS
+
+cge_chfunc:
+  RTS
+
+cge_none:
+  RTS
+
+cge_infix:
+  RTS
+
+cge_prefix:
+  RTS
+
+cge_snfunc:
+  RTS
+
+cge_fn:
+  RTS
+
+cge_nchfunc:
+  RTS
+
+
+
+
+
+
+
+
+DB "COMMON"
+
+; Common CodeGen functions.
+; These match input and write out code.
+
+cg_chr_o:        ; X=ln Y=ch (uses A)
+  JSR skip_spc   ; X=ln (uses A)
+  TYA            ; no CPY,X
+  CMP LineBuf,X  ; matches next input char?
+  BNE cg_not     ; -> CC=not-found
+  INX            ; advance ln
+  SEC
+  RTS            ; -> success CS=found
+
+cg_chr:          ; X=ln Y=ch (uses A)
+  JSR skip_spc   ; X=ln (uses A)
+  TYA            ; no CPY,X
+  CMP LineBuf,X  ; matches next input char?
+  BNE @expect
+  INX            ; advance ln
+  RTS            ; -> success
+@expect:
+  JMP cgx_expect ; -> "Expecting <ch>" (A)
+
+cg_str_o:
+  LDY #$22       ; '"'
+  JSR cg_chr_o   ; (uses A) -> CS=found
+  BCC cg_not     ; -> CC=not-found
+cg_str_lp:
+@loop:
+  LDA LineBuf,X  ; next input char
+  BEQ @eol       ; -> end of line found
+  INX            ; advance
+  CMP #$22       ; '"'
+  BNE @loop      ; -> continue
+  ; XXX also check for double-"" to escape quotes
+  ; XXX also check for EOL
+  ; XXX emit string opcode
+  ; XXX where do the string contents go?
+  SEC
+  RTS            ; CS=found
+@eol:
+  LDA #$22       ; '"'
+  JMP cgx_expect ; "Expecting "" (A)
+
+cg_not:
+  CLC
+  RTS            ; CC=not-found
+
+cg_num_o:
+  JSR cg_n16     ; -> Acc01 NE=found (uses A,Y,B)
+  BEQ cg_not
+  ; output OP_INT1 or OP_INT2
+  LDA Acc1
+  BEQ @small
+  LDA #OP_INT2
+  STA IO_DDRW
+  LDA Acc0
+  STA IO_DDRW
+  LDA Acc1       ; XXX signed?
+  STA IO_DDRW
+  SEC
+  RTS
+@small:
+  LDA #OP_INT1
+  STA IO_DDRW
+  LDA Acc0       ; XXX signed?
+  STA IO_DDRW
+  SEC
+  RTS
+
+; @@ cg_kw
+; match a keyword in kwtab [required]
+cg_kw:           ; X=ln Y=kw (uses A,Y,B,C) -> CS=found, A=OP
+  STY C          ; save keyword for error case
+  JSR cg_kw_o    ; uses (A,Y,B) -> CS=found
+  BCC @no_kw     ; -> "Expected <kw>"
+  RTS
+@no_kw:
+  LDY C          ; restore keyword
+  JMP cgx_expect_y
+
+; @@ cg_kw_o
+; match a keyword in kwtab [optional]
+cg_kw_o:         ; X=ln Y=kw (uses A,Y,B) -> CS=found A=OP
+  JSR skip_spc   ; X=ln (uses A)
+  STX B          ; [3] save ln in case we don't match
+  DEX            ; [2] set up for pre-increment
+  DEY            ; [2] set up for pre-increment
+@loop:
+  INX            ; [2] pre-increment
+  INY            ; [2] pre-increment
+  LDA kwtab,Y    ; [4] get keyword char
+  CMP LineBuf,X  ; [4] matches input char?
+  BEQ @loop      ; [3] -> continue until not equal
+  CMP #$80       ; [2] CF=(A >= $80) top-bit set
+  BCS @found     ; [2] -> found match [+1]
+  LDX B          ; [3] restore ln at start of kw
+@found:
+  RTS            ; [6] -> CS=found A=OP
+
+; @@ cg_var
+cg_var:          ; X=ln (uses A,X,B)
+  JSR cg_var_o
+  BCC @novar     ; -> expecting a var
+  RTS
+@novar:
+  LDY #<kw_var   ; "variable"
+  JMP cgx_expect_y
+
+; @@ cg_var_o
+; parse a variable name and write out code
+cg_var_o:        ; X=ln (at alpha char) -> B=start-of-name (uses A,X,B)
+  JSR skip_spc   ; X=ln (uses A) leading spaces
+  STX B          ; save start of name
+  DEX            ; set up for pre-increment
+@loop:
+  INX            ; [2] pre-increment
+  LDA LineBuf,X  ; [4] next input char
+  AND #$DF       ; [2] lower -> upper (clear bit 5) detect alpha char
+  SEC            ; [2] for subtract
+  SBC #65        ; [2] make 'A' be 0
+  CMP #26        ; [2] 26 letters
+  BCC @loop      ; [2] is a letter -> @loop [+1]
+  CPX B          ; [3] has X advanced?
+  BEQ cg_not     ; [2] -> no chars found
+  ; XXX push temp-vars below top of RAM (descending)
+  ; XXX immediate execution -> used in-place.
+  ; XXX line inserted into code -> merge with vars table (TOP of RAM)
+  ; XXX is it just name:index? Do proc locals go in here too?
+  ; XXX calling proc: push new storage for locals?
+  SEC            ; 
+  RTS            ; -> CS=found
+
+cgx_expect_y:     ; Y=kw-ofs[kwtab]
+  STY B
+  ; +++ fall throug to @@ cgx_expect_kw +++
 
 cgx_expect_kw:    ; B=kw-ofs[kwtab]
-  JSR cg_leave    ; (uses A)
+  JSR cg_abort    ; (uses A)
   LDY #<msg_expecting
   JSR printmsg    ; Y=low (uses A,X,Y,Src)
   LDY B           ; keyword offset
@@ -818,83 +1402,28 @@ cgx_expect_kw:    ; B=kw-ofs[kwtab]
   JSR newline
   JMP repl
 
-; @@ cgx_error
-; Report an error, leaving CodeGen land.
-cgx_error:        ; Y = low byte (in messages page)
-  JSR cg_leave    ; (uses A)
-  JSR printmsgln  ; Y=low
-  JMP repl
-
-cg_print:
-  ; { "str" | TAB() | SPC() | expr | ' } [;|,]
-  RTS
-
-cg_varlist:
-  RTS
-cg_dim:
-  RTS
-cg_data:
-  RTS
-cg_num:
-  RTS
-cg_def:
-  RTS
-cg_cond:
-  RTS
-cg_else:
-  RTS
-cg_envelope:
-  RTS
-cg_proc:
-  RTS
-cg_let:
-  RTS
-cg_on:
-  RTS
-cg_rem:
-  RTS
-cg_onoff:
-  RTS
-cg_str:
-  RTS
-cg_hash:
-  RTS
-
-; Common CodeGen functions.
-; These directly output opcodes.
-
-cg_var:          ; X=ln-ofs -> X=ln-ofs CC=found B=start-of-name (uses A,X,B)
-  JSR skip_spc   ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
-  JSR is_alpha   ; [24] returns CC if alphabetic (uses A)
-  BCS cg_ret     ; [2] -> not a varname (CS=not-found)
-  ; +++ fall through to @@ cg_name +++
-
-cg_name:         ; X=ln-ofs (at alpha char) -> X=ln-ofs B=start-of-name (uses A,X,B)
-  STX B          ; [3] save start of name
-@loop:
-  INX            ; [2] next char
-  LDA LineBuf,X  ; [4] next input char
-  AND #$DF       ; [2] lower -> upper (clear bit 5) detect alpha char
-  SEC            ; [2] for subtract
-  SBC #65        ; [2] make 'A' be 0
-  CMP #26        ; [2] 26 letters
-  BCC @loop      ; [2] is a letter -> @loop [+1]
-  CLC            ; [2] CC=found [for cg_var]
-cg_ret:
-  RTS            ; [6]
-
-
-cg_expr:
-  JSR skip_spc   ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
-  RTS
-
 cg_stmts:
   JSR skip_spc   ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
+  ; XXXX  the thing
   RTS
+
+; @@ cgx_expect
+; Report an "Expecting [char]" error, leaving CodeGen land.
+cgx_expect:       ; A = expected character (uses X,Y,B,Src)
+  STA B           ; save char
+  JSR cg_abort    ; (uses A)
+  LDY #<msg_expecting
+  JSR printmsg    ; Y=low (uses A,X,Y,Src)
+  LDA B           ; restore char
+  JSR writechar
+  JSR newline
+  JMP repl
+
+DB "N16"
 
 ; @@ cg_n16
 ; parse a 16-bit number -> {Acc0/1}, X, ZF
-cg_n16:          ; from LineBuf,X returning {Acc0/1} X=end ZF=no-match (uses A,Y,B)
+cg_n16:          ; from LineBuf,X returning {Acc0/1} X=end NE=found (uses A,Y,B)
   LDA #0         ; [2] length of num
   STA Acc0       ; [3] clear result
   STA Acc1       ; [3]
@@ -918,8 +1447,8 @@ cg_n16:          ; from LineBuf,X returning {Acc0/1} X=end ZF=no-match (uses A,Y
   INX            ; [2] advance source
   JMP @loop      ; [3]
 @done:
-  CPX B          ; [3] ZF=1 if no match
-  RTS            ; [6] return X=end
+  CPX B          ; [3]
+  RTS            ; [6] return X=end NE=found
 
 ; @@ cg_n16m10
 ; multiply Acc01 by 10 (uses Term01)
@@ -952,8 +1481,12 @@ cgx_range:
   JMP cgx_error
 
 
+
 ; ------------------------------------------------------------------------------
 ; END of CodeGen Land
+
+
+DB "REPL"
 
 
 ; REPL handler table
@@ -977,7 +1510,7 @@ cmd_run:
   RTS
 
 cmd_auto:
-  JSR cg_enter       ; [6] BEGIN parsing
+  JSR cg_enter       ; [6] BEGIN parsing (XXX it's messy)
   LDA #10            ; [2]
   STA Line           ; [3] start from line 10
   STA AutoInc        ; [3] step by 10
@@ -1052,210 +1585,241 @@ cmd_new:
 cmd_old:
   RTS
 
+DB "ENDS"
 
 
 ; ------------------------------------------------------------------------------
-; STATEMENT KEYWORDS - MUST be page aligned (Y indexing)
-ALIGN ROM+$500
+; PAGE 8 - Statement Keywords
+ORG ROM+$800
 stmt_page:
 
 kws_a:
 kws_b:
-  DB "BPUT",     $C0
+kw_bput   DB "BPUT",     $C0  ; [#ch,]byte
 kws_c:
-  DB "COLOR",    $C1
-  DB "COLOUR",   $C1
-  DB "CALL",     $C2
-  DB "CLEAR",    $C3
-  DB "CLS",      $C4
-  DB "CLOSE",    $C5
+kw_color  DB "COLOR",    $C1
+kw_call   DB "CALL",     $C2
+kw_clear  DB "CLEAR",    $C3
+kw_cls    DB "CLS",      $C4
+kw_circle DB "CIRCLE",   $C5
+kw_close  DB "CLOSE",    $C6  ; #ch
 kws_d:
-  DB "DATA",     $C6
-  DB "DRAW",     $C7
-  DB "DIM",      $C8
-  DB "DEF",      $C9
+kw_data   DB "DATA",     $C7
+kw_draw   DB "DRAW",     $C8
+kw_dim    DB "DIM",      $C9
+kw_def    DB "DEF",      $CA
 kws_e:
-  DB "ELSE",     $CA
-  DB "ENVELOPE", $CB
-  DB "END",      $CC
+kw_else   DB "ELSE",     $CB
+OP_ELSE            = $CB      ; ELSE <stmts>
+kw_enve   DB "ENVELOPE", $CC
+kw_end    DB "END",      $CD
 kws_f:
-  DB "FOR",      $CD
+kw_for    DB "FOR",      $CE
 kws_g:
-  OP_GOTO =      $CE
-  DB "GOTO",     $CE
-  DB "GOSUB",    $CF
+kw_goto   DB "GOTO",     $CF
+OP_GOTO            = $CF
+kw_gosub  DB "GOSUB",    $D0
 kws_h:
 kws_i:
-  DB "IF",       $D0
-  DB "INPUT",    $D1
+kw_if     DB "IF",       $D1
+kw_input  DB "INPUT",    $D2  ; [#ch,]
 kws_j:
 kws_k:
 kws_l:
-  DB "LET",      $D2
-  DB "LOCAL",    $D3
+kw_let    DB "LET",      $D3
+kw_local  DB "LOCAL",    $D4
 kws_m:
-  DB "MOVE",     $D4
-  DB "MODE",     $D5
+kw_move   DB "MOVE",     $D5
+kw_mode   DB "MODE",     $D6
 kws_n:
-  DB "NEXT",     $D6
+kw_next   DB "NEXT",     $D7
 kws_o:
-  DB "ON",       $D7
-  DB "OPT",      $D8
-  DB "OPEN",     $D9
+kw_on     DB "ON",       $D8
+kw_opt    DB "OPT",      $D9
+kw_orig   DB "ORIGIN",   $DA
+kw_open   DB "OPEN",     $DB
 kws_p:
-  DB "PRINT",    $DA
-  DB "PLOT",     $DB
-  DB "PLAY",     $DC
-  DB "PROC",     $DD
+kw_print  DB "PRINT",    $DC  ; [#ch,]
+kw_plot   DB "PLOT",     $DD
+kw_proc   DB "PROC",     $DE
+kw_patt   DB "PATTERN",  $DF
 kws_q:
 kws_r:
-  DB "READ",     $DE
-  DB "REPEAT",   $DF
-  DB "RECTANGLE",$E0
-  DB "RESTORE",  $E1
-  DB "RETURN",   $E2
-  DB "REM",      $E3
-  DB "REPORT",   $E4
+kw_read   DB "READ",     $E0
+kw_rept   DB "REPEAT",   $E1
+kw_rect   DB "RECT",     $E2
+kw_rest   DB "RESTORE",  $E3
+kw_retr   DB "RETURN",   $E4
+OP_RETURN          = $E5
+kw_rem    DB "REM",      $E5
+kw_repo   DB "REPORT",   $E6
 kws_s:
+kw_set    DB "SET",      $E7  ; vs AT(X,Y)
+kw_spri   DB "SPRITE",   $E8
+kw_scro   DB "SCROLL",   $E9
+kw_soun   DB "SOUND",    $EA
+kw_seek   DB "SEEK",     $EB  ; [#ch,]ofs
 kws_t:
-  DB "TRIANGLE", $E5
-  DB "TRACE",    $E6
+kw_tri    DB "TRIANGLE", $EC
 kws_u:
-  DB "UNTIL",    $E7
+kw_until  DB "UNTIL",    $ED
 kws_v:
-kws_w:
-  DB "WAIT",     $E8
-kws_x:
-kws_y:
-kws_z:
   DB 0 ; end of list
 
-; in specific OPERATOR contexts: THEN, ELSE, TO, STEP
-; in print contexts: SPC, TAB
-
 ; ------------------------------------------------------------------------------
-; EXPRESSION KEYWORDS - MUST be page aligned (Y indexing)
+; PAGE 9 - Statement Tables
 ALIGN $100
+stmt_page2:
 kwtab:
-expr_page:
 
-expr_a:
-  DB "AND",$80      ; kw oper (4)
-  DB "ABS",$81      ; fn (0,0)
-  DB "ACS",$82      ; fn (0,0)
-  DB "ASC",$83      ; fn (0,0)
-  DB "ASN",$84      ; fn (0,0)
-  DB "ATN",$85      ; fn (0,0)
-expr_b:
-  DB "BGET",$86     ; # function (2,0)
-expr_c:
-  DB "CHR",$87      ; fn$ (1,1)
-  DB "COS",$88      ; fn (0,1)
-expr_d:
-  DB "DEG",$89      ; fn (0,1)
-  DB "DIV",$8A      ; kw oper (4)
-expr_e:
-  DB "EOR",$8B      ; kw oper (4)
-  DB "EXP",$8C      ; fn (0,1)
-  DB "EOF",$8D      ; # function (2,0)
-  DB "ERR",$8E      ; no-arg (0,0)
-  DB "ERL",$8F      ; no-arg (0,0)
-  DB "EVAL",$90     ; eval$ (1,1)
-expr_f:
-  DB "FALSE",$91    ; no-arg (0,0)
-  DB "FN",$92       ; function-call (9)
-expr_g:
-  DB "GET",$93      ; fn-or-fn$ (8,0)
-expr_h:
-expr_i:
-  DB "INKEY",$94    ; fn-or-fn$ (8,1) 1st is $
-  DB "INSTR",$95    ; fn$ (1,1) 1st is $
-  DB "INT",$96      ; fn (0,1)
-expr_j:
-expr_k:
-expr_l:
-  DB "LEN",$97      ; fn-or-fn# (B,1) 1st is $
-  DB "LEFT",$98     ; fn$ (1,2) 1st is $
-  DB "LN",$99       ; fn (0,1)
-  DB "LOG",$9A      ; fn (0,1)
-expr_m:
-  DB "MID",$9B      ; fn$ (1,3) 1st is $
-  DB "MOD",$9C      ; kw oper (4,1)
-expr_n:
-  DB "NOT",$9D      ; kw oper (5)
-expr_o:
-  DB "OR",$9E       ; kw oper (4)
-expr_p:
-  DB "POINT",$9F    ; fn (0,2)
-  DB "POS",$A0      ; fn-or-fn# (B,0)
-  DB "PI",$A1       ; no-arg (0,0)
-expr_q:
-expr_r:
-  DB "RIGHT",$A2    ; fn$ (1,2) 1st is $
-  DB "RAD",$A3      ; fn (0,1)
-  DB "RND",$A4      ; fn (0,1)
-expr_s:
-  DB "STR",$A5      ; fn$ (1,1) 1st is $
-  DB "SIN",$A6      ; fn (0,1)
-  DB "SQR",$A7      ; fn (0,1)
-  DB "STRING",$A8   ; fn$ (1,2) 1st is $
-  DB "SGN",$A9      ; fn (0,1)
-expr_t:
-  DB "TAN",$AA      ; fn (0,1)
-  DB "TRUE",$AB     ; no-arg (0,0)
-  DB "TIME",$AC     ; no-arg (0,0)
-  DB "TOP",$AD      ; no-arg (0,0)
-expr_u:
-  DB "USR", $AE     ; fn (0,1)
-expr_v:
-  DB "VAL",$AF      ; fn (0,1)
-  DB "VPOS",$B0     ; no-arg (3,0)
-expr_w:
-expr_x:
-expr_y:
-expr_z:
-  DB 0
-
-; context keywords (keep on one page for Y indexing)
-; note: `kwtab` is at start of page
-kw_to:
-  DB "TO",       $FF
-kw_step:
-  OP_STEP =      $E9
-  DB "STEP",     $E9
-kw_then:
-  OP_THEN =      $EA
-  DB "THEN",     $EA
-kw_else:
-  OP_ELSE =      $EB
-  DB "ELSE",     $EB
-kw_stmt:
-  DB "statement", $FF
-kw_var:
-  DB "var",       $FF
+kws_w:
+kw_whil   DB "WHILE",    $EE
+kw_wend   DB "WEND",     $EF
+kw_wait   DB "WAIT",     $F0
+kw_wind   DB "WINDOW",   $F1
+OP_ELSEG               = $F2  ; ELSE <line>
+OP_STEP                = $F3
+OP_THEN                = $F4
+OP_THENG               = $F5  ; THEN <line>
+;kws_x:
+;kws_y:
+;kws_z:
+  DB 0 ; end of list
 
 
-; ------------------------------------------------------------------------------
-; TABLES - MUST be page aligned (Y indexing)
-ALIGN $100
+; Statement Parse Byte: [FNNPPPPP]
+; F - flag for parse function
+; NN - number of arguments
+; PPPPP - parse function:
+;  0 = FOR .. TO .. [ STEP .. ]
+;  1 = IF .. THEN .. [ ELSE .. ]
+;  2 = PRINT .. SPC .. TAB .. ~';
+;  3 = var-list .. A,B
+;  4 = DIM .. A(n,..)
+;  5 = DATA .. , .. (up to 255)
+;  6 = expr, NNN
+;  7 = DEF .. FN|PROC name (a,b..)
+;  8 = none
+;  9 = ELSE .. line/stmts
+; 10 = ENVELOPE (14 args)
+; 11 = PROC
+; 12 = LET .. var = ..
+; 13 = ON .. ERROR|num .. GOTO|GOSUB .. ELSE
+; 14 = REM ..
+; 15 = .. ON/OFF
+; 16 = expr x 1-4
+; 17 = #ch, {num} NNN
+; 18 = sprite n[,x,y][,t][,a]
+; 19 = pattern {num,}8/16 | ${xx}8/16
+; 20 = str, {num} NNN
+stmt_pb:           ; [50] indices MUST match OPCODEs
+  DB 17+(1<<5)     ; "BPUT",$C0      #ch, num
+  DB 6+(1<<5)      ; "COLOR",$C1     num
+  DB 16            ; "CALL",$C2      num [,a,x,y]  (1-4)
+  DB 8             ; "CLEAR",$C3     -
+  DB 8             ; "CLS",$C4       -
+  DB 6+(3<<5)      ; "CIRCLE",$C5    [BY] x, y, circumference
+  DB 17            ; "CLOSE",$C6     #ch
+  DB 5             ; "DATA",$C7      custom
+  DB 6+(2<<5)      ; "DRAW",$C8      [BY] x, y
+  DB 4             ; "DIM",$C9       var-list indices required
+  DB 7             ; "DEF",$CA       custom
+  DB 9             ; "ELSE",$CB      line/stmts
+  DB 10            ; "ENVELOPE",$CC  {num,}:14
+  DB 8             ; "END",$CD       -
+  DB 0             ; "FOR",$CE       custom
+  DB 6+(1<<5)      ; "GOTO",$CF      num stmt (6,1)
+  DB 6+(1<<5)      ; "GOSUB",$D0     num stmt (6,1)
+  DB 1             ; "IF",$D1        custom
+  DB 2+$80         ; "INPUT",$D2     (N=1)
+  DB 12            ; "LET",$D3       custom
+  DB 3             ; "LOCAL",$D4     var-list (N=0) no indices
+  DB 6+(2<<5)      ; "MOVE",$D5      [BY] num stmt (6,2)
+  DB 6+(1<<5)      ; "MODE",$D6      num
+  DB 3+$80         ; "NEXT",$D7      var-list (N=1) with indices
+  DB 13            ; "ON",$D8        custom
+  DB 6+(2<<5)      ; "OPT",$D9       x, y
+  DB 6+(2<<5)      ; "ORIGIN",$DA    [BY] x, y
+  DB 20+(1<<5)     ; "OPEN",$DB      str [,num]
+  DB 2             ; "PRINT",$DC     (N=0)
+  DB 6+(2<<5)      ; "PLOT",$DD      [BY] num stmt (6,2)
+  DB 11            ; "PROC",$DE      proc (11)
+  DB 19            ; "PATTERN",$DF   custom
+  DB 3+$80         ; "READ", $E0     var-list (N=1) with indices
+  DB 8             ; "REPEAT",$E1    -
+  DB 6+(2<<5)      ; "RECT",$E2      num stmt (6,2)
+  DB 6+(1<<5)+$80  ; "RESTORE",$E3   num stmt (6,1 F=1) optional num
+  DB 8             ; "RETURN",$E4    -
+  DB 14            ; "REM",$E5       rem (14)
+  DB 8             ; "REPORT",$E6    -
+  DB 6+(3<<5)      ; "SET",$E7       x,y,n
+  DB 18            ; "SPRITE",$E8    n[,x,y][,t][,a]
+  DB 6+(2<<5)      ; "SCROLL",$E9    [BY] x, y
+  DB 16            ; "SOUND",$EA     a,b,c,d  (1-4)
+  DB 17+(1<<5)     ; "SEEK",$EB      [#ch,] num
+  DB 6+(2<<5)      ; "TRIANGLE",$EC  x, y
+  DB 6             ; "UNTIL",$ED     expr
+  DB 6+(2<<5)      ; "WHILE",$EE     expr
+  DB 8             ; "WEND",$EF      -       $F2=WEND
+  DB 8             ; "WAIT",$F0      -
+  DB 6+(4<<5)      ; "WINDOW",$F1    num x4
 
-; Command list for the repl
-; matches repl_fn table
-repl_len = 9
-repl_tab:
-  DB "LIST",$80
-  DB "RUN",$81
-  DB "AUTO",$82
-  DB "RENUMBER",$83
-  DB "DELETE",$84
-  DB "LOAD",$85
-  DB "SAVE",$86
-  DB "NEW",$87
-  DB "OLD",$88
-  DB 0
+; Statement Reverse Lookup
+stmt_rev:                     ; [50] indices MUST match OPCODEs
+  DB (kw_bput - stmt_page)    ; "BPUT",$C0
+  DB (kw_color - stmt_page)   ; "COLOR",$C1
+  DB (kw_call - stmt_page)    ; "CALL",$C2
+  DB (kw_clear - stmt_page)   ; "CLEAR",$C3
+  DB (kw_cls - stmt_page)     ; "CLS",$C4
+  DB (kw_circle - stmt_page)  ; "CIRCLE",$C5
+  DB (kw_close - stmt_page)   ; "CLOSE",$C6
+  DB (kw_data - stmt_page)    ; "DATA",$C7
+  DB (kw_draw - stmt_page)    ; "DRAW",$C8
+  DB (kw_dim - stmt_page)     ; "DIM",$C9
+  DB (kw_def - stmt_page)     ; "DEF",$CA
+  DB (kw_else - stmt_page)    ; "ELSE",$CB
+  DB (kw_enve - stmt_page)    ; "ENVELOPE",$CC
+  DB (kw_end - stmt_page)     ; "END",$CD
+  DB (kw_for - stmt_page)     ; "FOR",$CE
+  DB (kw_goto - stmt_page)    ; "GOTO",$CF
+  DB (kw_gosub - stmt_page)   ; "GOSUB",$D0
+  DB (kw_if - stmt_page)      ; "IF",$D1
+  DB (kw_input - stmt_page)   ; "INPUT",$D2
+  DB (kw_let - stmt_page)     ; "LET",$D3
+  DB (kw_local - stmt_page)   ; "LOCAL",$D4
+  DB (kw_move - stmt_page)    ; "MOVE",$D5
+  DB (kw_mode - stmt_page)    ; "MODE",$D6
+  DB (kw_next - stmt_page)    ; "NEXT",$D7
+  DB (kw_on - stmt_page)      ; "ON",$D8
+  DB (kw_opt - stmt_page)     ; "OPT",$D9
+  DB (kw_orig - stmt_page)    ; "ORIGIN",$DA
+  DB (kw_open - stmt_page)    ; "OPEN",$DB
+  DB (kw_print - stmt_page)   ; "PRINT",$DC
+  DB (kw_plot - stmt_page)    ; "PLOT",$DD
+  DB (kw_proc - stmt_page)    ; "PROC",$DE
+  DB (kw_patt - stmt_page)    ; "PATTERN",$DF
+  DB (kw_read - stmt_page)    ; "READ", $E0
+  DB (kw_rept - stmt_page)    ; "REPEAT",$E1
+  DB (kw_rect - stmt_page)    ; "RECT",$E2
+  DB (kw_rest - stmt_page)    ; "RESTORE",$E3
+  DB (kw_retr - stmt_page)    ; "RETURN",$E4
+  DB (kw_rem - stmt_page)     ; "REM",$E5
+  DB (kw_repo - stmt_page)    ; "REPORT",$E6
+  DB (kw_set - stmt_page)     ; "SET",$E7
+  DB (kw_spri - stmt_page)    ; "SPRITE",$E8
+  DB (kw_scro - stmt_page)    ; "SCROLL",$E9
+  DB (kw_soun - stmt_page)    ; "SOUND",$EA
+  DB (kw_seek - stmt_page)    ; "SEEK",$EB
+  DB (kw_tri - stmt_page)     ; "TRIANGLE",$EC
+  DB (kw_until - stmt_page)   ; "UNTIL",$ED
+stmt_rev2:
+  DB (kw_whil - stmt_page2)   ; "WHILE",$EE
+  DB (kw_wend - stmt_page2)   ; "WEND",$EF
+  DB (kw_wait - stmt_page2)   ; "WAIT",$F0
+  DB (kw_wind - stmt_page2)   ; "WINDOW",$F1
 
-; STATEMENT KEYWORDS
-stmt_tab:
+; Statement Index
+stmt_idx:
   DB (kws_a - stmt_page) ; A
   DB (kws_b - stmt_page) ; B
   DB (kws_c - stmt_page) ; C
@@ -1277,79 +1841,274 @@ stmt_tab:
   DB (kws_s - stmt_page) ; S
   DB (kws_t - stmt_page) ; T
   DB (kws_u - stmt_page) ; U
-  DB (kws_v - stmt_page) ; V
-  DB (kws_w - stmt_page) ; W
-  DB (kws_x - stmt_page) ; X
-  DB (kws_y - stmt_page) ; Y
-  DB (kws_z - stmt_page) ; Z
+  DB (kws_v - stmt_page2) ; V
+  ;DB (kws_w - stmt_page2) ; W ; @stmt_pg2 uses #<kws_w
 
-; STATEMENT parse bytes: [FNNPPPPP]
-; F - flag for parse function
-; NN - number of arguments
-; PPPPP - parse function:
-;  0 = FOR .. TO .. [ STEP .. ]
-;  1 = IF .. THEN .. [ ELSE .. ]
-;  2 = PRINT .. SPC .. TAB .. ~';
-;  3 = var-list .. A,B
-;  4 = DIM .. A(n,..)
-;  5 = DATA .. , .. (up to 255)
-;  6 = num stmt, uses NN
-;  7 = DEF .. FN|PROC name (a,b..)
-;  8 = condition
-;  9 = ELSE
-; 10 = ENVELOPE (14 args)
-; 11 = PROC
-; 12 = LET .. var = ..
-; 13 = ON .. ERROR|num .. GOTO|GOSUB .. ELSE
-; 14 = REM ..
-; 15 = on-off
-; 16 = str stmt, uses NN
-; 17 = # stmt
-stmt_pb:           ; [41]
-  DB 17+(2<<5)     ; "BPUT",$C0      # stmt (7,2)
-  DB 6+(1<<5)      ; "COLOR",$C1     num stmt (6,1)
-  DB 6+(1<<5)+$80  ; "CALL",$C2      num stmt (6,1+) XXX F also means optional
-  DB 6             ; "CLEAR",$C3     num stmt (6,0)
-  DB 6             ; "CLS",$C4       num stmt (6,0)
-  DB 17+(2<<5)     ; "CLOSE",$C5     # stmt (7,2)
-  DB 5             ; "DATA",$C6      data (5)
-  DB 6+(2<<5)      ; "DRAW",$C7      num stmt (6,2)
-  DB 4             ; "DIM",$C8       dim (4)
-  DB 7             ; "DEF",$C9       def (7)
-  DB 9             ; "ELSE",$CA      else (9)
-  DB 10            ; "ENVELOPE",$CB  envelope (10)
-  DB 6             ; "END",$CC       num stmt (6,0)
-  DB 0             ; "FOR",$CD       for (0)
-  DB 6+(1<<5)      ; "GOTO",$CE      num stmt (6,1)
-  DB 6+(1<<5)      ; "GOSUB",$CF     num stmt (6,1)
-  DB 1             ; "IF",$D0        if (1)
-  DB 2+$80         ; "INPUT",$D1     print (2 N=1)
-  DB 12            ; "LET",$D2       let (12)
-  DB 3             ; "LOCAL",$D3     var-list (3 N=0)
-  DB 6+(2<<5)      ; "MOVE",$D4      num stmt (6,2)
-  DB 6+(1<<5)      ; "MODE",$D5      num stmt (6,1)
-  DB 3+$80         ; "NEXT",$D6      var-list (3 N=1) with indices
-  DB 13            ; "ON",$D7        on (13)
-  DB 6+(2<<5)      ; "OPT",$D8       num stmt (6,2)
-  DB 16+(1<<5)     ; "OPEN",$D9      str stmt (5,1)
-  DB 2             ; "PRINT",$DA     print (2 N=0)
-  DB 6+(2<<5)      ; "PLOT",$DB      num stmt (6,2)
-  DB 6             ; "PLAY",$DC      num stmt (6,?) XXX
-  DB 11            ; "PROC",$DD      proc (11)
-  DB 3+$80         ; "READ", $DE     var-list (3 N=1) with indices
-  DB 6             ; "REPEAT",$DF    num stmt (6,0)
-  DB 6+(2<<5)      ; "RECTANGLE",$E0 num stmt (6,2)
-  DB 6+(1<<5)+$80  ; "RESTORE",$E1   num stmt (6,1 F=1) optional arg
-  DB 6             ; "RETURN",$E2    num stmt (6,0)
-  DB 14            ; "REM",$E3       rem (14)
-  DB 6             ; "REPORT",$E4    num stmt (6,0)
-  DB 6+(2<<5)      ; "TRIANGLE",$E5  num stmt (6,2)
-  DB 15            ; "TRACE",$E6     on-off (15)
-  DB 8             ; "UNTIL",$E7     condition (8)
-  DB 6             ; "WAIT",$E8      num stmt (6,0)
 
-; EXPRESSION KEYWORDS
-expr_tab:
+; context keywords (keep on one page for Y indexing)
+; note: `kwtab` is at start of page
+kw_to:
+  DB "TO",       $FF
+kw_step:
+  DB "STEP",     OP_STEP
+kw_then:
+  DB "THEN",     OP_THEN
+kw_spc:
+  DB "SPC",      $83     ; print opcodes
+kw_tab:
+  DB "TAB",      $84     ; print opcodes
+  OP_COMMA =     $80     ; print opcodes
+  OP_SEMI =      $81     ; print opcodes
+  OP_EOL =       $82     ; print opcodes
+kw_fn:
+  DB "FN",       $80     ; XXX
+kw_stmt:
+  DB "statement",  $FF   ; Expecting
+kw_expr:
+  DB "expression", $FF   ; Expecting
+kw_var:
+  DB "variable",   $FF   ; Expecting
+
+; ------------------------------------------------------------------------------
+; PAGE A - Expression Keywords
+ALIGN $100
+expr_page:
+
+expr_a:
+ex_abs  DB "ABS",     $80      ; fn (0,0)
+ex_acs  DB "ACS",     $81      ; fn (0,0)
+ex_asc  DB "ASC",     $82      ; fn (0,0)
+ex_asn  DB "ASN",     $83      ; fn (0,0)
+ex_atn  DB "ATN",     $84      ; fn (0,0)
+expr_b:
+ex_bgt  DB "BGET",    $85      ; # function (2,0)
+expr_c:
+ex_chr  DB "CHR",     $86      ; fn$ (1,1)
+ex_cos  DB "COS",     $87      ; fn (0,1)
+expr_d:
+ex_deg  DB "DEG",     $88      ; fn (0,1)
+expr_e:
+ex_exp  DB "EXP",     $89      ; fn (0,1)
+ex_eof  DB "EOF",     $8A      ; # function (2,0)
+ex_err  DB "ERR",     $8B      ; no-arg (0,0)
+ex_erl  DB "ERL",     $8C      ; no-arg (0,0)
+ex_evl  DB "EVAL",    $8D      ; eval$ (1,1)
+expr_f:
+ex_fal  DB "FALSE",   $8E      ; no-arg (0,0)
+ex_fn   DB "FN",      $8F      ; function-call (9)
+expr_g:
+ex_get  DB "GET",     $90      ; fn-or-fn$ (8,0)
+expr_h:
+expr_i:
+ex_ink  DB "INKEY",   $91      ; fn-or-fn$ (8,1) 1st is $
+ex_ins  DB "INSTR",   $92      ; fn$ (1,1) 1st is $
+ex_int  DB "INT",     $93      ; fn (0,1)
+expr_j:
+expr_k:
+expr_l:
+ex_len  DB "LEN",     $94      ; fn-or-fn# (B,1) 1st is $
+ex_lft  DB "LEFT",    $95      ; fn$ (1,2) 1st is $
+ex_ln   DB "LN",      $96      ; fn (0,1)
+ex_log  DB "LOG",     $97      ; fn (0,1)
+expr_m:
+ex_mid  DB "MID",     $98      ; fn$ (1,3) 1st is $
+expr_n:
+expr_o:
+expr_p:
+ex_poi  DB "POINT",   $99      ; fn (0,2)
+ex_pos  DB "POS",     $9A      ; fn-or-fn# (B,0)
+ex_pi   DB "PI",      $9B      ; no-arg (0,0)
+expr_q:
+expr_r:
+ex_rgt  DB "RIGHT",   $9C      ; fn$ (1,2) 1st is $
+ex_rad  DB "RAD",     $9D      ; fn (0,1)
+ex_rnd  DB "RND",     $9E      ; fn (0,1)
+expr_s:
+ex_str  DB "STR",     $9F      ; fn$ (1,1) 1st is $
+ex_sin  DB "SIN",     $A0      ; fn (0,1)
+ex_sqr  DB "SQR",     $A1      ; fn (0,1)
+ex_stg  DB "STRING",  $A2      ; fn$ (1,2) 1st is $
+ex_sgn  DB "SGN",     $A3      ; fn (0,1)
+expr_t:
+ex_tan  DB "TAN",     $A4      ; fn (0,1)
+ex_tru  DB "TRUE",    $A5      ; no-arg (0,0)
+ex_tme  DB "TIME",    $A6      ; no-arg (0,0)
+ex_top  DB "TOP",     $A7      ; no-arg (0,0)
+expr_u:
+ex_usr  DB "USR",     $A8      ; fn (0,1)
+expr_v:
+ex_val  DB "VAL",     $A9      ; fn (0,1)
+ex_vps  DB "VPOS",    $AA      ; no-arg (3,0)
+expr_w:
+expr_x:
+expr_y:
+expr_z:
+  DB 0
+
+kw_prefix:
+kw_not  DB "NOT",     $AB      ; kw-oper
+kw_infix:
+kw_and  DB "AND",     $AC      ; kw-oper
+kw_div  DB "DIV",     $AD      ; kw-oper
+kw_eor  DB "EOR",     $AE      ; kw-oper
+kw_mod  DB "MOD",     $AF      ; kw-oper
+kw_or   DB "OR",      $B0      ; kw-oper
+
+OP_INT1  = $B1
+OP_INT2  = $B2
+OP_INT3  = $B3
+OP_INT4  = $B4
+OP_NEG   = $B5
+OP_UPLUS = $B6
+
+OP_POW   = $40
+OP_MUL   = $41
+OP_DIV   = $42
+OP_ADD   = $43
+OP_SUB   = $44
+OP_EQ    = $45
+OP_NE    = $46
+OP_LT    = $47
+OP_LE    = $48
+OP_GT    = $49
+OP_GE    = $4A
+
+
+; ------------------------------------------------------------------------------
+; PAGE B - Expression Tables, Commands
+ALIGN $100
+
+; Command list for the repl
+; matches repl_fn table
+repl_len = 9
+repl_tab:
+  DB "LIST",$80
+  DB "RUN",$81
+  DB "AUTO",$82
+  DB "RENUMBER",$83
+  DB "DELETE",$84
+  DB "LOAD",$85
+  DB "SAVE",$86
+  DB "NEW",$87
+  DB "OLD",$88
+  DB 0
+
+; Expression Parse Byte: [FNNPPPPP]
+; F - flags for parse function
+; NN - number of arguments (or more flags)
+; PPPPP - parser index:
+;  0 = () function, uses NN
+;  1 = $() function, uses NN
+;  2 = # function, uses NN
+;  3 = no-arg
+;  4 = infix operator (AND OR)
+;  5 = prefix operator (NOT)
+;  6 = fn-or-fn$ ()
+;  7 = function call prefix
+;  8 = fn-or-fn#
+; XXX returns $ vs takes $ argument
+expr_pb:           ; [49]
+  DB 0+(1<<5)      ; "ABS",$80      fn (0,0)
+  DB 0+(1<<5)      ; "ACS",$81      fn (0,0)
+  DB 0+(1<<5)      ; "ASC",$82      fn (0,0)
+  DB 0+(1<<5)      ; "ASN",$83      fn (0,0)
+  DB 0+(1<<5)      ; "ATN",$84      fn (0,0)
+  DB 2             ; "BGET",$85     # function (2,0)
+  DB 1+(1<<5)      ; "CHR",$86      fn$ (1,1)
+  DB 0+(1<<5)      ; "COS",$87      fn (0,1)
+  DB 0+(1<<5)      ; "DEG",$88      fn (0,1)
+  DB 0+(1<<5)      ; "EXP",$89      fn (0,1)
+  DB 2             ; "EOF",$8A      # function (2,0)
+  DB 0             ; "ERR",$8B      no-arg (0,0)
+  DB 0             ; "ERL",$8C      no-arg (0,0)
+  DB 0+(1<<5)      ; "EVAL",$8D     eval (1,1)
+  DB 0             ; "FALSE",$8E    no-arg (0,0)
+  DB 7             ; "FN",$8F       function-call (9)
+  DB 6             ; "GET",$90      fn-or-fn$ (8,0)
+  DB 6+(1<<5)      ; "INKEY",$91    fn-or-fn$ (8,1) 1st is $
+  DB 1+(1<<5)      ; "INSTR",$92    fn$ (1,1) 1st is $
+  DB 0+(1<<5)      ; "INT",$93      fn (0,1)
+  DB 8+(1<<5)      ; "LEN",$94      fn-or-fn# (B,1) 1st is $
+  DB 1+(2<<5)      ; "LEFT",$95     fn$ (1,2) 1st is $
+  DB 0+(1<<5)      ; "LN",$96       fn (0,1)
+  DB 0+(1<<5)      ; "LOG",$97      fn (0,1)
+  DB 1+(3<<5)      ; "MID",$98      fn$ (1,3) 1st is $
+  DB 0+(2<<5)      ; "POINT",$99    fn (0,2)
+  DB 8             ; "POS",$9A      fn-or-fn# (B,0)
+  DB 0             ; "PI",$9B       no-arg (0,0)
+  DB 1+(2<<5)      ; "RIGHT",$9C    fn$ (1,2) 1st is $
+  DB 0+(1<<5)      ; "RAD",$9D      fn (0,1)
+  DB 0+(1<<5)      ; "RND",$9E      fn (0,1)
+  DB 1+(1<<5)      ; "STR",$9F      fn$ (1,1) 1st is $
+  DB 0+(1<<5)      ; "SIN",$A0      fn (0,1)
+  DB 0+(1<<5)      ; "SQR",$A1      fn (0,1)
+  DB 1+(2<<5)      ; "STRING",$A2   fn$ (1,2) 1st is $
+  DB 0+(1<<5)      ; "SGN",$A3      fn (0,1)
+  DB 0+(1<<5)      ; "TAN",$A4      fn (0,1)
+  DB 0             ; "TRUE",$A5     no-arg (0,0)
+  DB 0             ; "TIME",$A6     no-arg (0,0)
+  DB 0             ; "TOP",$A7      no-arg (0,0)
+  DB 0+(1<<5)      ; "USR", $A8     fn (0,1)
+  DB 0+(1<<5)      ; "VAL",$A9      fn (0,1)
+  DB 0             ; "VPOS",$AA     no-arg (3,0)
+
+expr_rev:                  ; [49]
+  DB (ex_abs - expr_page)  ; "ABS",$80
+  DB (ex_acs - expr_page)  ; "ACS",$81
+  DB (ex_asc - expr_page)  ; "ASC",$82
+  DB (ex_asn - expr_page)  ; "ASN",$83
+  DB (ex_atn - expr_page)  ; "ATN",$84
+  DB (ex_bgt - expr_page)  ; "BGET",$85
+  DB (ex_chr - expr_page)  ; "CHR",$86
+  DB (ex_cos - expr_page)  ; "COS",$87
+  DB (ex_deg - expr_page)  ; "DEG",$88
+  DB (ex_exp - expr_page)  ; "EXP",$89
+  DB (ex_eof - expr_page)  ; "EOF",$8A
+  DB (ex_err - expr_page)  ; "ERR",$8B
+  DB (ex_erl - expr_page)  ; "ERL",$8C
+  DB (ex_evl - expr_page)  ; "EVAL",$8D
+  DB (ex_fal - expr_page)  ; "FALSE",$8E
+  DB (ex_fn  - expr_page)  ; "FN",$8F
+  DB (ex_get - expr_page)  ; "GET",$90
+  DB (ex_ink - expr_page)  ; "INKEY",$91
+  DB (ex_ins - expr_page)  ; "INSTR",$92
+  DB (ex_int - expr_page)  ; "INT",$93
+  DB (ex_len - expr_page)  ; "LEN",$94
+  DB (ex_lft - expr_page)  ; "LEFT",$95
+  DB (ex_ln  - expr_page)  ; "LN",$96
+  DB (ex_log - expr_page)  ; "LOG",$97
+  DB (ex_mid - expr_page)  ; "MID",$98
+  DB (ex_poi - expr_page)  ; "POINT",$99
+  DB (ex_pos - expr_page)  ; "POS",$9A
+  DB (ex_pi  - expr_page)  ; "PI",$9B
+  DB (ex_rgt - expr_page)  ; "RIGHT",$9C
+  DB (ex_rad - expr_page)  ; "RAD",$9D
+  DB (ex_rnd - expr_page)  ; "RND",$9E
+  DB (ex_str - expr_page)  ; "STR",$9F
+  DB (ex_sin - expr_page)  ; "SIN",$A0
+  DB (ex_sqr - expr_page)  ; "SQR",$A1
+  DB (ex_stg - expr_page)  ; "STRING",$A2
+  DB (ex_sgn - expr_page)  ; "SGN",$A3
+  DB (ex_tan - expr_page)  ; "TAN",$A4
+  DB (ex_tru - expr_page)  ; "TRUE",$A5
+  DB (ex_tme - expr_page)  ; "TIME",$A6
+  DB (ex_top - expr_page)  ; "TOP",$A7
+  DB (ex_usr - expr_page)  ; "USR", $A8
+  DB (ex_val - expr_page)  ; "VAL",$A9
+  DB (ex_vps - expr_page)  ; "VPOS",$AA
+
+kw_rev_pre:
+  DB (kw_not - expr_page)  ; "NOT",$AB
+
+kw_rev_inf:
+  DB (kw_and - expr_page)  ; "AND",$AC
+  DB (kw_div - expr_page)  ; "DIV",$AD
+  DB (kw_eor - expr_page)  ; "EOR",$AE
+  DB (kw_mod - expr_page)  ; "MOD",$AF
+  DB (kw_or  - expr_page)  ; "OR",$B0
+
+; Expression Index
+expr_idx:
   DB (expr_a - expr_page) ; A
   DB (expr_b - expr_page) ; B
   DB (expr_c - expr_page) ; C
@@ -1377,93 +2136,15 @@ expr_tab:
   DB (expr_y - expr_page) ; Y
   DB (expr_z - expr_page) ; Z
 
-; EXPRESSION parse bytes: [FNNPPPPP]
-; F - flags for parse function
-; NN - number of arguments (or more flags)
-; PPPPP - parser index:
-;  0 = () function, uses NN
-;  1 = $() function, uses NN
-;  2 = # function, uses NN
-;  3 = no-arg
-;  4 = keyword operator (AND OR)
-;  5 = NOT
-;  6 = func() or func#()
-;  7 = const or const#
-;  8 = fn-or-fn$ ()
-;  9 = function-call ()
-;  B = str fn# ()
-; XXX returns $ vs takes $ argument
-expr_pb:           ; [49]
-  DB 4             ; "AND",$80      kw oper (4)
-  DB 0+(1<<5)      ; "ABS",$81      fn (0,0)
-  DB 0+(1<<5)      ; "ACS",$82      fn (0,0)
-  DB 0+(1<<5)      ; "ASC",$83      fn (0,0)
-  DB 0+(1<<5)      ; "ASN",$84      fn (0,0)
-  DB 0+(1<<5)      ; "ATN",$85      fn (0,0)
-  DB 2             ; "BGET",$86     # function (2,0)
-  DB 1+(1<<5)      ; "CHR",$87      fn$ (1,1)
-  DB 0+(1<<5)      ; "COS",$88      fn (0,1)
-  DB 0+(1<<5)      ; "DEG",$89      fn (0,1)
-  DB 4             ; "DIV",$8A      kw oper (4)
-  DB 4             ; "EOR",$8B      kw oper (4)
-  DB 0+(1<<5)      ; "EXP",$8C      fn (0,1)
-  DB 2             ; "EOF",$8D      # function (2,0)
-  DB 0             ; "ERR",$8E      no-arg (0,0)
-  DB 0             ; "ERL",$8F      no-arg (0,0)
-  DB 0+(1<<5)      ; "EVAL",$90     eval (1,1)
-  DB 0             ; "FALSE",$91    no-arg (0,0)
-  DB 9             ; "FN",$92       function-call (9)
-  DB 8             ; "GET",$93      fn-or-fn$ (8,0)
-  DB 8+(1<<5)      ; "INKEY",$94    fn-or-fn$ (8,1) 1st is $
-  DB 1+(1<<5)      ; "INSTR",$95    fn$ (1,1) 1st is $
-  DB 0+(1<<5)      ; "INT",$96      fn (0,1)
-  DB 11+(1<<5)     ; "LEN",$97      fn-or-fn# (B,1) 1st is $
-  DB 1+(2<<5)      ; "LEFT",$98     fn$ (1,2) 1st is $
-  DB 0+(1<<5)      ; "LN",$99       fn (0,1)
-  DB 0+(1<<5)      ; "LOG",$9A      fn (0,1)
-  DB 1+(3<<5)      ; "MID",$9B      fn$ (1,3) 1st is $
-  DB 4             ; "MOD",$9C      kw oper (4,1)
-  DB 4             ; "NOT",$9D      kw oper (5)
-  DB 4             ; "OR",$9E       kw oper (4)
-  DB 0+(2<<5)      ; "POINT",$9F    fn (0,2)
-  DB 11            ; "POS",$A0      fn-or-fn# (B,0)
-  DB 0             ; "PI",$A1       no-arg (0,0)
-  DB 1+(2<<5)      ; "RIGHT",$A2    fn$ (1,2) 1st is $
-  DB 0+(1<<5)      ; "RAD",$A3      fn (0,1)
-  DB 0+(1<<5)      ; "RND",$A4      fn (0,1)
-  DB 1+(1<<5)      ; "STR",$A5      fn$ (1,1) 1st is $
-  DB 0+(1<<5)      ; "SIN",$A6      fn (0,1)
-  DB 0+(1<<5)      ; "SQR",$A7      fn (0,1)
-  DB 1+(2<<5)      ; "STRING",$A8   fn$ (1,2) 1st is $
-  DB 0+(1<<5)      ; "SGN",$A9      fn (0,1)
-  DB 0+(1<<5)      ; "TAN",$AA      fn (0,1)
-  DB 0             ; "TRUE",$AB     no-arg (0,0)
-  DB 0             ; "TIME",$AC     no-arg (0,0)
-  DB 0             ; "TOP",$AD      no-arg (0,0)
-  DB 0+(1<<5)      ; "USR", $AE     fn (0,1)
-  DB 0+(1<<5)      ; "VAL",$AF      fn (0,1)
-  DB 0             ; "VPOS",$B0     no-arg (3,0)
-
 
 
 ; ------------------------------------------------------------------------------
-; PAGE 8 - INTERPRETER
-ORG ROM+$900 ; 2K+100
+; PAGE 16 - INTERPRETER
+ORG ROM+$1000 ; 2K+100
 
 ; one-address opcodes would work better for 6502
 ; since we need to copy pointers/values to zp anyway
 ; so define an accumulator in ZP
-
-; could stack 5-byte values in zp at $80-$FF
-; or use the actual stack? reserve 40 x 5 = 200 stack bytes for expression nesting.
-; CLC; PLA; ADC Acc0; STA Acc0; PLA; ADC Acc1; STA Acc1; PLA; ADC Acc2; STA Acc2; ... (Stack + Paren Result)
-; SEC; PLA; SBC Acc0; STA Acc0; PLA; SBC Acc1; STA Acc1; PLA; SBC Acc2; STA Acc2; ... (Stack - Paren Result)
-; SEC; PLA; EOR #$FF; ADC Acc0; STA Acc0; PLA; EOR #$FF; ADC Acc1; STA Acc1; ... (Paren Result - Stack)
-
-; what about parens? if leftmost, just do it.
-; if not, they come after an operator;
-; push the current Acc while evaluating the parens,
-; then restore acc and (operator) the result 'var'.
 
 bas_jump:       ; MUST be page-aligned (Jump Table HW only takes a page byte)
   DW ar_i1const, ar_i2const, ar_i3const, ar_i4const
@@ -1625,7 +2306,7 @@ ar_uadd3c:       ; add 3-byte unsigned integer constant
   DISPATCH
 
 ; ------------------------------------------------------------------------------
-; PAGE 9
+; PAGE
 
 uadd_cs3:        ; add carry into byte 3
   LDA #0         ; [2]
@@ -1793,7 +2474,7 @@ bas_print:
 
 ; ------------------------------------------------------------------------------
 ; PAGE 10 - SYSTEM
-ORG ROM+$1000 ; 4K
+ORG ROM+$1800 ; 4K
 
 ; @@ key_scan
 ; scan the keyboard matrix for a keypress
@@ -2505,9 +3186,19 @@ irq_init:
 ; @@ irq_rom
 ; standard ROM IRQ handler: keyboard scan
 irq_rom:
-  JSR keyscan
+  PHA            ; save A
+  TXA
+  PHA            ; save X
+  TYA
+  PHA            ; save Y
   LDA #VSTA_VSync|VSTA_VCmp|VSTA_HSync
   STA IO_VSTA    ; acknowledge interrupts
+  JSR keyscan
+  PLA            ; restore Y
+  TAY
+  PLA            ; restore X
+  TAX
+  PLA            ; restore A
 nmi_vec:
   RTI
 
