@@ -250,6 +250,8 @@ err_ovf:
   DB 8,"Overflow"
 err_type:
   DB 13,"Type mismatch"
+err_syntax:
+  DB 13,"Syntax error"
 err_escape:
   DB 7, 13, "Escape"
 err_prog:
@@ -628,7 +630,7 @@ cg_enter:            ; (uses A)
   LDA #>LineBuf
   STA IO_DSTH        ; LineBuf -> IO_DSTH
   LDA #DMA_Copy
-  STA IO_DCTL        ; read/write Memory
+  STA IO_DCTL        ; Write to Memory
   ; XXX save current vars table size (or undo location)
   RTS
 
@@ -646,20 +648,28 @@ cg_leave:            ; (uses A)
   LDA PtrH
   STA IO_DSTH        ; IO_DSTH -> Ptr
   LDA #DMA_TOV|DMA_Copy
-  STA IO_DCTL        ; write to VRAM
+  STA IO_DCTL        ; Write to VRAM ("text mode")
   RTS
 
 ; @@ cge_line
 ; Parse and CodeGen a line of code in LineBuf (Point of Entry)
 cge_line:            ; X=ln-ofs
   JSR cg_enter       ; (uses A)
-  JSR @main
-  JMP cg_leave
-@main:
+@loop:
+  JSR @stmt          ; expect a statement
+  JSR skip_spc       ; skip any spaces
+  LDA LineBuf,X      ; next input char
+  BEQ cg_leave       ; -> end of input, done
+  INX                ; advance input (assume match)
+  CMP #$3A           ; ':'
+  BEQ @loop          ; -> 
+  DEX                ; undo advance (for errror report)
+  LDY #<err_syntax
+  JMP cgx_error
+@stmt:
   JSR skip_spc       ; [24+] X=ln-ofs -> X (uses A,X) leading spaces [NO TEXT-OUT]
   JSR is_alpha       ; [24] CC=alphabetic A=alphabet-index           [NO TEXT-OUT]
   BCS cgx_stmt       ; [2] -> not a statement (CF=1)
-
   ; search for a matching statement keyword
   CMP #22            ; [2] "W" of Alphabet
   BCS @stmt_pg2      ; [2] -> is >= "W"
@@ -669,7 +679,6 @@ cge_line:            ; X=ln-ofs
 @doscan:
   JSR scan_kw_idx    ; [6] X=ln-ofs A,Y=table -> CF=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src) [NO TEXT-OUT]
   BCC @try_let       ; [2] -> no match
-
   ; matched a statement
   STA IO_DDRW        ; write statement opcode (hi-byte)
   AND #63            ; clear top 2 bits of hi-byte
@@ -686,20 +695,17 @@ cge_line:            ; X=ln-ofs
   LDA stmt_fn,Y      ; parse function, low byte
   PHA                ; push low
   RTS                ; return to parse function
-
 @stmt_pg2:           ;                                         +4
   ;CMP #23            ; [2] "X"                                +2
   ;BCS cgx_bounds     ; [2] -> no kw for "X","Y","Z"           +2
   LDA #<kws_w        ; [4] offset "W" within stmt_page2        +2
   LDY #>stmt_page2   ; [2] stmt_page2 table                    +2
-  BNE @doscan        ;                                         +2 = +14 (<26)
-
+  BNE @doscan        ; -> always                               +2 = +14 (<26)
 @try_let:            ; implicit LET statement
   LDY #$3D           ; '='
   JSR cg_chr_o       ; X=ln Y=ch (uses A) CS=found
   BCS @fn_ret
   JMP cg_let         ; -> parse the LET
-
 @fn_ret:
   ; XXX check if we're inside a FN (pop stmts)
   LDA #OP_RETURN
@@ -1391,9 +1397,6 @@ cg_var_o:        ; X=ln (at alpha char) -> B=start-of-name (uses A,X,B)
 
 cgx_expect_y:     ; Y=kw-ofs[kwtab]
   STY B
-  ; +++ fall throug to @@ cgx_expect_kw +++
-
-cgx_expect_kw:    ; B=kw-ofs[kwtab]
   JSR cg_abort    ; (uses A)
   LDY #<msg_expecting
   JSR printmsg    ; Y=low (uses A,X,Y,Src)
