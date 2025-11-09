@@ -190,17 +190,8 @@ VSTA_HSync     = $20
 
 ; DMA Acceleration
 
-MACRO LDA_DMA
-  LDA IO_DDRW        ; on real HW
-ENDM
-MACRO LDX_DMA
-  LDX IO_DDRW        ; on real HW
-ENDM
-MACRO LDY_DMA
-  LDY IO_DDRW        ; on real HW
-ENDM
 MACRO DISPATCH
-   JMP (IO_DJMP)     ; on real HW
+   JMP (IO_DJMP)
 ENDM
 
 
@@ -233,7 +224,7 @@ welcome_2:
 ready:
   DB 5, "READY"
 err_range:
-  DB 8, "Bad line"
+  DB 12, "Out of Range"
 err_stmt:
   DB 11, "Bad command"
 err_bound:
@@ -340,8 +331,8 @@ parse_cmd:
 
   ; parse line number  (XXX move this inside CodeGen Land)
   JSR cg_enter     ; XXX
-  JSR cg_n16       ; [6] parse number at X -> X,Acc01,EQ=no (uses A,Y,B)
-  BNE @haveline    ; [2] -> found line number [+1]
+  JSR cg_n16       ; [6] parse number at X -> X,Acc,CS=found (uses A,Y,B)
+  BCS @haveline    ; [2] -> found line number [+1]
   JSR cg_leave     ; XXX
 
   ; try matching a repl command
@@ -537,9 +528,9 @@ scan_kw_all:       ; X=ln-ofs A,Y=table -> CS=found, X=ln-ofs, A=hi-byte (uses A
 ; two search modes are supported: same-first-char (D7=1) or all-keywords (D7=0)
 scan_kw_list:    ; X=ln-ofs Y=kw-ofs Src=kw-list D=search-mode -> CF=found, X=ln-ofs, A=hi-byte (uses A,X,Y,B,C,D,Src)
   STX B          ; [3] save start of token
+@next_kw:
   DEX            ; [2] nullify first pre-increment
   DEY            ; [2] nullify first pre-increment
-@next_kw:
   LDA #0         ; [2] zero
   STA C          ; [3] dot shorthand off (zero)
 @match_lp:
@@ -617,12 +608,15 @@ DB "CGLAND"
 ; 
 ; Everything below this point operates with IO_DST set up for Code output.
 ; Text output is restored upon exit from CodeGen (saved in Ptr)
+;
+; The alternative is JSR cg_write (LDY E: STA (Ptr),Y: INC E: RTS)
+; Costs time and +1 byte per write.
 
 ; @@ cg_enter
 ; Enter CodeGen Land: save IO_DSTL and set up Code output.
 cg_enter:            ; (uses A)
   LDA IO_DSTL        ; IO_DSTL -> Ptr
-  STA Ptr  
+  STA Ptr
   LDA IO_DSTH        ; IO_DSTH -> Ptr
   STA PtrH
   LDA #<LineBuf
@@ -662,14 +656,14 @@ cge_line:            ; X=ln-ofs
   BEQ cg_leave       ; -> end of input, done
   INX                ; advance input (assume match)
   CMP #$3A           ; ':'
-  BEQ @loop          ; -> 
-  DEX                ; undo advance (for errror report)
+  BEQ @loop          ; -> another stmt
+  DEX                ; undo advance, for errror report
   LDY #<err_syntax
   JMP cgx_error
 @stmt:
   JSR skip_spc       ; [24+] X=ln-ofs -> X (uses A,X) leading spaces [NO TEXT-OUT]
   JSR is_alpha       ; [24] CC=alphabetic A=alphabet-index           [NO TEXT-OUT]
-  BCS cgx_stmt       ; [2] -> not a statement (CF=1)
+  BCS @no_alpha      ; [2] -> not a statement (CF=1)
   ; search for a matching statement keyword
   CMP #22            ; [2] "W" of Alphabet
   BCS @stmt_pg2      ; [2] -> is >= "W"
@@ -695,25 +689,23 @@ cge_line:            ; X=ln-ofs
   LDA stmt_fn,Y      ; parse function, low byte
   PHA                ; push low
   RTS                ; return to parse function
-@stmt_pg2:           ;                                         +4
-  ;CMP #23            ; [2] "X"                                +2
-  ;BCS cgx_bounds     ; [2] -> no kw for "X","Y","Z"           +2
-  LDA #<kws_w        ; [4] offset "W" within stmt_page2        +2
-  LDY #>stmt_page2   ; [2] stmt_page2 table                    +2
-  BNE @doscan        ; -> always                               +2 = +14 (<26)
-@try_let:            ; implicit LET statement
-  LDY #$3D           ; '='
-  JSR cg_chr_o       ; X=ln Y=ch (uses A) CS=found
-  BCS @fn_ret
+@stmt_pg2:
+  LDA #<kws_w        ; [4] offset "W" within stmt_page2
+  LDY #>stmt_page2   ; [2] stmt_page2 table
+  BNE @doscan        ; -> always
+@try_let:            ; implicit LET statement (skip_spc already done)
   JMP cg_let         ; -> parse the LET
-@fn_ret:
-  ; XXX check if we're inside a FN (pop stmts)
+@no_alpha:
+  LDY #$3D           ; '='
+  JSR cg_chr_o       ; X=ln Y=ch (uses A) -> CS=found
+  BCC @no_stmt       ; -> no match
+  ; return from FN
+  ; XXX check if we're inside a FN
   LDA #OP_RETURN
   STA IO_DDRW
   JMP cg_expr        ; (uses A,X,Y,B,C,D,Src,Acc)
-
-cgx_stmt:
-  LDY #<kw_stmt      ; "Expecting statement"
+@no_stmt:
+  LDY #<kwt_stmt     ; "Expecting statement"
   JMP cgx_expect_y
 
 cgx_bounds:
@@ -765,10 +757,10 @@ cg_for:          ; X=ln-ofs
   LDY #61        ; "="
   JSR cg_chr     ; X=ln Y=ch (uses A)
   JSR cg_expr    ; (uses A,X,Y,B,C,D,Src,Acc) [writes expr-code]
-  LDY #<kw_to    ; "TO"
+  LDY #<kwt_to   ; "TO"
   JSR cg_kw      ; X=ln Y=kw (uses A,Y,B,C)
   JSR cg_expr    ; (uses A,X,Y,B,C,D,Src,Acc) [writes expr-code]
-  LDY #<kw_step  ; "STEP"
+  LDY #<kwt_step ; "STEP"
   JSR cg_kw_o    ; X=ln Y=kw (uses A,Y,B,C) -> CS=found
   BCC @no_step   ; -> no STEP
   LDA #OP_STEP   ; 
@@ -783,11 +775,11 @@ cg_none:
 ; WRITE: (expr) (len) (stmts) [ OP_ELSE (len) (stmts) ]
 cg_if:
   JSR cg_expr    ; (uses A,X,Y,B,C,D,Src,Acc) [writes expr-code]
-  LDY #<kw_then  ; "THEN"
+  LDY #<kwt_then ; "THEN"
   JSR cg_kw_o    ; X=ln Y=kw (uses A,Y,B,C) -> CS=found, A=OP
   BCC @no_then   ; -> no THEN
-  JSR cg_n16     ; X=ln (uses A,Y,B,Acc01) -> NE=found
-  BNE @then_ln   ; -> THEN <line>
+  JSR cg_n16     ; X=ln (uses A,Y,B,Acc01) -> Acc01,CS=found
+  BCS @then_ln   ; -> THEN <line>
   LDA #OP_THEN   ;
   STA IO_DDRW    ;                    [writes OP_THEN]
 @no_then:
@@ -797,8 +789,8 @@ cg_if:
   LDY #<kw_else  ; "ELSE"
   JSR cg_kw_o    ; X=ln Y=kw (uses A,Y,B,C) -> CS=found, A=OP
   BCC @no_else   ; -> no ELSE
-  JSR cg_n16     ; X=ln (uses A,Y,B,Acc01) -> NE=found
-  BNE @else_ln   ; -> ELSE <line>
+  JSR cg_n16     ; X=ln (uses A,Y,B,Acc01) -> Acc01,CS=found
+  BCS @else_ln   ; -> ELSE <line>
   LDA #OP_ELSE   ;
   STA IO_DDRW    ;                    [writes OP_ELSE]
   ; XXX reserve a byte for ELSE length
@@ -829,6 +821,8 @@ cg_print:
 @loop:
   JSR skip_spc    ; X=ln (uses A)
   LDA LineBuf,X   ; get next char (spaces skipped in cg_expr)
+  BEQ @done       ; -> end of line
+  INX             ; advance input (assume match)
   CMP #$2C        ; ","
   BEQ @comma      ; -> write OP_COMMA (to colum mode)
   CMP #$3B        ; ";"                            (flag:optional flag:restart)
@@ -839,12 +833,14 @@ cg_print:
   BEQ @spc
   CMP #$54        ; "T"
   BEQ @tab
+  DEX             ; undo advance, so cg_expr_o can match it
 @try_ex:
   JSR cg_expr_o   ; (uses A,X,Y,B,C,D,Src,Acc) -> CS=found
   BCS @loop       ; -> found expr
   ; CMP #OP_SEMI  ; was the last opcode a semi?    (token:endif)
                   ; ^ won't work, EXPR OPs end with data bytes
                   ;   need to store last opcode written (or similar)
+@done:
   ; add OP_EIF, or OP_EIFS if last opcode was OP_SEMI (replace it?)
   RTS             ; end of print
 @comma:
@@ -860,11 +856,12 @@ cg_print:
   STA IO_DDRW     ; [write OP_EOL]
   BNE @loop
 @spc:
-  LDY #<kw_spc
+  LDY #<kwt_spc
   BNE @spc_e
 @tab:
-  LDY #<kw_tab
+  LDY #<kwt_tab
 @spc_e:
+  DEX             ; undo advance, so cg_kw_o can match it
   JSR cg_kw_o     ; X=ln Y=kw (uses A,Y,B) -> CS=found A=OP
   BCC @try_ex     ; -> try expr
   STA IO_DDRW     ; [write OP_SPC/OP_TAB]
@@ -875,23 +872,14 @@ cg_print:
 ; comma separated list of vars; $80 allow indices
 ; Code: LOCAL/NEXT/READ 
 cg_varlist:
-  LDA IO_DSTL     ; Src = write pos
-  STA Src
-  LDA IO_DSTH
-  STA SrcH
-  LDA #0
-  STA IO_DDRW     ; placeholder
-  STA D           ; length counter
+  JSR cg_len_start ; (uses A,D) -> A,D=0
 @loop:
   JSR cg_var      ; X=ln (uses A,B)
   INC D           ; increment length
   LDY #$2C        ; ','
-  JSR cg_chr_o    ; X=ln Y=ch (uses A)
+  JSR cg_chr_o    ; X=ln Y=ch (uses A) -> CS=found
   BCS @loop       ; -> another
-  LDA D           ; get length counter
-  LDY #0          ;
-  STA (Src),Y     ; set opcode length
-  RTS             ;
+  JMP cg_len_end
 
 ; @@ cg_dim ()
 cg_dim:
@@ -903,17 +891,52 @@ cg_dim:
   JSR cg_chr      ; X=ln Y=ch (uses A)
   RTS
 
+cg_len_start:     ; (uses A,D) -> A,D=0
+  LDA IO_DSTL     ; save current write-pos (Src = write-pos)
+  STA Src
+  LDA IO_DSTH
+  STA SrcH
+  LDA #0
+  STA IO_DDRW     ; write length placeholder
+  STA D
+  RTS
+
+cg_len_end:       ; (uses A,Y)
+  LDA D           ; get length counter
+  LDY #0          ;
+  STA (Src),Y     ; write length counter at saved write-pos
+  RTS             ;
+
 ; @@ cg_data ()
 cg_data:
 @loop:
-  JSR cg_num_o    ; output num  XXX opcode?
-  BCS @comma
-  JSR cg_str_o    ; output str
-  BCS @comma
-  ; XXX advance until COMMA/COLON/EOL -> string
+  JSR cg_s32      ; from LineBuf,X -> Acc,X,NE=found (uses A,Y,B,C,Term)
+  BNE @num        ; -> write a number
+  JSR cg_str_o    ; output str (with length prefix)
+  BCS @comma      ; -> wrote a string
+  ; implicit string, up to next comma
+  JSR cg_len_start ; (uses A,D) -> A,D=0
+@raw:
+  LDA LineBuf,X   ; next input char
+  BEQ @ends       ; -> end of input
+  INX             ; advance input
+  INC D           ; count characters
+  CMP #$2C        ; ','
+  BNE @raw        ; -> no comma
+@ends:
+  DEC D           ; counted one too many
+  JSR cg_len_end  ; patch D into code
+  JMP @loop       ; -> another
+@num:
+  LDA #0
+  STA IO_DDRW     ; "zero-len" number sentinel
+  LDA Acc0        ; copy number to output
+  STA IO_DDRW
+  LDA Acc1
+  STA IO_DDRW
 @comma:
   LDY #$2C        ; ','
-  JSR cg_chr_o    ; X=ln Y=ch (uses A)
+  JSR cg_chr_o    ; X=ln Y=ch (uses A) -> CS=found
   BCS @loop
   RTS
 
@@ -943,18 +966,49 @@ cg_args:
 
 ; @@ cg_def
 cg_def:
-  ; XXX try PROC
-  ; XXX try FN
-  ; XXX expect "("
-  ; XXX var_list    (names, types, dims)
-  ; XXX expect ")"
+  ; try PROC
+  LDY #<kwt_proc
+  JSR cg_kw_o     ; X=ln Y=kw (uses A,Y,B) -> CS=found A=OP
+  BCS @proc       ; -> is DEF PROC
+  ; try FN
+  LDY #<kwt_fn
+  JSR cg_kw_o     ; X=ln Y=kw (uses A,Y,B) -> CS=found A=OP
+  BCC syn_err
+  JSR cg_var      ; XXX should be cg_name (not a var)
+  ; require "(" for FN
+  LDY #$28        ; '('
+  JSR cg_chr      ;
+@args:
+  JSR cg_varlist  ; require one arg (uses A,Y,B)
+  LDY #$29        ; ')'
+  JSR cg_chr      ; require ')'
+@done:
   RTS
+@proc:
+  JSR cg_var      ; XXX should be cg_name (not a var)
+  ; optional "(" for PROC
+  LDY #$28        ; '('
+  JSR cg_chr_o    ; X=ln Y=ch (uses A) -> CS=found
+  BCC @done       ; -> no params
+  LDY #$29        ; ')'
+  JSR cg_chr_o    ; X=ln Y=ch (uses A) -> CS=found
+  BCC @args       ; -> non-empty params
+  BCS @done       ; -> empty params
+
+syn_err:
+  LDY #<err_syntax
+  JMP cgx_error
 
 ; @@ cg_else
 cg_else:
-  ; XXX find last enclosing IF statement
+  ; XXX if the line contains a prior IF statement,
+  ; XXX this statement will be parsed inside that IF body cg_stmts loop
+  ; XXX otherwise we report "No IF"
+  ; XXX we must 'exit' the cg_stmts loop,
+  ; XXX causing it to end the IF body and parse the ELSE body
   ; XXX length-prefix
   ; XXX stmt_list
+  ; XXX clear the last IF statement
   RTS
 
 ; @@ cg_envelope
@@ -964,10 +1018,22 @@ cg_envelope:
 
 ; @@ cg_proc
 cg_proc:
-  ; XXX parse a name
-  ; XXX expect "("
-  ; XXX expr_list    (untyped, match to PROC at runtime?)
-  ; XXX expect ")"
+  JSR cg_var      ; XXX should be cg_name (not a var)
+  ; optional "(" for PROC
+  LDY #$28        ; '('
+  JSR cg_chr_o    ; X=ln Y=ch (uses A) -> CS=found
+  BCC @done       ; -> no params
+  LDY #$29        ; ')'
+  JSR cg_chr_o    ; X=ln Y=ch (uses A) -> CS=found
+  BCS @done       ; -> empty params
+@loop:
+  JSR cg_expr     ; expect an expression
+  LDY #$2C        ; ','
+  JSR cg_chr_o    ; X=ln Y=ch (uses A) -> CS=found
+  BCS @loop
+  LDY #$29        ; ')'
+  JSR cg_chr      ; X=ln Y=ch (uses A) require ')'
+@done:
   RTS
 
 ; @@ cg_let
@@ -1019,7 +1085,7 @@ cg_expr:           ; (uses A,X,Y,B,C,D,Src,Acc)
   BCC @no_expr     ; -> no match
   RTS
 @no_expr:
-  LDY #<kw_expr
+  LDY #<kwt_expr
   JMP cgx_expect_y
 
 ; @@ cg_expr_o
@@ -1133,28 +1199,32 @@ cg_expr_o:         ; (uses A,X,Y,B,C,D,Src,Acc) -> CS=found
 @ifx_pow:
   LDA #OP_POW
   STA IO_DDRW
-  LDA #1
+  LDA #1           ; ^ rbp
   CMP E            ; compare rbp
   BNE @rhs
 @ifx_mul:
   LDA #OP_MUL
   STA IO_DDRW
-  LDA #2
+  LDA #2           ; *,/ rbp
+  CMP E            ; compare rbp
   BNE @rhs
 @ifx_div:
   LDA #OP_DIV
   STA IO_DDRW
-  LDA #2
+  LDA #2           ; *,/ rbp
+  CMP E            ; compare rbp
   BNE @rhs
 @ifx_add:
   LDA #OP_ADD
   STA IO_DDRW
-  LDA #3
+  LDA #3           ; +,- rbp
+  CMP E            ; compare rbp
   BNE @rhs
 @ifx_sub:
   LDA #OP_SUB
   STA IO_DDRW
-  LDA #3
+  LDA #3           ; +,- rbp
+  CMP E            ; compare rbp
   BNE @rhs
 @ifx_lt:
   LDA LineBuf,X    ; get next char
@@ -1266,11 +1336,11 @@ DB "COMMON"
 ; Common CodeGen functions.
 ; These match input and write out code.
 
-cg_chr_o:        ; X=ln Y=ch (uses A)
+cg_chr_o:        ; X=ln Y=ch (uses A) -> CS=found
   JSR skip_spc   ; X=ln (uses A)
   TYA            ; no CPY,X
   CMP LineBuf,X  ; matches next input char?
-  BNE cg_not     ; -> CC=not-found
+  BNE cg_no      ; -> CC=not-found
   INX            ; advance ln
   SEC
   RTS            ; -> success CS=found
@@ -1287,8 +1357,8 @@ cg_chr:          ; X=ln Y=ch (uses A)
 
 cg_str_o:
   LDY #$22       ; '"'
-  JSR cg_chr_o   ; (uses A) -> CS=found
-  BCC cg_not     ; -> CC=not-found
+  JSR cg_chr_o   ; X=ln Y=ch (uses A) -> CS=found
+  BCC cg_no      ; -> CC=not-found
 cg_str_lp:
 @loop:
   LDA LineBuf,X  ; next input char
@@ -1306,31 +1376,99 @@ cg_str_lp:
   LDA #$22       ; '"'
   JMP cgx_expect ; "Expecting "" (A)
 
-cg_not:
+
+cg_no:
   CLC
   RTS            ; CC=not-found
 
-cg_num_o:
-  JSR cg_n16     ; -> Acc01 NE=found (uses A,Y,B)
-  BEQ cg_not
-  ; output OP_INT1 or OP_INT2
+
+; @@ cg_num_o
+; parse and write a number
+cg_num_o:        ; CS=found
+  JSR cg_s32     ; from LineBuf,X -> Acc,X,NE=found (uses A,Y,B,C,Term)
+  BEQ cg_no
+  LDA Acc3
+  BMI @neg       ; -> handle negative case
+  BNE @int4
+  LDA Acc2
+  BNE @int3
   LDA Acc1
-  BEQ @small
+  BNE @int2
+@int1:
+  LDA #OP_INT1
+  STA IO_DDRW    ; write OP_INT1
+  BNE @wr0
+@int2:
   LDA #OP_INT2
+  STA IO_DDRW    ; write OP_INT2
+  BNE @wr1
+@int3:
+  LDA #OP_INT3
+  STA IO_DDRW    ; write OP_INT3
+  BNE @wr2
+@int4:
+  LDA #OP_INT4
+  STA IO_DDRW    ; write OP_INT4
+@wr3:
+  LDA Acc3
   STA IO_DDRW
+@wr2:
+  LDA Acc2
+  STA IO_DDRW
+@wr1:
+  LDA Acc1
+  STA IO_DDRW
+@wr0:
   LDA Acc0
   STA IO_DDRW
-  LDA Acc1       ; XXX signed?
-  STA IO_DDRW
   SEC
   RTS
-@small:
-  LDA #OP_INT1
-  STA IO_DDRW
-  LDA Acc0       ; XXX signed?
-  STA IO_DDRW
-  SEC
-  RTS
+@neg:            ; A=Acc3
+  CMP #$FF
+  BNE @int4      ; -> not FF, need 0,1,2,3
+  ; Acc3 is FF
+  LDA Acc2
+  BPL @int4      ; -> not negative, need extra sign byte
+  CMP #$FF
+  BNE @int3      ; -> not FF, need 0,1,2
+  ; Acc2 is FF
+  LDA Acc1
+  BPL @int3      ; -> not negative, need extra sign byte
+  CMP #$FF
+  BNE @int2      ; -> not FF, need 0,1
+  ; Acc1 is FF
+  LDA Acc0
+  BPL @int2      ; -> not negative, need extra sign byte
+  BMI @int1      ; -> negative, single byte
+
+
+; @@ cg_var_o
+; parse a variable name and write out code
+cg_var_o:        ; X=ln (at alpha char) -> B=start-of-name (uses A,X,B)
+  JSR skip_spc   ; X=ln (uses A) leading spaces
+  STX B          ; save start of name
+  DEX            ; set up for pre-increment
+@loop:
+  INX            ; [2] pre-increment
+  LDA LineBuf,X  ; [4] next input char
+  AND #$DF       ; [2] lower -> upper (clear bit 5) detect alpha char
+  SEC            ; [2] for subtract
+  SBC #65        ; [2] make 'A' be 0
+  CMP #26        ; [2] 26 letters
+  BCC @loop      ; [2] is a letter -> @loop [+1]
+  CPX B          ; [3] has X advanced?
+  BEQ cg_no2     ; [2] -> no chars found
+  ; XXX push temp-vars below top of RAM (descending)
+  ; XXX immediate execution -> used in-place.
+  ; XXX line inserted into code -> merge with vars table (TOP of RAM)
+  ; XXX is it just name:index? Do proc locals go in here too?
+  ; XXX calling proc: push new storage for locals?
+  SEC            ; 
+  RTS            ; -> CS=found
+
+cg_no2:
+  CLC
+  RTS            ; CC=not-found
 
 ; @@ cg_kw
 ; match a keyword in kwtab [required]
@@ -1362,38 +1500,16 @@ cg_kw_o:         ; X=ln Y=kw (uses A,Y,B) -> CS=found A=OP
 @found:
   RTS            ; [6] -> CS=found A=OP
 
+
 ; @@ cg_var
 cg_var:          ; X=ln (uses A,X,B)
   JSR cg_var_o
   BCC @novar     ; -> expecting a var
   RTS
 @novar:
-  LDY #<kw_var   ; "variable"
+  LDY #<kwt_var  ; "variable"
   JMP cgx_expect_y
 
-; @@ cg_var_o
-; parse a variable name and write out code
-cg_var_o:        ; X=ln (at alpha char) -> B=start-of-name (uses A,X,B)
-  JSR skip_spc   ; X=ln (uses A) leading spaces
-  STX B          ; save start of name
-  DEX            ; set up for pre-increment
-@loop:
-  INX            ; [2] pre-increment
-  LDA LineBuf,X  ; [4] next input char
-  AND #$DF       ; [2] lower -> upper (clear bit 5) detect alpha char
-  SEC            ; [2] for subtract
-  SBC #65        ; [2] make 'A' be 0
-  CMP #26        ; [2] 26 letters
-  BCC @loop      ; [2] is a letter -> @loop [+1]
-  CPX B          ; [3] has X advanced?
-  BEQ cg_not     ; [2] -> no chars found
-  ; XXX push temp-vars below top of RAM (descending)
-  ; XXX immediate execution -> used in-place.
-  ; XXX line inserted into code -> merge with vars table (TOP of RAM)
-  ; XXX is it just name:index? Do proc locals go in here too?
-  ; XXX calling proc: push new storage for locals?
-  SEC            ; 
-  RTS            ; -> CS=found
 
 cgx_expect_y:     ; Y=kw-ofs[kwtab]
   STY B
@@ -1422,67 +1538,48 @@ cgx_expect:       ; A = expected character (uses X,Y,B,Src)
   JSR newline
   JMP repl
 
-DB "N16"
-
 ; @@ cg_n16
-; parse a 16-bit number -> {Acc0/1}, X, ZF
-cg_n16:          ; from LineBuf,X returning {Acc0/1} X=end NE=found (uses A,Y,B)
-  LDA #0         ; [2] length of num
-  STA Acc0       ; [3] clear result
-  STA Acc1       ; [3]
-  STX B          ; [3] save X to compare at end
-@loop:           ; -> 14+76+25 [115]
-  LDA LineBuf,X  ; [4] get next char
-  SEC            ; [2]
-  SBC #48        ; [2] make '0' be 0
-  CMP #10        ; [2]
-  BCS @done      ; [2] >= 10 -> @done
-  TAY            ; [2] save digit 0-9
-  JSR cg_n16m10  ; [12+64=76] uses A, preserves X,Y (+Acc,+Term)
-  TYA            ; [2] restore digit
-  CLC            ; [2]
-  ADC Acc0       ; [3] add digit 0-9
-  STA Acc0       ; [3]
-  LDA Acc1       ; [3]
-  ADC #0         ; [2] add carry
-  STA Acc1       ; [3]
-  BCS cgx_range  ; [2] -> unsigned overflow
-  INX            ; [2] advance source
-  JMP @loop      ; [3]
-@done:
-  CPX B          ; [3]
+; parse a line number (0-65535)
+cg_n16:          ; X=ln (uses A,Y,B,C,Term) -> Acc,X,CS=found
+  JSR cg_s32     ; from LineBuf,X -> Acc,X,CS=found (uses A,Y,B,C,Term)
+  BEQ cg_no2      ; -> return with CC=not-found
+  LDA Acc3       ; top byte
+  BMI cgx_range  ; -> parsed number is negative
+  ORA Acc2       ; next lower byte
+  BEQ @ret       ; -> below 65536
+  JMP cgx_range  ; -> "Out of Range"
+@ret:
+  SEC
+  RTS
+
+DB "CGS32"
+
+; @@ cg_s32
+; parse a signed 32-bit number
+cg_s32:          ; from LineBuf,X -> Acc,X,NE=found (uses A,Y,B,C,Term)
+  JSR skip_spc   ; [6]
+  LDA #<LineBuf  ; [2]
+  STA Src        ; [3]
+  LDA #>LineBuf  ; [2]
+  STA SrcH       ; [3]
+  STX C          ; [3] save start pos
+  TXA            ; [2] X to Y
+  TAY            ; [2]
+  JSR rt_val32   ; [6] from (Src),Y returning Acc,Y,CS=ovf (uses A,X,B,Term)
+  TYA            ; [2] Y to X
+  TAX            ; [2]
+  BCS @ovf       ; [2] -> overflow [+1]
+  CPX C          ; [3] consumed input?
   RTS            ; [6] return X=end NE=found
+@ovf:
+  LDX C          ; [3] restore X-pos
+  ; +++ fall through to @@cgx_range
 
-; @@ cg_n16m10
-; multiply Acc01 by 10 (uses Term01)
-cg_n16m10:      ; Uses A, preserves X,Y (+Term)
-  LDA Acc0      ; [3] Term = Val * 2
-  ASL           ; [2]
-  STA Term0     ; [3]
-  LDA Acc1      ; [3]
-  ROL           ; [2]
-  STA Term1     ; [3]
-  BCS cgx_range ; [2] -> unsigned overflow
-  ASL Term0     ; [5] Term *= 2 = Val * 4
-  ROL Term1     ; [5]
-  BCS cgx_range ; [2] -> unsigned overflow
-  CLC           ; [2]
-  LDA Acc0      ; [3] Acc += Term = Val * 5
-  ADC Term0     ; [3]
-  STA Acc0      ; [3]
-  LDA Acc1      ; [3]
-  ADC Term1     ; [3]
-  STA Acc1      ; [3]
-  BCS cgx_range ; [2] -> unsigned overflow
-  ASL Acc0      ; [5] Acc *= 2 = Val * 10
-  ROL Acc1      ; [5]
-  BCS cgx_range ; [2] -> unsigned overflow
-  RTS           ; [6] -> [64+6]
-
+; @@ cgx_range
+; report "Out of Range" error
 cgx_range:
   LDY #<err_range
   JMP cgx_error
-
 
 
 ; ------------------------------------------------------------------------------
@@ -1519,9 +1616,8 @@ cmd_auto:
   STA AutoInc        ; [3] step by 10
   LDA #0             ; [2]
   STA LineH          ; [3]
-  JSR skip_spc       ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
-  JSR cg_n16         ; [6] parse number at X -> X,Acc01,EQ=no (uses A,Y,B)   XXX can it be a NO TEXT util?
-  BEQ @start         ; [2] -> no number [+1]
+  JSR cg_n16         ; [6] parse number at X -> X,Acc01,CS=found (uses A,Y,B)   XXX can it be a NO TEXT util?
+  BCC @start         ; [2] -> no number [+1]
   LDA Acc0           ; [3]
   STA Line           ; [3] set start line
   LDA Acc1           ; [3]
@@ -1530,9 +1626,8 @@ cmd_auto:
   LDA LineBuf,X      ; [4]
   CMP #$2C           ; [2] ","
   BNE @start         ; [2] -> no comma
-  JSR skip_spc       ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
-  JSR cg_n16         ; [6] parse number at X -> X,Acc01,EQ=no (uses A,Y,B)   XXX can it be a NO TEXT util?
-  BEQ @start         ; [2] -> no number [+1]
+  JSR cg_n16         ; [6] parse number at X -> X,Acc01,CS=found (uses A,Y,B)   XXX can it be a NO TEXT util?
+  BCC @start         ; [2] -> no number [+1]
   LDA Acc0           ; [3]
   STA AutoInc        ; [3]
   BEQ @cg_range      ; [2] -> bad step (equals zero)
@@ -1593,7 +1688,7 @@ DB "ENDS"
 
 ; ------------------------------------------------------------------------------
 ; PAGE 8 - Statement Keywords
-ORG ROM+$800
+ORG ROM+$A00
 stmt_page:
 
 kws_a:
@@ -1850,26 +1945,28 @@ stmt_idx:
 
 ; context keywords (keep on one page for Y indexing)
 ; note: `kwtab` is at start of page
-kw_to:
+kwt_to:
   DB "TO",       $FF
-kw_step:
+kwt_step:
   DB "STEP",     OP_STEP
-kw_then:
+kwt_then:
   DB "THEN",     OP_THEN
-kw_spc:
+kwt_spc:
   DB "SPC",      $83     ; print opcodes
-kw_tab:
+kwt_tab:
   DB "TAB",      $84     ; print opcodes
   OP_COMMA =     $80     ; print opcodes
   OP_SEMI =      $81     ; print opcodes
   OP_EOL =       $82     ; print opcodes
-kw_fn:
+kwt_fn:
   DB "FN",       $80     ; XXX
-kw_stmt:
+kwt_proc:
+  DB "PROC",     $80     ; XXX
+kwt_stmt:
   DB "statement",  $FF   ; Expecting
-kw_expr:
+kwt_expr:
   DB "expression", $FF   ; Expecting
-kw_var:
+kwt_var:
   DB "variable",   $FF   ; Expecting
 
 ; ------------------------------------------------------------------------------
@@ -1961,6 +2058,7 @@ OP_INT1  = $B1
 OP_INT2  = $B2
 OP_INT3  = $B3
 OP_INT4  = $B4
+
 OP_NEG   = $B5
 OP_UPLUS = $B6
 
@@ -2160,10 +2258,10 @@ bas_jump:       ; MUST be page-aligned (Jump Table HW only takes a page byte)
 ; LOAD CONSTANT
 
 ar_f1const:      ; load floating point constant (1-byte mantissa)
-  LDA_DMA        ; [3] const mantissa
+  LDA IO_DDRW    ; [3] const mantissa
   STA AccE       ; [3] exponent         (+6 CYCLES)
 ar_i1const:      ; load 1-byte signed integer constant
-  LDA_DMA        ; [3] const byte 0
+  LDA IO_DDRW    ; [3] const byte 0
   STA Acc0       ; [3]
   ORA #$7F       ; [2] sign extend
   BMI @neg       ; [2] -> [3]
@@ -2175,12 +2273,12 @@ ar_i1const:      ; load 1-byte signed integer constant
   DISPATCH
 
 ar_f2const:      ; load floating point constant (2-byte mantissa)
-  LDA_DMA        ; [3] const mantissa
+  LDA IO_DDRW    ; [3] const mantissa
   STA AccE       ; [3] exponent         (+6 CYCLES)
 ar_i2const:      ; load 2-byte signed integer constant
-  LDA_DMA        ; [3] const byte 0
+  LDA IO_DDRW    ; [3] const byte 0
   STA Acc0       ; [3]
-  LDA_DMA        ; [3] const byte 1
+  LDA IO_DDRW    ; [3] const byte 1
   STA Acc1       ; [3]
   ORA #$7F       ; [2] sign extend [14]
   BMI @neg       ; [2] -> [3]
@@ -2191,14 +2289,14 @@ ar_i2const:      ; load 2-byte signed integer constant
   DISPATCH
 
 ar_f3const:      ; load floating point constant (3-byte mantissa)
-  LDA_DMA        ; [3] const mantissa
+  LDA IO_DDRW    ; [3] const mantissa
   STA AccE       ; [3] exponent         (+6 CYCLES)
 ar_i3const:      ; load 3-byte signed integer constant
-  LDA_DMA        ; [3] const byte 0
+  LDA IO_DDRW    ; [3] const byte 0
   STA Acc0       ; [3]
-  LDA_DMA        ; [3] const byte 1
+  LDA IO_DDRW    ; [3] const byte 1
   STA Acc1       ; [3]
-  LDA_DMA        ; [3] const byte 2
+  LDA IO_DDRW    ; [3] const byte 2
   STA Acc2       ; [3]
   ORA #$7F       ; [2] sign extend [20]
   BMI @neg       ; [2] -> [3]
@@ -2208,16 +2306,16 @@ ar_i3const:      ; load 3-byte signed integer constant
   DISPATCH
 
 ar_f4const:      ; load floating point constant (4-byte mantissa)
-  LDA_DMA        ; [3] const mantissa
+  LDA IO_DDRW    ; [3] const mantissa
   STA AccE       ; [3] exponent         (+6 CYCLES)
 ar_i4const:      ; load 4-byte signed integer constant
-  LDA_DMA        ; [3] const byte 0
+  LDA IO_DDRW    ; [3] const byte 0
   STA Acc0       ; [3]
-  LDA_DMA        ; [3] const byte 1
+  LDA IO_DDRW    ; [3] const byte 1
   STA Acc1       ; [3]
-  LDA_DMA        ; [3] const byte 2
+  LDA IO_DDRW    ; [3] const byte 2
   STA Acc2       ; [3]
-  LDA_DMA        ; [3] const byte 3
+  LDA IO_DDRW    ; [3] const byte 3
   STA Acc3       ; [3]                  (24 CYCLES)
   DISPATCH
 
@@ -2225,8 +2323,8 @@ ar_i4const:      ; load 4-byte signed integer constant
 ; LOAD VARIABLE
 
 ar_ivar:         ; read an integer variable  (XXX unify these, always copy 5 bytes)
-  LDX_DMA        ; [3] var pointer low
-  LDA_DMA        ; [3] var pointer high
+  LDX IO_DDRW    ; [3] var pointer low
+  LDA IO_DDRW    ; [3] var pointer high
   ; fall
 ;ar_ireadax:     ; also used to read from arrays (COPY Indirect)
   STX Src        ; [3]
@@ -2248,9 +2346,9 @@ ar_iread4:
   DISPATCH
 
 ar_fvar:         ; read an integer variable
-  LDA_DMA        ; [3] var pointer low
+  LDA IO_DDRW    ; [3] var pointer low
   STA Src        ; [3]
-  LDA_DMA        ; [3] var pointer high
+  LDA IO_DDRW    ; [3] var pointer high
   STA SrcH       ; [3]
   LDY #0         ; [2]
   LDA (Src),Y    ; [5] load var low byte
@@ -2263,7 +2361,7 @@ ar_fvar:         ; read an integer variable
 
 ar_uadd1c:       ; add 1-byte unsigned integer constant
   CLC            ; [2]
-  LDA_DMA        ; [3] 
+  LDA IO_DDRW    ; [3] 
   ADC Acc0       ; [3] add constant byte 0
   STA Acc0       ; [3]
   BCS uadd_cs1   ; [2] -> ripple carry  (13 CYCLES)
@@ -2278,10 +2376,10 @@ uadd_cs1:        ; add carry into byte 1
 
 ar_uadd2c:       ; add 2-byte unsigned integer constant
   CLC            ; [2]
-  LDA_DMA        ; [3] 
+  LDA IO_DDRW    ; [3] 
   ADC Acc0       ; [3] add constant byte 0
   STA Acc0       ; [3]
-  LDA_DMA        ; [3] 
+  LDA IO_DDRW    ; [3] 
   ADC Acc1       ; [3] add constant byte 1
   STA Acc1       ; [3]
   BCS uadd_cs2   ; [2] -> ripple carry  (13 CYCLES)
@@ -2296,13 +2394,13 @@ uadd_cs2:        ; add carry into byte 2
 
 ar_uadd3c:       ; add 3-byte unsigned integer constant
   CLC            ; [2]
-  LDA_DMA        ; [3] 
+  LDA IO_DDRW    ; [3] 
   ADC Acc0       ; [3] add constant byte 0
   STA Acc0       ; [3]
-  LDA_DMA        ; [3] 
+  LDA IO_DDRW    ; [3] 
   ADC Acc1       ; [3] add constant byte 1
   STA Acc1       ; [3]
-  LDA_DMA        ; [3] 
+  LDA IO_DDRW    ; [3] 
   ADC Acc2       ; [3] add constant byte 2
   STA Acc2       ; [3]                                               <--- PAGE 4
   BCS uadd_cs3   ; [2] -> ripple carry  (13 CYCLES)
@@ -2320,16 +2418,16 @@ uadd_cs3:        ; add carry into byte 3
 
 ar_uadd4c:       ; add 4-byte unsigned integer constant
   CLC            ; [2]
-  LDA_DMA        ; [3] 
+  LDA IO_DDRW    ; [3] 
   ADC Acc0       ; [3] add constant byte 0
   STA Acc0       ; [3]
-  LDA_DMA        ; [3] 
+  LDA IO_DDRW    ; [3] 
   ADC Acc1       ; [3] add constant byte 1
   STA Acc1       ; [3]
-  LDA_DMA        ; [3] 
+  LDA IO_DDRW    ; [3] 
   ADC Acc2       ; [3] add constant byte 2
   STA Acc2       ; [3]
-  LDA_DMA        ; [3] 
+  LDA IO_DDRW    ; [3] 
   ADC Acc3       ; [3] add constant byte 3
   STA Acc3       ; [3]
   BVS overflow   ; [2] ->overflow       (13 CYCLES)
@@ -2339,8 +2437,8 @@ ar_uadd4c:       ; add 4-byte unsigned integer constant
 ; VARS - ADD INTEGER
 
 ar_iaddv:        ; add an integer variable
-  LDX_DMA         ; [3] var pointer low
-  LDA_DMA         ; [3] var pointer high
+  LDX IO_DDRW    ; [3] var pointer low
+  LDA IO_DDRW    ; [3] var pointer high
   ; fall
 ;ar_iaddax:
   STX Src        ; [3]
@@ -2366,8 +2464,8 @@ ar_iaddv:        ; add an integer variable
   DISPATCH
 
 ar_isubv:        ; subtract an integer variable (pointer follows)
-  LDX_DMA         ; [3] var pointer low
-  LDA_DMA         ; [3] var pointer high
+  LDX IO_DDRW    ; [3] var pointer low
+  LDA IO_DDRW    ; [3] var pointer high
 ;ar_isubax:
   STX Src        ; [3]
   STA SrcH       ; [3]
@@ -2473,6 +2571,145 @@ bas_print:
   DISPATCH
 
 
+DB "S-32"
+
+; @@ rt_val32
+; parse a signed 32-bit number, with optional sign prefix.
+; uses (Src),Y so we can parse runtime strings.
+rt_val32:        ; from (Src),Y returning Acc,Y,CS=ovf (uses A,X,B,Term)
+  LDA #0
+  STA B          ; [3] sign=$00
+  LDA (Src),Y    ; [4] get first char
+  CMP #$2D       ; [2] '-'
+  BEQ @minus     ; [2] -> negative [+1]
+  CMP #$2B       ; [2] '+'
+  BEQ @plus      ; [2] -> positive [+1]
+@cont:
+  JSR rt_u32     ; [6] -> (Src),Y -> Acc,Y,CS=ovf,A=Acc3 (uses A,X,Term)
+  BCS @ovf       ; [2] -> unsigned overflow
+  BIT Acc3       ; [3] test high byte
+  BMI @ovf       ; [2] -> signed overflow (top bit set)
+  LDA B          ; [3] get negate flag
+  BEQ @ret       ; [2] -> no negate (CC)
+  JSR rt_neg32   ; [6] (uses A) -> Acc,CS=ovf
+@ret:
+  RTS            ; [6] -> Acc,Y,CS=overflow
+@minus:
+  INC B          ; [5] set negate flag
+@plus:
+  INY            ; [2] advance input (ASSUMES Y won't wrap around)
+  BNE @cont      ; [3] -> always
+@ovf:
+  SEC
+  RTS            ; [6] -> Acc,Y,CS=overflow
+
+
+DB "G-32"
+
+; @@ rt_neg32
+; invert Acc and add 1
+rt_neg32:
+  SEC            ; [2]
+  LDA #0         ; [2]
+  SBC Acc0       ; [3]
+  STA Acc0       ; [3]
+  LDA #0         ; [2]
+  SBC Acc1       ; [3]
+  STA Acc1       ; [3]
+  LDA #0         ; [2]
+  SBC Acc2       ; [3]
+  STA Acc2       ; [3]
+  LDA #0         ; [2]
+  SBC Acc3       ; [3]
+  STA Acc3       ; [3]
+  RTS  
+
+DB "U-32"
+
+; @@ rt_u32
+; parse an unsigned 32-bit number
+rt_u32:          ; from (Src),Y -> Acc, Y, CS=overflow (uses A,X,Term)
+  LDA #0         ; [2] length of num
+  STA Acc0       ; [3] clear result
+  STA Acc1       ; [3]
+  STA Acc2       ; [3]
+  STA Acc3       ; [3]
+@loop:           ; -> 14+76+25 [115]
+  LDA (Src),Y    ; [4] get next char
+  SEC            ; [2]
+  SBC #48        ; [2] make '0' be 0
+  CMP #10        ; [2]
+  BCS @done      ; [2] >= 10 -> @done
+  TAX            ; [2] save digit 0-9
+  JSR rt_u32m10  ; [12+64=76] (uses A,Term) Acc *= 10
+  BCS @ovf       ; [2] -> unsigned overflow [+1]
+  TXA            ; [2] restore digit
+  CLC            ; [2]
+  ADC Acc0       ; [3] add digit 0-9
+  STA Acc0       ; [3]
+  LDA Acc1       ; [3]
+  ADC #0         ; [2] add carry
+  STA Acc1       ; [3]
+  LDA Acc2       ; [3]
+  ADC #0         ; [2] add carry
+  STA Acc2       ; [3]
+  LDA Acc3       ; [3]
+  ADC #0         ; [2] add carry
+  STA Acc3       ; [3]
+  BCS @ovf       ; [2] -> unsigned overflow [+1]
+  INY            ; [2] advance source
+  BNE @loop      ; [3] -> always (ASSUMES Y won't wrap around)
+@done:
+  CLC            ; [2] no overflow
+@ovf:
+  RTS            ; [6] return Acc, Y=end, CS=overflow
+
+
+DB "M-10"
+
+; @@ rt_u32m10
+; multiply unsigned Acc by 10 (uses A,Term)
+rt_u32m10:      ; Uses A, preserves X,Y (+Term)
+  LDA Acc0      ; [3] Term = Val * 2
+  ASL           ; [2]
+  STA Term0     ; [3]
+  LDA Acc1      ; [3]
+  ROL           ; [2]
+  STA Term1     ; [3]
+  LDA Acc2      ; [3]
+  ROL           ; [2]
+  STA Term2     ; [3]
+  LDA Acc3      ; [3]
+  ROL           ; [2]
+  STA Term3     ; [3]
+  BCS @ovf      ; [2] -> unsigned overflow
+  ASL Term0     ; [5] Term *= 2 (=Val*4)
+  ROL Term1     ; [5]
+  ROL Term2     ; [5]
+  ROL Term3     ; [5]
+  BCS @ovf      ; [2] -> unsigned overflow
+  CLC           ; [2]
+  LDA Acc0      ; [3] Acc += Term (=Val*5)
+  ADC Term0     ; [3]
+  STA Acc0      ; [3]
+  LDA Acc1      ; [3]
+  ADC Term1     ; [3]
+  STA Acc1      ; [3]
+  LDA Acc2      ; [3]
+  ADC Term2     ; [3]
+  STA Acc2      ; [3]
+  LDA Acc3      ; [3]
+  ADC Term3     ; [3]
+  STA Acc3      ; [3]
+  BCS @ovf      ; [2] -> unsigned overflow
+  ASL Acc0      ; [5] Acc *= 2 (=Val*10)
+  ROL Acc1      ; [5]
+  ROL Acc2      ; [5]
+  ROL Acc3      ; [5]
+@ovf:
+  RTS           ; [6] -> [106+6] CS=overflow
+
+DB "XXX"
 
 
 ; ------------------------------------------------------------------------------
@@ -2881,7 +3118,7 @@ cls:                     ; (uses A,X,Y,B) [~11550]
   STA IO_DDRW            ; [3] write tile
   STX IO_DDRW            ; [3] write attribute
   DEY                    ; [2] decrement column count
-  BPL @col               ; [3] -> until Y=0 [11*40=(440+22)*25=11550]    (BUG: out by one, FIX: BNE)
+  ; BNE @col               ; [3] -> until Y=0 [11*40=(440+22)*25=11550]  (XXX commented out for fun)
 ; advance VRAM address to next line
   LDA C                  ; [3] get ADVANCE
   CLC                    ; [2]
