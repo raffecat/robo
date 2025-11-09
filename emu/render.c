@@ -93,6 +93,7 @@ int init_render() {
     // fill VRAM with random bytes
     for (int i=0; i<16384; i++) {
         VRAM[i] = i;
+        PAL_RAM[i&(PAL_SIZE-1)] = i;
     }
     return 1;
 }

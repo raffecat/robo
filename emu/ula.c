@@ -63,8 +63,8 @@ uint8_t MainRAM_0[16*1024];
 uint8_t MainRAM_1[16*1024];
 uint8_t CartRAM[16*1024];
 uint8_t VRAM[VRAM_SIZE];
-uint8_t PAL_RAM[64];
-uint8_t SPR_RAM[160];                // 160 for 80-col color mode
+uint8_t PAL_RAM[PAL_SIZE];
+uint8_t SPR_RAM[SPR_SIZE];
 
 /*vid*/ uint8_t  VidYCmp  = 0xE8;    // 8-bit Y-line compare register
 /*vid*/ uint8_t  VidScrH  = 0x2F;    // 3-bit horizontal tile scroll
@@ -279,13 +279,13 @@ static uint8_t ula_io_read(uint16_t address) {
             break;
         case IO_PALD:                     // $FD: palette data R/W
             value = PAL_RAM[PalAddr];
-            PalAddr = (PalAddr+1) & 63;   // 6-bit register
+            PalAddr = (PalAddr+1) & (PAL_SIZE-1);   // 6-bit register
             break;
         case IO_SPRA:                     // $FE: sprite address
             value = SprAddr; // was &127
             break;
         case IO_SPRD:                     // $FF: sprite data R/W
-            if (SprAddr < 160) { // 160 for 80-col color mode (was &127)
+            if (SprAddr < SPR_SIZE) {     // (was &127)
                 value = SPR_RAM[SprAddr];
             }
             SprAddr++;                    // 8-bit register
@@ -455,17 +455,17 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             // XXX
             break;
         case IO_PALA:                    // $FC: palette address
-            PalAddr = value & 63;        // 6-bit register
+            PalAddr = value & (PAL_SIZE-1);
             break;
         case IO_PALD:                    // $FD: palette data R/W
             PAL_RAM[PalAddr] = value;
-            PalAddr = (PalAddr+1) & 63;  // 6-bit register
+            PalAddr = (PalAddr+1) & (PAL_SIZE-1);
             break;
         case IO_SPRA:                    // $FE: sprite address
             SprAddr = value; // was &127
             break;
         case IO_SPRD:                     // $FF: sprite data R/W
-            if (SprAddr < 160) { // 160 for 80-col color mode (was &127)
+            if (SprAddr < SPR_SIZE) {     // (was &127)
                 SPR_RAM[SprAddr] = value;
             }
             SprAddr++;                    // 8-bit register
@@ -484,7 +484,7 @@ void dma_interlock() {
 }
 
 uint8_t dma_read_cycle() {
-    uint8_t value;
+    uint8_t value = 0xEE;
     switch (DMA_Ctl & DMA_Mode) {
         case DMA_Fill: {
             // Dummy read cycle: do nothing.
@@ -502,18 +502,22 @@ uint8_t dma_read_cycle() {
         }
         case DMA_Palette: {
             // Read palette memory, 5-bit address.
-            value = PAL_RAM[DMA_Src & 0x1F];
+            value = PAL_RAM[DMA_Src & (PAL_SIZE-1)];
             break;
         }
         case DMA_Sprite: {
             // Read sprite memory, 7-bit address.
-            value = SPR_RAM[DMA_Src & 0x7F];
+            if (DMA_Src < SPR_SIZE) {     // (was &127)
+                value = SPR_RAM[DMA_Src];
+            }
             break;
         }
         case DMA_SprClr: {
             // Read sprite memory, 7-bit address ignoring low 2 bits.
             // Quirk: HW doesn't implement inc-src-by-four.
-            value = SPR_RAM[DMA_Src & 0x7C];
+            if (DMA_Src < SPR_SIZE) {     // (was &127)
+                value = SPR_RAM[DMA_Src];
+            }
             break;
         }
         default: {
@@ -596,19 +600,23 @@ void dma_write_cycle() {
         }
         case DMA_Palette: {
             // Write palette memory, 5-bit address
-            PAL_RAM[DMA_Dst & 31] = DMA_DL;
+            PAL_RAM[DMA_Dst & (PAL_SIZE-1)] = DMA_DL;
             DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
             break;
         }
         case DMA_Sprite: {
             // Write sprite memory, 7-bit address
-            SPR_RAM[DMA_Dst & 127] = DMA_DL;
+            if (DMA_Dst < SPR_SIZE) {     // (was &127)
+                SPR_RAM[DMA_Dst] = DMA_DL;
+            }
             DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
             break;
         }
         case DMA_SprClr: {
             // Write $FF to sprite memory, 7-bit address ignoring low 2 bits.
-            SPR_RAM[DMA_Dst & 0x7C] = 0xFF;
+            if (DMA_Dst < SPR_SIZE) {     // (was &127)
+                SPR_RAM[DMA_Dst & 0xFC] = 0xFF;
+            }
             // Increment DST by 4 (HW only wired up for DST)
             // Vertical mode overrides this (doesn't increment low bits)
             uint16_t inc = (DMA_dinc==1 ? 4 : (DMA_dinc == 65535 ? 65532 : DMA_dinc));

@@ -1,14 +1,20 @@
 #include <stdint.h>
 
+enum consts {
+    VRAM_SIZE = 16384,
+    // for 80-col with color, SPR=160 or alias 32 bytes of PAL
+    PAL_SIZE = 64,
+    SPR_SIZE = 128,
+};
+
 // Memory
-#define VRAM_SIZE 16384
 extern uint8_t SysROM[16*1024];
 extern uint8_t MainRAM_0[16*1024];
 extern uint8_t MainRAM_1[16*1024];
 extern uint8_t CartRAM[16*1024];
 extern uint8_t VRAM[VRAM_SIZE];
-extern uint8_t PAL_RAM[64];
-extern uint8_t SPR_RAM[160]; // 160 for 80-col color mode
+extern uint8_t PAL_RAM[PAL_SIZE];
+extern uint8_t SPR_RAM[SPR_SIZE]; // 160 for 80-col color mode
 
 // Fake6502
 void reset6502();
