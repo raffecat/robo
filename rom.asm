@@ -19,9 +19,9 @@ VR_TEXT  = $3000  ; text area at 12K
 ZeroPg   = $0000  ; zero page
 StackPg  = $0100  ; stack page
 SysPg    = $0200  ; keyboard(16) system-vars(16) sound(64) serial(64)
-LineBuf  = $0300  ; line buffer, disk/tape buffer, expression stack
-Scratch  = $0400  ; scratch space (BASIC stack, parser output)
-LOMEM    = $0400  ; bottom of BASIC memory
+Scratch  = $0300  ; scratch space (BASIC stack, parser output)
+LineBuf  = $0400  ; line buffer, disk/tape buffer, expression stack
+LOMEM    = $0500  ; bottom of BASIC memory
 HIMEM    = $8000  ; top of BASIC memory
 FREEMEM  = HIMEM-LOMEM
 
@@ -261,11 +261,10 @@ reset:
   JSR mode       ; set mode, clear screen (uses Color)
   LDY #<welcome_1
   JSR printmsgln
-  ; 32768 - 5*256 (ZeroPg, StackPg, SysPg, LineBuf, Scratch)
   ; 16384 will be added for each bank of expanded RAM
-  LDA #<31488    ; low
+  LDA #<FREEMEM    ; low
   STA Acc0
-  LDA #>31488    ; high
+  LDA #>FREEMEM    ; high
   STA Acc1
   JSR n16_print
   LDY #<welcome_2
@@ -619,12 +618,12 @@ cg_enter:            ; (uses A)
   STA Ptr
   LDA IO_DSTH        ; IO_DSTH -> Ptr
   STA PtrH
-  LDA #<LineBuf
-  STA IO_DSTL        ; LineBuf -> IO_DSTL
-  LDA #>LineBuf
-  STA IO_DSTH        ; LineBuf -> IO_DSTH
+  LDA #<Scratch      ; Write generated code to Scratch page
+  STA IO_DSTL        ; Scratch -> IO_DSTL
+  LDA #>Scratch
+  STA IO_DSTH        ; Scratch -> IO_DSTH
   LDA #DMA_Copy
-  STA IO_DCTL        ; Write to Memory
+  STA IO_DCTL        ; DST is Memory
   ; XXX save current vars table size (or undo location)
   RTS
 
@@ -637,7 +636,7 @@ cg_abort:
 ; @@ cg_leave
 ; Leave CodeGen Land: restore IO_DSTL for text output.
 cg_leave:            ; (uses A)
-  LDA Ptr  
+  LDA Ptr            ; Restore saved Ptr from cg_enter
   STA IO_DSTL        ; IO_DSTL -> Ptr
   LDA PtrH
   STA IO_DSTH        ; IO_DSTH -> Ptr
@@ -727,7 +726,7 @@ stmt_fn:            ; [20]
   DW cg_for      -1 ;  0 = FOR .. TO .. [ STEP .. ]
   DW cg_if       -1 ;  1 = IF .. THEN .. [ ELSE .. ]
   DW cg_print    -1 ;  2 = PRINT .. SPC .. TAB .. ~';
-  DW cg_varlist  -1 ;  3 = var-list .. A,B
+  DW cg_varlist  -1 ;  3 = var-list .. A,B  7=indices 6=optional
   DW cg_dim      -1 ;  4 = DIM .. A(n,..)
   DW cg_data     -1 ;  5 = DATA .. , .. (up to 255)
   DW cg_args     -1 ;  6 = expr x NN
@@ -770,6 +769,7 @@ cg_for:          ; X=ln-ofs
 cg_none:
   RTS            ; -> X=ln
 
+
 ; @@ cg_if
 ; PARSE: expr "THEN" line|stmt* [ "ELSE" line|stmt* ]
 ; WRITE: (expr) (len) (stmts) [ OP_ELSE (len) (stmts) ]
@@ -809,6 +809,7 @@ cg_if:
   STA IO_DDRW    ;                    [writes Line hi]
 @no_else:
   RTS
+
 
 ; @@ cg_print
 ; Print statement.
@@ -868,27 +869,48 @@ cg_print:
   ; XXX <---- parse param
   BNE @loop
 
+
 ; @@ cg_varlist (3)
-; comma separated list of vars; $80 allow indices
+; comma separated list of vars; $80 allow indices; $40 optional
 ; Code: LOCAL/NEXT/READ 
 cg_varlist:
-  JSR cg_len_start ; (uses A,D) -> A,D=0
+  JSR cg_var_o     ; X=ln -> B=start X=end CS=found (uses A,X,B)
+  BCC @novars      ; -> no vars found
 @loop:
-  JSR cg_var      ; X=ln (uses A,B)
-  INC D           ; increment length
-  LDY #$2C        ; ','
-  JSR cg_chr_o    ; X=ln Y=ch (uses A) -> CS=found
-  BCS @loop       ; -> another
-  JMP cg_len_end
+  LDY #$2C         ; ','
+  JSR cg_chr_o     ; X=ln Y=ch -> CS=found (uses A,X,Y)
+  BCC @nocomma     ; -> not a comma
+@next:
+  JSR cg_var_o     ; X=ln -> B=start X=end CS=found (uses A,X,B)
+  BCS @loop        ; -> found a var, go again
+@done:
+  LDA #0
+  STA IO_DDRW      ; zero terminate
+  RTS
+@novars:
+  BIT E            ; parse flags [N=parens][V=optional]
+  BVS @done        ; -> ok to match nothing
+  LDY #<kwt_var
+  JMP cgx_expect_y
+@nocomma:
+  BIT E            ; parse flags [N=parens][V=optional]
+  BPL @done        ; -> parens are not ours
+  LDY #$28         ; '('
+  JSR cg_chr_o     ; X=ln Y=ch -> CS=found (uses A,X,Y)
+  BCC @done        ; -> no paren found
+  JSR cg_exprlist  ; parse `x,y,z..)`
+  LDY #$2C         ; ','
+  JSR cg_chr_o     ; X=ln Y=ch -> CS=found (uses A,X,Y)
+  BCS @next        ; -> after comma
+  BCC @done        ; -> not a comma (we're done)
+
 
 ; @@ cg_dim ()
 cg_dim:
-  JSR cg_var      ; X=ln (uses A,B)
-  LDY #$28        ; '('
-  JSR cg_chr      ; X=ln Y=ch (uses A)
-  JSR cg_varlist  ; (uses A,Y,B)
-  LDY #$29        ; ')'
-  JSR cg_chr      ; X=ln Y=ch (uses A)
+  JSR cg_var       ; X=ln (uses A,B)
+  LDY #$28         ; '('
+  JSR cg_chr       ; X=ln Y=ch (uses A)
+  JSR cg_exprlist  ; parse `x,y,z..)`
   RTS
 
 cg_len_start:     ; (uses A,D) -> A,D=0
@@ -906,6 +928,7 @@ cg_len_end:       ; (uses A,Y)
   LDY #0          ;
   STA (Src),Y     ; write length counter at saved write-pos
   RTS             ;
+
 
 ; @@ cg_data ()
 cg_data:
@@ -940,6 +963,7 @@ cg_data:
   BCS @loop
   RTS
 
+
 ; @@ cg_args ()
 cg_args:
   LDA E           ; get parse flags [NNNPPPPP]
@@ -963,6 +987,7 @@ cg_args:
   JMP cgx_expect  ; -> "Expecting ," (A)
 @done:
   RTS
+
 
 ; @@ cg_def
 cg_def:
@@ -999,6 +1024,7 @@ syn_err:
   LDY #<err_syntax
   JMP cgx_error
 
+
 ; @@ cg_else
 cg_else:
   ; XXX if the line contains a prior IF statement,
@@ -1011,10 +1037,12 @@ cg_else:
   ; XXX clear the last IF statement
   RTS
 
+
 ; @@ cg_envelope
 cg_envelope:
   ; XXX parse 14 numbers as bytes
   RTS
+
 
 ; @@ cg_proc
 cg_proc:
@@ -1022,18 +1050,22 @@ cg_proc:
   ; optional "(" for PROC
   LDY #$28        ; '('
   JSR cg_chr_o    ; X=ln Y=ch (uses A) -> CS=found
-  BCC @done       ; -> no params
+  BCC cg_proc_rt  ; -> no params
   LDY #$29        ; ')'
   JSR cg_chr_o    ; X=ln Y=ch (uses A) -> CS=found
-  BCS @done       ; -> empty params
+  BCS cg_proc_rt  ; -> empty params
+cg_exprlist:
+  JSR cg_expr     ; expect an expression (required)
 @loop:
-  JSR cg_expr     ; expect an expression
   LDY #$2C        ; ','
   JSR cg_chr_o    ; X=ln Y=ch (uses A) -> CS=found
-  BCS @loop
+  BCC @done       ; -> no comma, done
+  JSR cg_expr_o   ; expect an expression
+  BCS @loop       ; -> found, go again
+@done:
   LDY #$29        ; ')'
   JSR cg_chr      ; X=ln Y=ch (uses A) require ')'
-@done:
+cg_proc_rt:
   RTS
 
 ; @@ cg_let
@@ -1044,15 +1076,18 @@ cg_let:
   JSR cg_expr        ; (uses A,X,Y,B,C,D,Src,Acc)
   RTS
 
+
 ; @@ cg_on
 cg_on:
   ; XXX GOTO or GOSUB or PROC ...
   RTS
 
+
 ; @@ cg_rem
 cg_rem:
   ; XXX chomp rest of line
   RTS
+
 
 ; @@ cg_onoff
 cg_onoff:
@@ -1444,7 +1479,7 @@ cg_num_o:        ; CS=found
 
 ; @@ cg_var_o
 ; parse a variable name and write out code
-cg_var_o:        ; X=ln (at alpha char) -> B=start-of-name (uses A,X,B)
+cg_var_o:        ; X=ln -> B=start X=end CS=found (uses A,X,B)
   JSR skip_spc   ; X=ln (uses A) leading spaces
   STX B          ; save start of name
   DEX            ; set up for pre-increment
@@ -1465,6 +1500,15 @@ cg_var_o:        ; X=ln (at alpha char) -> B=start-of-name (uses A,X,B)
   ; XXX calling proc: push new storage for locals?
   SEC            ; 
   RTS            ; -> CS=found
+
+; @@ cg_var
+cg_var:          ; X=ln (uses A,X,B)
+  JSR cg_var_o   ; X=ln -> B=start X=end CS=found (uses A,X,B)
+  BCC @novar     ; -> expecting a var
+  RTS
+@novar:
+  LDY #<kwt_var  ; "variable"
+  JMP cgx_expect_y
 
 cg_no2:
   CLC
@@ -1499,16 +1543,6 @@ cg_kw_o:         ; X=ln Y=kw (uses A,Y,B) -> CS=found A=OP
   LDX B          ; [3] restore ln at start of kw
 @found:
   RTS            ; [6] -> CS=found A=OP
-
-
-; @@ cg_var
-cg_var:          ; X=ln (uses A,X,B)
-  JSR cg_var_o
-  BCC @novar     ; -> expecting a var
-  RTS
-@novar:
-  LDY #<kwt_var  ; "variable"
-  JMP cgx_expect_y
 
 
 cgx_expect_y:     ; Y=kw-ofs[kwtab]
@@ -1834,7 +1868,7 @@ stmt_pb:           ; [50] indices MUST match OPCODEs
   DB 3             ; "LOCAL",$D4     var-list (N=0) no indices
   DB 6+(2<<5)      ; "MOVE",$D5      [BY] num stmt (6,2)
   DB 6+(1<<5)      ; "MODE",$D6      num
-  DB 3+$80         ; "NEXT",$D7      var-list (N=1) with indices
+  DB 3+$C0         ; "NEXT",$D7      var-list (N=1) with indices, optional
   DB 13            ; "ON",$D8        custom
   DB 6+(2<<5)      ; "OPT",$D9       x, y
   DB 6+(2<<5)      ; "ORIGIN",$DA    [BY] x, y
