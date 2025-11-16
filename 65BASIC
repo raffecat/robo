@@ -50,25 +50,22 @@ similarly we now have room for 4 screens of 32*24 text:
 however for double-buffering (e.g. render then scroll)
 64*32*2 = 4K  would be sufficient  (the other 4K can be used as RAM)
 
-8-color tiles? 8*3=24 bytes per tile: 512*24 = 12K
-tile map 64*32*2 = 4K
-planar tiles: STA &8n00,Y; STA &9n00,Y; STA &An00,Y (map at $B000)
-32 tiles per tile page: n = &0 to &F
-map attribs: HVIOPPPT where HV=flip O=opaque I=priority P=palette (8*4=32) T=top-bit of tile
-
-https://en.wikipedia.org/wiki/Master_System  256x192 16K VRAM  bitplane:4bpp(4 bytes per row)
+tile map: 64x32x2 = 4K in standard "text mode" (BASIC)
+map attribs: PPPPVHIT where P=palette VH=flip I=priority T=top-bit of tile index (512 tiles [8 slots])
+sprite attribs: PPPPVHIX where X=top-bit of sprite X coordinate (limited to 256 tiles [4 slots])
 
 we need to support multicoloured text:
-Text Mode: 40x28, attribute is 16:16 background:foreground colors (high 16 via bit-1 of gfx)
-Tile Mode: 40x28, attribute is [hvioPPPt] selecting one of 8 palettes
+Tile Mode: 40x28, attribute is [PPPPVHIT] selecting one of 16 palettes
+Text Mode: 40x28, attribute is [BBBBFFFF] colors (tile 0=B 1=16+F 2=32+B 3=48+F)
+Text Mode: 80x28, attribute is [BBBBFFFF] colors (tile 0=32+B 1=48+F)
 
-Text mode is useful for terminal emulation, BBS dialup.
+Text mode is useful for coloured text, terminal emulation, BBS dialup.
 
 I=0 tile is behind sprites (visible if O=0 and pixel is zero)
 I=1 tile is in front of an I=0 sprite (an O=1 tile/sprite is opaque)
 I=1 tile is behind an I=1 sprite (an O=0 tile/sprite has transparent zero)
 
-Each sprite outputs the pixel (2-bit), palette (3-bit), priority (1-bit)
+Each sprite outputs the pixel (2-bit), palette (4-bit), priority (1-bit)
 The background outputs are passed in to the first sprite.
 
 Background -> HW Sprites -> Output
@@ -118,14 +115,19 @@ Memory Map
 &8000 - 16K Cartridge/Expansion RAM window (paged)
 &C000 - 16K BASIC ROM or 16K Cartridge/Expansion RAM window (paged)
 
-zero      256
-stack     256
-input     256   (line buffer)
+ZeroPg     &0000   IO at $C0
+StackPg    &0100
+SysPg      &0200   keyboard(16) sys-vars(16) sound(64) serial(64)
+Scratch    &0300   scratch space: compiler output, eval stack
+LineBuf    &0400   input line buffer, disk/tape block
+LoMem      &0500   start of BASIC program
+
+65536 - 0x600 = 64000
+
 envelope  64    (16 params x4)
 pattern   32    (16 pointers to code?)
 sound     32    (4 channels)
 keyboard  16    (scan buffer)
-for/proc  256   (2 line ptr, 2 var ptr, 2 limit ptr, 2 step ptr = 8 x 10 = 80)
 
 for       10 x 8 = 80  (10 in BBC BASIC)
 while     20 x 2 = 40  (not in BBC BASIC)
@@ -168,32 +170,43 @@ The competition:
 80 Jun: Apple II+   16K          (48K max)
 80 Sep: TRS-80 CoCo 16K $399     (Rev.B 32K with "half-bad" 4164 DRAMs)
 81 Aug: IBM PC  16K/16K          (OEM character set)
-81 Dec: BBC B/32K A/16K
-81    : VIC-20       5K $299
-82 Apr: ZX Spectrum 48K £175     (16K £125, 256×192, 15 colours, low production until Nov 82) Ferranti ULA
-82 Aug: Commodore 64 64K $595    (issues, slow sales, "took off in mid-1983")
-83 Jan: Apple IIe 64K, IBM XT    <-- Robo 48 at CES here $399
+81 Dec: BBC B/32K A/16K          (Retailers reportedly made no markup)
+81    : VIC-20       5K $299     (+3K cart)
+82 Apr: ZX Spectrum 48K £175     (16K £125, 256×192, 15 colours, low production until Nov 82) Ferranti ULA, "half-bad" 4164s
+82 Aug: Commodore 64 64K $595 £399 (issues, slow sales, "took off in mid-1983")
+83 Jan: Apple IIe 64K, IBM XT
+83 Jan:                          <-- Robo 2000 at CES announced $349 (might be too late)
 83 ?  : CoCo 2 64K $159          (6-bit DAC!)
-83 Jun: C64 @ $300, VIC20 @ $199 <-- Robo 48 $349 Christmas bundle (in Aug)
+83 Jun: C64 @ $300, VIC20 @ $199 
+83 Aug:                          <-- Robo 2000 Christmas bundle $249 (2 games)
 83 Nov: ZX Spectrum [USA] 48K
 83 Late: Amiga Inc rumours       "super 68000 game machine"
-84 Jan: Atari 800XL ~64K?
+84 Jan: Atari 800XL ~64K?        "software for the C64 began to grow in 1984" (and the Floppy Disk market)
 84 Apr: CPC464 64K £199/£299     (came with Monitor and Casette player!)
 84 May: Amiga/Atari finance!
 84 Jul: Jack Tramiel buys Atari  (Atari ST starts dev)
 84 Jul: Commodore buys Amiga     "widely reported"
-84 Sep:                          <-- Robo 48+ Christmas bundle $249
+84 Aug:                          <-- Robo 2000 Christmas bundle $199 (3 games)
+84 Aug:                          <- Start designing Robo 2016
 84 ~Oct: Amiga demos to press    Boing Ball demo
 85 Jan: Amiga HW at CES          appeared in BYTE,Compute!,Popular
-85 Jan: Atari 520ST at CES       <- Start designing Robo 128
-"By early 1985 the C64's price was $149; with an estimated production cost of $35–50"
-85 ?  : Commodore 128K $299
-85 Jun: Atari ST 512K $799/$999  (high end)
-85 Jul: Amiga 1000, 256K $1285   (too expensive)
-87 May: Amiga 500, 512K $699 £499
-88 mid: Amiga 500, 512K £399     "Batman Pack"  (16-bit systems are now affordable)
+85 Jan: Atari 520ST at CES       "By early 1985 the C64's price was $149; estimated production cost $35–50"
+85 ?  : C64 $149 C128K $299      (confusing offering: C128 + Amiga)
+85 Jul: Atari ST 512K $799/$999  (high end)
+85 Jul: Amiga 1000 256K $1285    (too expensive)
+85 Aug:                          <-- Robo 2000 Christmas bundle $169 (3 games)
+86 Aug:                          <-- Robo 2032 Launched $399 or $599 with color monitor
+86    : (What's the ST doing?)   NES launch in US (likely end of Robo 2000)
+86 Oct:                          (150,000 Amigas sold US?)
+87 May: Amiga 500 $699 £499      Cost-reduced, "premium" price-point
+87 Aug:                          <-- Robo 2032 Christmas bundle $349 or $549 with monitor (2 games)
+87 Oct: Atari 520STFM £260?
+88 Aug:                          <-- Robo 2032 Christmas bundle $299 or $479 with monitor (3 games)
+89 Oct: Amiga 500, 512K £399     "Batman Pack" UK-only (Popular: 16-bit systems are now affordable)
 89 ?  : Sam Coupe                (10,000 gate ASIC, too late to market)
 89    :                          (games are still published for 8-bit systems up to ~92)
+
+US markets viewed low-cost computers as "toy computers" and "game machines".
 
 48K generation: Apple II+, Atari 800, ZX Spectrum (1982–83)
 64K generation: Commodore 64, Apple IIe, Atari 600XL, CPC-464 (1983-84)
@@ -226,6 +239,10 @@ gain a strong foothold in 1983 and beyond." [UK: rise of computer games in 1984]
 were growing in popularity in Japan while home computers were surging across Europe."
 
 
+Apple - change the world
+Amiga - change the world
+
+
 Design Goals:
 • "Next-generation features at last-generation prices."
 • Low entry price @ 48K       (64K 4164s were still more expensive in 82/83)
@@ -250,31 +267,32 @@ Influences:
 • BBC Micro (1981) constant bitrate 640/1bpp 320/2bpp 160/4bpp
 • IBM CGA (1981) text modes with 4:4bit colour attributes
 • NES (1983) similar 2bpp background + 64 sprites (similar timeline)
+• Master System 256x192 16K VRAM 4bpp
+
+https://en.wikipedia.org/wiki/Master_System
+https://www.copetti.org/writings/consoles/master-system/
 
 Timeline:
-• Mid 1982: hardware design, prototype, software        [started ~12 July]
-• Jan 1983: CES to show off the prototype to the press
-• Sep 1983: first manufacturing run available for Christmas
+• Jun 1982: hardware design, prototype, software        [started ~12 Jun]
+• Jan 1983: CES to show off the prototype HW to the press
+• Aug 1983: first manufacturing run available for Christmas [Sep-Oct]
 
 
-"Robo 48" has 32K RAM + 16K VRAM + 16K ROM, 2 MHz 6502, released Jan 1983.
-A cost-optimised home computer for 1983 (using 24 16Kx1 4116 DRAMs)
-320 x 240, using tile map (40 x 30 visible of 64x32 pattern-table)
-256 x 192, using tile map (32 x 24 visible of 32x32 pattern-table)?
+"Robo 2000" has 64K RAM + 16K VRAM + 16K ROM, 2 MHz 6502, announced Jan 1983.
+A cost-optimised home computer for 1983.
+320 x 240, using tile map (40 x 30 visible of 64x32 tile-map)
 Cartridge port supports banked ROM/RAM (16K windows at &8000 and &C000)
-BASIC ROM can be paged out to access upper 16K RAM at &C000
 BASIC supports running programs out of the 16K window at &8000
+BASIC ROM can be paged out to use upper 16K window at &C000
 
-It's a home computer with capabilities more like NES / Master System,
+It's a home computer with tile graphics (more like NES / Master System)
 inspired by the prior TMS9918 [1979] with more bits per pixel, APA
 framebuffer modes, HW palette, HW scrolling, a simple DMA and PSG.
-A custom VDP IC based on a real 74LS-series prototype design.
+A custom VDP ASIC based on a real 74LS-series prototype design.
 
 ROM games are more expensive than Tape, so aren't as popular.
-16K RAM carts are popular, later 32K/64K RAM carts.
 Disk expansion is popular later (contains an 8K ROM bank and a
 memory-mapped disk controller.)
-Two bank-switch IO ports for &8000 and for &C000.
 
 BASIC finds RAM by scanning banks, writing and reading back (&55 then &AA)
 and stopping at the first bank that fails. Each device is scanned from
@@ -287,42 +305,71 @@ register: an indirect jump to the jump-table port reads the next DMA byte
 (adding an extra cycle) then fetches a 16-bit address from the table;
 BASIC uses this to dispatch opcodes in 6 cycles.
 
-Graphics accelerator: DMA has an APA mode: the low two address bits are
-interpreted as a pixel mask (ignoring bit 0 in 4bpp mode); the DMA performs
-an and-or masking operation in between the read and write cycle, to modify
-only the addressed pixel. Raster OP modes are also implemented to perform
-an AND, OR, or XOR operation, and optionally invert the loaded value.
+Graphics accelerator: DMA has an APA mode: the low three address bits are
+interpreted as a pixel mask (ignoring low bits in 2bpp/4bpp modes); the DMA
+performs bitwise source-selection on the write cycle to modify only the
+addressed pixel.
 
 These accelerator features are designed to be small extensions to the
 existing DMA function, adding minimal chip area.
 
+VRAM is Hitachi/Fujitsu 16Kx1 DRAM with 270ns cycle time, 5V single rail.
+Main RAM is commodity 64Kx1 DRAM with ~450ns cycle time, 5V single rail.
 
-"Robo 48" 1983 Christmas bundle with a pack-in game.
+$249 Launch for Christmas 1983, bundled with 2 pack-in games.
+Designed to compete with the Commodore 64.
 
-Rev-B 1984 cost-reduced version using 8 half-working 64Kx1 DRAMs for main
-memory (32K) and 2 x 16Kx4 (64K) DRAMs for VRAM, reduced board size,
-simplified +5V-only design.
+$199 Christmas 1984 edition with 4 pack-in games.
 
-"Robo 48+" 1984 Christmas edition, with a pack-in 16K RAM Cart and
-pack-in game. Designed to compete with the Commodore 64.
-The Robo 48 is still available as an entry-level option.
 
-Rev-D 2025 Christmas edition, 62256/62128 SRAM, SDCard slot.
+2025 Christmas edition, 62256/62128 SRAM, SDCard slot.
 Crystal edition: transparent case, gold-plated white board, DIP parts.
 Value edition: all SMD parts, single component side.
 
 
-"Robo 128" has 128K RAM + 64K VRAM + 32K ROM, 4 MHz R65C02P4, released Jan 1986 (ST/Amiga)
+"Robo 2032" has 128K RAM + 64K VRAM + 32K ROM, 4 MHz R65C02P4, announced Jan 1986 (ST/Amiga)
 95% compatible with Robo 48 software, but this can be a curse (switch to 68000?)
-16-bit VDP, 16-color tiles, faster, more RAM, 3-4 layers, 4096 colors,
-DMA sampled sounds, 3½" disk drive?
-Include a 16x16 booth multiplier taking 8 cycles (4x8=32 cycles for a planar matrix)
-Include an 8.8 scaler interpolator DMA mode (for sprite/texture scaling)
-Can slow the speed to 2 MHz; low half of the ROM is exactly the '48 ROM.
-In compatibility mode, the extra RAM emulates a 32K RAM Cart.
-+64K RAM carts are popular (for a total 128K RAM) "Requires +64K" on games.
+320 x 200 @ 4/8bpp; 640 x 200 @ 4bpp; 2 x 4bpp or 3 x 2bpp tile layers
+16-bit Graphics (VDP), 16-color tiles, faster, more RAM, 2-3 layers, 4096 colors,
+DMA sampled sounds, 3½" disk drive.
+Includes a 16x16 booth multiplier taking 8 cycles (4x8=32 cycles for a planar matrix)
+Includes a 2.8 scale-interpolate DMA mode (for sprite/texture scaling)
+Compatibility: can slow the speed to 2 MHz; half of ROM is exactly the '48 ROM.
++128K RAM carts are popular (for a total 256K RAM) "256K" sticker on games.
+RTC was expected by this time for file timestamps.
 
-Three-layer:
+Priced US$349 or US$599 with composite color monitor.
+
+Is this just a faster Robo, or does it come with a multitasking GUI and DOS?
+
+The problem with using the 68000 is everyone will port Atari ST software over,
+ignoring the tile hardware. Or it will establish a new norm with 16-bit tile
+graphics and 16-bit sprites (Robo + Amiga, with ST using slower SW impl)
+
+
+
+W65C02S launched 1983
+• Early versions used 40-pin DIP packaging, and were available in 1,2,4 MHz versions
+• Production OEM: "$2–$6 each (per-k pricing commonly sat in the low single-dollars)" [1985]
+
+R65C02P4 4MHz 6502
+• "Available in 1985, broadly available in 1986."
+
+W65C816 was available for design-in around early 1986.
+Apple IIgs released September 1986 used a 2.8 MHz part.
+• Jan 1985: early samples of the 65816 were problematic (but available!)
+• Competiton for parts with the IIgs
+• Use the higher speed grade, 4 MHz
+• Possible private lincesing deal, like Ricoh for the SNES
+• Can't wait beyond Christmas 1986
+
+68000 was widely available
+• widely available by 1985: Hitachi, Toshiba, Mostek, Rockwell, Thomson, Signetics
+• "low teens" as a volume part: ~$15 for Apple in 1983
+
+"LS TTL was cheap in 1982, and high-volume suppliers commonly sold at $0.15–$0.35"
+ROM 2732 (4K) ×4 or 27128 (16K) $3-$6 "EPROM was relatively expensive before OTP PROMs became common"
+
 512*32   = 16K  512 tiles @ 4-bpp (16-colour tiles and sprites)
 512*32   = 16K  512 tiles @ 4-bpp (16-colour animation tiles)
 64*64*2  = 8K   2 screens layer 1
@@ -330,15 +377,29 @@ Three-layer:
 64*64*2  = 8K   2 screens layer 3
 512*16   = 8K   512 tiles @ 2-bpp (4-colour tiles)
 
-W65C02S launched 1983
-"Early versions used 40-pin DIP packaging, and were available in 1, 2 and 4 MHz versions"
-"Production OEM: $2–$6 each (per-k pricing commonly sat in the low single-dollars)" [1985]
+Video bandwidth: 4*16 = 64 bits per tile (Robo 48 design, adding 16-bit)
+• 2 Layers 2bpp:         • 1 Layer 4bpp:
+• 16 tile+attr layer 1   • 16 tile+attr layer 1
+• 16 tile+attr layer 2   • 16 gfx-2bpp layer 1 \ 4bpp
+• 16 gfx-2bpp layer 1    • 16 gfx-2bpp layer 1 /
+• 16 gfx-2bpp layer 2    • unused
 
-R65C02P4 4MHz
-"Available in 1985, broadly available in 1986."
+Video bandwidth: 5*16 = 80 bits per tile (maybe 16Kx4 is fast enough for 5 reads)
+• 2 Layers 2bpp:         • 2 Layers 4bpp,2bpp:
+• 16 tile+attr layer 1   • 16 tile+attr layer 1
+• 16 tile+attr layer 2   • 16 tile+attr layer 2
+• 16 gfx-2bpp layer 1    • 16 gfx-2bpp layer 1 \ 4bpp
+• 16 gfx-2bpp layer 2    • 16 gfx-2bpp layer 1 /
+• unused                 • 16 gfx-2bpp layer 2
 
-W65C816 was available for design-in around early 1986 (late though)
-Apple IIgs released September 1986 used a 2.8 MHz part.
+Video bandwidth: 6*16 = 96 bits per tile (maybe 16Kx4 is fast enough for 6 reads [Amiga fetches 6 planes])
+• 3 Layers 2bpp:         • 2 Layers 4bpp:
+• 16 tile+attr layer 1   • 16 tile+attr layer 1
+• 16 tile+attr layer 2   • 16 tile+attr layer 2
+• 16 tile+attr layer 3   • 16 gfx-2bpp layer 1 \ 4bpp
+• 16 gfx-2bpp layer 1    • 16 gfx-2bpp layer 1 /
+• 16 gfx-2bpp layer 2    • 16 gfx-2bpp layer 2 \ 4bpp
+• 16 gfx-2bpp layer 3    • 16 gfx-2bpp layer 2 /
 
 
 Hardware
@@ -486,10 +547,10 @@ REMAP determines the base address: it's the high bits of the tile address.
 
 Palettes:
 
-32 VPAL [--cccccc] registers configure 8 x 4-color palettes
+64 VPAL [cccccccc] registers configure 16 x 4-color palettes
 Tiles with 1bpp use colors 0 and 1
 Tiles with 2bpp use colors 0 to 3
-Tiles with 4bpp select 2 x 16-color palettes
+Tiles with 4bpp select 4 x 16-color palettes
 
 
 [OLD] VBLR,VBTB registers [llllrrrr][ttttbbbb] set video borders:
@@ -739,10 +800,6 @@ https://www.masswerk.at/6502/assembler.html
 https://www.masswerk.at/6502/
 http://www.6502.org/users/mycorner/6502/shorts/index.html
 
-$FFFA, $FFFB ... NMI (Non-Maskable Interrupt) vector
-$FFFC, $FFFD ... RES (Reset) vector
-$FFFE, $FFFF ... IRQ (Interrupt Request) vector
-
 https://www.chibiakumas.com/6502/CheatSheet.pdf
 http://www.6502.org/tutorials/compare_beyond.html
 https://www.asciitable.com/
@@ -812,6 +869,18 @@ Have 16K ROM in total.
 140 r=r+0.5
 150 NEXT
 160 GOTO 160
+
+; Gosub-Next-Return (OK in BBC BASIC)
+10 FOR A = 1 TO 10
+20 FOR B = 1 TO 10          ; B is strictly nested inside A
+30 PRINT A,B
+40 IF B=5 GOSUB 80          ; GOSUB has a parallel stack (BBC BASIC)
+50 NEXT                     ; GOSUB popped by NEXT A (C64 BASIC) even at loop exit
+60 PRINT "DONE"
+70 END
+80 NEXT A                   ; Leaves GOSUB on the stack
+90 FOR C=1TO1               ; Dummy loop to pass NEXT at line 50
+100 RETURN                   ; Back to line 50
 
 "No such variable at line N"  if used before assigned
 "No REPEAT at line N"
@@ -925,20 +994,66 @@ end
   ADC Term  ; A = A+T = v*5
   ASL       ; A = A*2 = v*10
 
-; Divide by 10  [30 cycles, 17 bytes]
+; Divide by 10, integer approximation [30 cycles, 17 bytes]
   LSR
-  STA  temp
-  LSR
-  ADC  temp
-  ROR
-  LSR
-  LSR
-  ADC  temp
-  ROR
-  ADC  temp
-  ROR
-  LSR
-  LSR
+  STA  temp ; A/2
+  LSR       ; A/4
+  ADC  temp ; A/4 + A/2 -> CF  (3A/4)
+  ROR       ; CF >> (3A/4)/2
+  LSR       ; (3A/4)/4
+  LSR       ; (3A/4)/8
+  ADC  temp ; (3A/4)/8 + A/2 -> CF
+  ROR       ; CF >> ((3A/4)/8+(A/2))/2
+  ADC  temp ; ((3A/4)/8+(A/2))/2+(A/2) -> CF
+  ROR       ; CF >> (((3A/4)/8+(A/2))/2+(A/2))/2
+  LSR       ; (((3A/4)/8+(A/2))/2+(A/2))/4
+  LSR       ; (((3A/4)/8+(A/2))/2+(A/2))/8
+
+; But this doesn't produce a remainder
+; use r = n - q*10 to get the remainder
+n16_div10:
+  LDA Acc1    ; keep high byte in A
+  LSR A
+  STA Term1
+  ROR Acc0    ; low byte
+  LDX Acc0    ; low byte
+  STX Term0   ; low byte
+  LSR A
+  ROR Acc0    ; low byte
+  TAX         ; low byte
+  LDA Acc0    ; low byte
+  ADC Term0   ; low byte
+  STA Acc0    ; low byte
+  TXA         ; low byte
+  ADC Term1
+  ROR A
+  ROR Acc0    ; low byte
+  LSR A
+  ROR Acc0    ; low byte
+  LSR A
+  ROR Acc0    ; low byte
+  TAX         ; low byte
+  LDA Acc0    ; low byte
+  ADC Term0   ; low byte
+  STA Acc0    ; low byte
+  TXA         ; low byte
+  ADC Term1
+  ROR A
+  ROR Acc0    ; low byte
+  TAX         ; low byte
+  LDA Acc0    ; low byte
+  ADC Term0   ; low byte
+  STA Acc0    ; low byte
+  TXA         ; low byte
+  ADC Term1
+  ROR A
+  ROR Acc0    ; low byte
+  LSR A
+  ROR Acc0    ; low byte
+  LSR A
+  ROR Acc0    ; low byte
+  STA Acc1
+  RTS
 
 
 ; could do this once per LINE and insert an ADVANCE opcode in long lines?
@@ -1224,6 +1339,18 @@ https://www.dcode.fr/boolean-expressions-calculator
 
 /opt/homebrew/Cellar/sdl2/2.32.0
 
+Might use this:
+https://elm-chan.org/docs/mmc/mmc_e.html
+or W25Q16JVSSIQ 16MBIT (2MB) SPI/QUAD 8SOIC
+https://download.mikroe.com/documents/datasheets/MCP2210_datasheet.pdf
+
+Tape Interface:
+https://www.youtube.com/watch?v=k8hlYr6N3Ls&list=PL9Njj9WL8poFsM4C6Gi8V5FRoidOOL0Fv&index=37
+Byte 1975 Don Lancaster "Serial Interface", "Build the Bit Buffer"
+8 cyc 2400 (1) 4 cyc 1200 (0) 1 start (0) 2 stop (11)
+Transistor Amp + LM393 zero-crossing detector (like BBC B)
+"active CA1 edge? 6522 VIA"
+
 
 Line Clipping
 
@@ -1235,6 +1362,28 @@ Suggests they're testing for out-of-bounds coords before truncating to int16 for
 
 
 ADV7513 or ADV7511 are TMDS encoders  https://www.analog.com/en/products/adv7511.html
+
+
+Speed test:
+• CPC-464  27s
+• VIC20    34s
+• Apple2+  36s
+• QL       39s
+• C64      40s
+• AtariXL  50s
+• ZX-80    52s
+• TI-99/4  1:17
+• TI-ExBAS 1:41
+• Speccy   1:20
+
+10 FOR i=1 TO 10
+20 s=0
+30 FOR j=1 TO 1000
+40 s=s+j
+50 NEXT j
+60 PRINT ".";
+70 NEXT i
+80 PRINT s
 
 
 Beeb Keyboard:
@@ -1331,3 +1480,249 @@ PRINT RAW #03040506 TAB(0,1) #06070809 TAB(3,2) A$
 10 FOR I=0 TO 15
 20 PRINT CHR$(&80+I) "Foreground";I TAB(16) CHR$(&90+I) CHR$(&80+(15-I)) "Background";I
 30 NEXT
+
+Palo Alto Tiny BASIC:
+• CLEAR, TOP, PEEK, POKE
+• upper/lower bounds of the loop were set on loop entry, like MS BASIC
+
+MS Basic:
+• can Ctrl+C, edit variables, CONT
+• cannot CONT after changing the program
+
+BBC Basic:
+• can Escape, edit variables, GOTO last line
+• changing any line of code CLEARs variables
+• can RUN with GOTO 10
+
+10 A = 1
+20 PRINT A
+30 A = A + 1
+40 GOTO 20
+
+Late binding:
+• as variable names and line numbers are encountered,
+  look up the destination and inline-cache (52 one-letter vars)
+• on any line edit, restore line numbers and var names?
+
+How does line indexing work?
+• scan program and build index on LOAD or RENUMBER
+• update index when inserting/removing a line
+• place at top of memory (descending)
+
+How do vars work?
+• don't know if code is in a proc or not, thanks to GOTO
+• can assign a unique index and slot to each var name (top of mem)
+• in global scope, slots point to values once assigned (upward globals @TOP)
+• slots also mark vars unassigned -> No such variable
+• on proc entry, push new values and assign to slots (downward proc-stack)
+• re-assign shadowed var slots, push the old pointers
+• on proc exit, clear local slots, restore shadowed pointers
+• procs can still assign globals, allocating values (upward globals @TOP)
+• RUN clears globals and proc-stack
+• GC the vars table how and when? keep counts? diff replaced lines?
+• save the vars table on the start/end of the program (maybe both)
+• not as resilient to lost tape blocks
+
+The first 64 vars encode as 1 byte (OP_VARx)
+The next 64*256 vars encode as 2 bytes (OP_EVARx,y) =16384 vars max.
+
+What needs to be moved?
+• Lines of code above an inserted line (unless appending)
+• Line index below an inserted line (and vars table below line index)  [all Vars if a Line is added]
+• Vars below a removed var (occasional)
+
+Switch the order, with vars at the top:
+• Line index below an inserted line (unless appending)
+• Line index below Vars when appending a var                           [all Lines if a new Var is added]
+• Vars and Lines below a removed var (occasional)
+
+Code needs OP_LINE opcodes to check for Escape.
+Should OP_LINE contain the line number, and we don't load/save the line index?
+
+
+LCMXO2-256HC-4SG32C FPGA 32-LABs 21-IO 32-QFNS 5x5 3V $5.99 ex GST
+LCMXO2-640HC-4SG48C FPGA 80-LABs 40-IO 48-QFN  7x7 3V $8.25 ex GST
+
+
+Trad BASIC: each stmt checks num-args and arg-types
+Checked BASIC: stmt parser checks num-args and arg-types; expr must return type
+
+NOT,FN  ^  *,/,DIV,MOD  +,-  =,<>,<=,>=,<,>  AND  OR,EOR   >> lower
+linear A*B/C+D-E
+breaks D-E-A*B -> D-E-(A*B)       hold aside last operator+operand, rewrite or commit at next operator
+breaks D-E-A*B-C -> D-E-(A*B)-C   is this done at runtime? (otherwise must insert an opcode)
+       A^B*C+D                    is correct from left to right
+       D+A*B^C                    must eval right to left: u:D u:A v:B^:C p* p+  10
+       D-A*B-C                    u:D v:A *B p- -C     pop-apply lower-eq
+       A AND B*C + D              u:A v:B *C pAND +D   pop-apply lower-eq
+if next operator is higher precedence, push this operand and operator; pop-apply it later
+
+done at runtime:
+   VAR  -> to Acc, prec=0
+   +VAR -> if prec higher, push (Op,Var), else pop-apply lower-eq; Acc += Var
+   +INT -> if prec higher, push (Op,Int), else pop-apply lower-eq; Acc += Int
+
+done at compile:
+   A-B*C-D            vB *C A- -D            prints A-B*C-D         A- moves left
+   A-B-C*D-E          vC *D B- A- -E         prints A-B-C*D-E       B- then A- move left
+   A & B*C + D        vB *C A~& +D           prints A AND B*C + D
+   A+B^(C*D)          vC *D B~^ A+           prints A+B^(C*D)       adds parens when op-prec is higher
+   A+(B+C)            vB +C A+               prints A+(B+C)         adds parens when op-prec is equal
+   A+(B+C)+(D+E)      vB +C g +D +E g A+     prints A-(B+C)+(D+E)   use g to preserve unnecessary grouping
+   (B+C)+A+(D+E)      vB +C g +A +D +E g     prints A-(B+C)+(D+E)   XXX wrong grouping
+   (B+C)+A+(D+E)      vD +E u vB +C g +A +P  prints A-(B+C)+(D+E)   must push 2nd group to restore grouping on pop
+   A+B*C-D/E          vD /E u vB *C A+ -p    prints A+B*C-D/E       ok
+   A+B*C-D AND E      vB *C A+ -D &E         prints A+B*C-D AND E   ok
+   (A+B*C-D) AND E    vB *C A+ -D g &E       print (A+B*C-D) AND E  ok
+   A AND D-B*C        vB *C D- A&            print A AND D-B*C      ok
+   A=E AND D-B*C      vA =E u vB *C -D p&    print A=E AND D-B*C    ok
+   A*A + B*B - 4*A*C  vA *A u vB *B p+ u i4 *A *C p-   print B*B + A*A - 4*A*C
+   A^2 + B^2 - 4*A*C  vA ^2 u vB ^2 p+ u i4 *A *C p-   print B*B + A*A - 4*A*C
+   (S-1)*2*PI/s       vS -1 g *2 *PI /s
+   R*COS(A)           vA COS R*
+   COSA*Y-SINA*X      vA COS *Y u vA SIN *X p-
+
+needs to-left and to-right versions of every (operator x var|num) and (pop operator)
+doesn't respect left to right evaluation order (only visible via FN?)
+falls back on push/pop for multiple groups and for precedence inversion
+do to-left operators need a grouping flag to preserve parens?
+
+normal var             16
+normal num             16
+normal pop op          16   (p)
+grouping pop op        16   (P)
+left var               16
+left num               16
+left pop op            16   (p)
+grouping left pop op   16   (P)
+                      ----
+                       128
+
+if you have multiple fp registers:
+  LDX #reg-ofs
+  JSR fp_add/etc
+  ; uses ADC ZP,X [4] or ADC ABS,X [4] from stack
+
+
+; could stack 5-byte values in zp at $80-$FF
+; or use the actual stack? reserve 40 x 5 = 200 stack bytes for expression nesting.
+; CLC; PLA; ADC Acc0; STA Acc0; PLA; ADC Acc1; STA Acc1; PLA; ADC Acc2; STA Acc2; ... (Stack + Paren Result)
+; SEC; PLA; SBC Acc0; STA Acc0; PLA; SBC Acc1; STA Acc1; PLA; SBC Acc2; STA Acc2; ... (Stack - Paren Result)
+; SEC; PLA; EOR #$FF; ADC Acc0; STA Acc0; PLA; EOR #$FF; ADC Acc1; STA Acc1; ... (Paren Result - Stack)
+
+; what about parens? if leftmost, just do it.
+; if not, they come after an operator;
+; push the current Acc while evaluating the parens,
+; then restore acc and (operator) the result 'var'.
+
+
+With a stack page, operations take two indices (X,Y) into the stack.
+LDA stack,X; ADC stack,Y; STA stack,X; INX; INY; ...
+This means each opcode can:
+  (a) check precedence, return if higher (CMP,BCS)
+  (b) apply opcode to top two operands?
+An operand:
+  (a) checks if Y is at max (stack overflow) (CMP,BCS)
+  (b) writes operand to the stack
+  (c) increments Y, the stack pointer
+
+
+  A*(B+C) -> ABC+*  A*(B+C)  vars in-order, mul must move left to fill gap, parens preserved
+  A*B+C   -> AB*C+  A*B+C    vars in-order, ops in-order, parens dropped (unless + has explicit flag)
+
+Compile: delay lower prec operators past higher prec operators and (groups).
+Mark an operator with preserve flag ' if it's last-evaluated within the parens.
+Insert operators right-to-left in evaluation order; add parens if preserve flag is encountered.
+
+  A+B*C   -> ABC*+  A+B*C    insert operators right-to-left
+  A*B+C   -> AB*C+  A*B+C    two groups: AB* then [A*B]C+
+  A+(B*C) -> ABC*'+ A+(B*C)  parens added because *' has preserve flag  ,A ,B *'C + 
+  
+  A*X^2 + B*X + C -> ,A,X,2^*,B,X*+,C+  [A*X^2][B*X]+C+
+                                         ^      ^
+Decoder needs to track multiple groups during decoding.
+So it needs a stack of decoded subgroups: (ofs,len)
+Insert operator between the top two subgroups.
+If the preserve flag is set, wrap (subgroup-oper-subgroup) with parens.
+Replace the two subgroups with a single result subgroup.
+
+That works, but we can reduce stack usage and runtime by pairing operators with operands:
+  A*X^2 + B*X + C  ->  ,A ,X ^2 * ,B *X + +C
+
+Operand encodings:
+  *10       literal int    (one size? top size bits?)  0-63 0-16K 0-4M 0-1G
+  *10f      literal float  (one size?)                 0-127 16K 2M 256M
+  *Var      variable       (top-bit extend?)
+  ––*       pop operator
+  *'10      literal int, add parens
+  *'10f     literal float, add parens
+  *'Var     variable, add parens
+  ––*'      pop operator, add parens
+
+
+Stack can further be reduced by reordering operands, but that becomes difficult to decode
+and takes more opcode space.
+
+Compiler works something like this:
+
+; A*X^2 + B*X + C  ->  ,A ,X ^2 * ,B *X + +C
+Output A
+Push * X
+Is * > ^ ? No, keep going ('>' means before)
+Push ^ 2
+Is ^ > + ? Yes, output prior (+1)  search up the operator stack
+Is * > + ? Yes, output prior (+1)  -> number of pairs to output
+Output X
+Output 2   First output Operands, left to right.
+Output ^
+Output *   Second output Operators, right to left.
+Push + B
+Is + > *   No, keep going.
+Push * X
+Is * > + ? Yes, output prior (+1)
+Is + > + ? Yes, output prior (+1)
+Output B
+Output X
+Output *
+Output +
+Push + C
+End      ? Yes, output prior (+1)
+Output C
+Output +
+
+; A*B+C
+Output A
+Push * B
+Is * > + ? Yes, output prior (+1)  search up the operator stack
+Output B
+Output *
+Push + C
+End      ? Yes, output prior (+1)
+Output C
+Output +
+
+
+Types are almost always known from context:
+• LET A$ = <string, string-var, string-fn>
+• MID$(<str-ish>, <num-ish>, [<num-ish>])
+• DIM A|B%|C$(<num-ish>,..)
+• FOR <num-var> : NEXT <num-var>
+• DEF FN|PROC(A,B%,C$)
+• DIM A,B%,C$
+• INPUT A,B%,C$
+• READ A,B%,C$
+
+Exceptions:
+• PRINT <str|num-ish>, ... [no type restrictions; has its own opcodes]
+• FN|PROC foo(<arg1-type>, <arg2-type>, ...)  [no type restrictions when parsed; PROC may not exist yet]
+• DATA contains free text [maybe number literals]
+
+Should recognise function-names with the wrong type, and report them.
+
+https://archive.org/details/1983-jameco-electronics-catalog/page/n5/mode/2up
+https://www.ti99ers.org/timeline/time1981.htm
+
+Usually don't want a length prefix: it costs a register, and extra
+checks when decoding. For strings it makes more sense, but so does a
+terminating zero (for number parsing etc)
+

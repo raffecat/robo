@@ -112,11 +112,14 @@ At 143ns per pixel, palette MUST be on-chip (static RAM is >=200ns)
 16K  HM4716A-2  150ns access 320ns cycle (300 may work)   ••  may work at 48µs (older gen)
 16K  HM4716A-1  120ns access 320ns cycle (300 may work)   ••  may work at 48µs (older gen)
 16K  HM4816A-7  150ns access 320ns cycle (300 may work)   ••  likely works at 48µs
-16K  HM4816A-4  120ns access 270ns cycle (280 is plenty!) ••  works at 44µs  (Robo 48)
+16K  HM4816A-4  120ns access 270ns cycle (280 is plenty!) ••  works at 44µs  (Robo 48, 5V-only part!)
 16K  HM4816A-3  100ns access 235ns cycle (280 is extra!)  ••  works at 44µs  (BBC Micro issue 3, replacement)
-16K  MB8118-12  120ns access 270ns cycle (280 is plenty!) ••  works at 44µs  (Robo 48)
+16K  MB8118-12  120ns access 270ns cycle (280 is plenty!) ••  works at 44µs  (Robo 48, 5V-only part!)
 16K  MB8118-10  100ns access 235ns cycle (280 is extra!)  ••  works at 44µs  (BBC Micro issue 3, early 1982)
 16K  HYB4116-2  150ns access 320ns cycle (300 may work)   ••  likely works at 48µs
+
+"Agnus's timings are measured in 'color clocks' of 280ns (=44.8µs) This is equivalent
+to two low resolution (140 ns) pixels or four high resolution (70 ns) pixels."
 
 tRCD=20+tCAS=100+tCP=60+tCAS=100+tCRP=-20 = 260
 tRAS=150+tRP=100 = 250
@@ -471,3 +474,31 @@ We can design an 80-column mode into the chip:
 • new access mode: read [chr0][chr1][gfx0][gfx1] (gfx1 has independent address)
 • use sprite HW to load SprRAM as attribute byte (linear scan, attr mux)
 • must have 160 bytes on-chip: can alias top 32 of palette, if 64 bytes.
+
+
+Blah software-managed sprites
+
+85 sprites in one page (page 1)
+240 pointers to sprites (page 2)
+240 sprite counts (page 3)
+64 pointers to next sprites (page 4)
+
+encode sprites for a frame:
+for each line (240 pointers):
+    encode wait for line
+    for each active sprite:
+        if >height, free up sprite, discard active
+    repeat:
+        if 8 sprites used, break
+        encode set-sprite (4 registers)  Y,X,A,T0
+        append active sprite
+        load next sprite pointer, if 0 break
+
+repeat a sprite across a line:
+    encode set-sprite (4 registers)  Y,X,A,T0
+    encode nop
+    encode set-sprite (2 registers)  X,T1
+    encode nop
+    encode set-sprite (2 registers)  X,T2
+    encode nop
+    encode set-sprite (2 registers)  X,T3

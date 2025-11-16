@@ -15,8 +15,9 @@ DRAM Parts:
  2620 - 16K x 4 DRAM IMS2620P
  4164 - 64K x 1 [5164 CMOS] (1985-12 $0.69) (1983 ~$3.50 to $4 per chip in modest volumes) (need 8, $28)
  4532 - 32K x 1 [TMS4532-20NL3,M3732-L,TMS4532-20NL4,M3732-H] [half-faulty 64Kx1, at ~$1.75-2.50?] (need 8, $16) [ZX Spectrum]
- 4164 - 64K x 1 [D4164C-3] [5v] "address multiplexed" ($7–8 in late 1983)
+ 4164 - 64K x 1 [D4164C-3] [5v] "address multiplexed" ($7–8 in late 1983)  [MK4564 64Kx1]
  4464 - 64K x 4 [MT4067-15,41464,MB81464] (1987)  []
+ 4517 - 16K x 1 [5V-only]
  6264 - 
  6287 - 64K x 1 [6264]
 41256 - 
@@ -269,3 +270,160 @@ Similar for 64k: Mitsubishi M5K4164 with 120ns/220ns in 1979 and INMOS as well."
 
 
 LH2464-12, HY53C464LS 32Kx8 (256 Kbit) Lynx  
+
+
+
+41128 150ns 128Kx1
+Hitachi HM48128P-2
+Micron MT1128-15 and MT1128-20
+Mostek MK4128N-15 and MK4128N-20
+Oki MSM37S64A-15 and MSM37S64A-20
+Samsung KM4128U-15 and KM4128U-20
+Texas Instruments ZA1250NL, TMS41128A-15NL, and TMS41128B-15NL
+"The 41128 is a stacked (piggybacked) chip arrangement"
+https://minuszerodegrees.net/memory/41128.htm
+
+
+https://minuszerodegrees.net/memory/4132.htm
+32Kx1 as two stacked 16Kx1 chips
+TI TMS4132-15 150ns/375ns 18-DIP
+TI TMS4132-20 200ns/375ns
+TI TMS4132-25 250ns/410ns
+TMS4133
+NEC µPD4132
+
+"are commonly used in older computer memory expansion cards,
+such as the IBM 64KB Memory Expansion card" (e.g. AUG81)
+"TI announced a 32K memory unit in 1981 (TI-99 timeline)" TI99ers
+
+In general, stacked modules of that era were sold either (a) at a small premium
+vs the sum of the separate chips because of extra packaging/test/marketing,
+(b) at around the same price in high volume.
+
+32Kx1:
+Mostek MK4332 (dual die carrier) 18-pin [3m shipped/1982], Apple III (1980)
+OKI MSM3732 16-pin, 150/270ns 200/330ns 2ms
+TI TMS4532 [half-64K]
+
+https://www.righto.com/2020/10/inside-stacked-ram-modules-used-in.html
+"As was usual for the time, the Apple III's memory board3 was stuffed with memory chips to achieve more capacity."
+
+
+Rev-A: 16 x 16Kx1 + 8 x 16Kx1  (4116, 24 ICs)                      •• first run
+Rev-B:  8 x 32Kx1 + 8 x 16Kx1  (4532+4116, half-bad 4164s, 16 ICs) •• most likely rev
+Rev-C:  4 x 16Kx4 + 2 x 16Kx4  (4416, entirely 16Kx4s)             •• only used as VRAM
+Rev-D:  4 x 64Kx1 + 2 x 16Kx4  (4164+4416, 2x cycle time)          •• like Electron
+Rev-E:  8 x 64Kx1 + 4 x 64Kx1  (4164 "Plus" edition)               •• upgrade model, 64+32K
+
+Half-Bad 64Kx1:
+CoCo "later" rev used half-bad 4164s; HIGH/LOW jumper.
+ZX Spectrum "Upper RAM" TMS4532-15NL3, TMS4532-15NL4, OKI M3732H-20, M3732L-20
+
+
+
+BOM Study
+
+If you do a custom VDP in a foundry and amortize NRE across 100k units the per-unit mask/fab cost
+can fall into single-digit dollars; exact depends on process, masks and yields. If you instead
+buy an off-the-shelf VDP like a TMS9918, that chip in that era would be in the mid-teens per unit—
+more expensive than a well-amortized custom ASIC at 100k.)
+
+100K+ MOQ contract prices:
+Rockwell/Synertek 6502 "were inexpensive in high volume" ~$2.50
+4164 (64Kx1 µpd4164-1 410ns 5V TS) DRAM @500ns — US$1.50 each – US$12.00
+4116 (16K×1 HM4816A-4/MB8118-12 270ns 5V TS) DRAM @280ns — US$0.40 each – US$3.20
+Custom VDP (standard-cell ASIC) per-unit — amortized at 100k — US$6.00–US$10.00 (~$8)
+74LS glue (138, 244, 374, 245, 273, etc) ~10 chips, US$0.12 each – US$1.20
+16K mask ROM (2x8K HN48364 350ns) (cheaper at high volume) — per unit — US$1.50
+Oscillator/crystal 14.31818 MHz + small passives — US$1.20
+Board-level miscellaneous (connectors, small discrete parts) — US$2.00
+TOTAL – US$31.59
+
+PCB assembly (parts placement, soldering, test): $6–$10 per board at high volume (contract EMS)
+Plastic case, power supply, packaging, manual: $6–$8 (very cheap box & PSU can be sourced cheaply)
+Board-level testing / QA / burn-in: $2–$4
+Contingency, logistics, factory markup (component procurement overhead, scrap, warranty reserve): $3–$6
+
+realistic total BOM / factory cost in the vicinity of:
+• Low assembly & lean packaging scenario: $28.60 + $6 + $6 + $2 + $3 = $45.60
+• Mid assembly & mid packaging scenario: $28.60 + $8 + $7 + $3 + $4.50 = $51.50
+• More conservative assembly & packaging: $28.60 + $10 + $8 + $4 + $6 = $56.60
+
+16K×4 (64Kbit, 4-bit) = $0.80 per chip (reasonable high-volume estimate)
+16K×4 x4 (32K) or x6 (48K)
+
+At 100k+ volumes you should be able to secure 16K×4 devices at good prices, but confirm
+lead times and second sources.
+
+Goldmine:
+https://bitsavers.computerhistory.org/components/hitachi/_dataBooks/
+https://bitsavers.computerhistory.org/components/fujitsu/_dataBooks/
+
+Hitachi: "it is recommended to insert large capacitors (a 10 µF capacitor for every 9
+pieces of 64K-bit HM4864P, for example) as well as a 0.1 µF capacitor having good
+high-frequency characteristics for each memory." [between ICs and voltage supply]
+
+Hitachi: Don't connect input of ICs directly to ground to fix input as "H" level.
+
+"Specify power & thermal margin on your board so the vendor can confirm which grades
+and power clamps are safe at your operating temperature."
+
+Those slow (410-450ns) grades were typically lower-cost, lower-test-grade offerings
+from NEC, Toshiba, Mitsubishi, Mostek/TI and legacy/clone houses.
+
+Get an allocation quote from the vendor you already plan to use (Hitachi/Fujitsu)
+• Ask them explicitly for the slowest bin they will supply in 4164 (or a 64K×1 variant)
+  and for commodity pricing at 100k MOQ. Vendors sometimes hold older process runs as
+  “commercial” or “automotive” grades that aren’t advertised prominently. If they can’t
+  supply, they can often recommend a sister fab or partner who can. (Negotiating this
+  with your existing VRAM supplier is the lowest-risk path.)
+• NEC, Toshiba, Mitsubishi: historically supplied slow/cheap bins for large OEMs,
+  and supplied single-rail 4164 parts.
+
+100,000/8 = 12,500 units
+160,000/8 = 20,000 units
+200,000/8 = 25,000 units ••
+
+First production batch:
+• Small/medium OEMs: ZX Spectrum - 10-20K units (Europe: small companies [Sinclair, Dragon] hedged with smaller runs)
+• Established: C64, Atari 800 – 50K units (US: vertical integration, established distribution, predictable demand)
+• High confidence: 100K+ were rare.
+• VDP amortized over 100K, even if first batch is 20K.
+
+Total NRE ~$150–200K ($180K)
+• VDP ASIC mask set: ~$100k–$150k (typical 1983 NMOS mask)
+• PCB tooling: ~$10k–$20k
+• Test fixtures / jigs: ~$10k–$15k
+• ROM mask cost: ~$25k–$50k (for 16–32 KB ROM)
+
+Per-unit BOM (1983 OEM, 100K MOQ)
+Component   Units per board   Unit cost  Cost per board
+6502 CPU    1                 $2.50      $2.50
+4164 RAM    8                 $0.70      $5.60
+4116 VRAM   8                 $0.40      $3.20
+VDP ASIC    1                 $8.00      $8.00
+74LS TTL    10                $0.12      $1.20
+ROM         1                 $1.50      $1.50
+Crystal + passives            $1.20      $1.20
+Misc board parts              $2.00      $2.00
+TOTAL                                    $25.20
+
+NRE per unit = $180k / 10,000 units ≈ $18/unit
+Total per-unit cost (parts + NRE) ≈ $25.20 + $18 ≈ $43.20
+Add assembly / packaging / logistics (~$5–7) → ~ $50 per unit ($50 x 10,000 = $500K)
+This is historically realistic for a low-cost 1983 home computer.
+
+NRE per unit = $180k / 25,000 units ≈ $7.20/unit
+Total per-unit cost (parts + NRE) ≈ $25.20 + $7.20 ≈ $32.40
+Add assembly / packaging / logistics (~$5–7) → ~ $38 per unit ($38 x 25,000 = $950K/~1M)
+
+Mass production:
+NRE per unit = $180k / 100,000 ≈ $1.80/unit
+Total per-unit cost (parts + NRE) ≈ $25.20 + $1.80 ≈ $27/unit
+With assembly / packaging (~$5–7) → $32–34 per unit ($35 x 100,000 = $3.5M)
+
+Assembly + casing typically adds ~$5–7/unit, so retail BOM ≈ $35/unit for 100K.
+
+Wafer run cost: each wafer is an incremental cost (~$200–300 for NMOS)
+• Most Japanese and US NMOS fabs will allow multiple wafer runs from the same mask set.
+• Some extra cost for mask storage (~$1–2k)

@@ -275,3 +275,5 @@ Maybe can do something here to reduce to an 8-bit note, like:
 • 2-bit second-stage counter, delays 5-bit divider by 4 (fixed function)
 • 5-bit third-stage divider, divide by 5-36
 
+Amplifier design
+https://electronics.stackexchange.com/questions/705302/whats-this-vintage-diode-from-the-1970s

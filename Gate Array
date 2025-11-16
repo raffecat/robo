@@ -320,3 +320,8 @@ https://saturnpcb.com/saturn-pcb-toolkit/
 2.2 nF can combine with 0.1 uF for higher frequencies [222]
 Minimize loop area for high-frequency traces
 
+
++ Reset Pin
++ CPU WR
++ VRAM WR
+
