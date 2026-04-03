@@ -8,18 +8,19 @@ Considerations:
 • HDMA: per-scanline scroll, per-scanline palette change, sample playback?
         (can use YCMP and CPU interrupt instead; C64 only had this)
 • DMA setup is expensive (5*6=30 cycles just to load constants!)
-  • DMA fastload: LDA #zp; STA IO_DFLD; loads 6 bytes from zero-page in 6 cycles (8-aligned)
+  • DMA fastload: LDA #zp; STA IO_DFLD; loads 6 bytes from zero-page in 5+6=11 cycles (8-aligned)
 
 How do you draw lines?
 • use APA-mode; write pointer in DSTL,DSTH [saves 5+5+2 = 12 cycles]
-• increment DSTL by 1 (X-basis) or by screen width [expensive] (Y-basis)
+• increment DSTL by 1 (X-basis) or by screen width [expensive] (Y-basis)  [inc +80 HW?]
 • conditionally add screen width [expensive] (X-basis) or 1 (Y-basis)
 • store color into DDRW after updating address
+• 2^(16-3=13) bytes (8K) APA-mode limit is too small... can only spare 2 bits (2bpp and 4bpp)
 
 How do you fill scanlines of a triangle/rectangle?
 • use fill-mode to fill complete bytes (pixel divisor depends on BPP)
 • switch to APA-mode to draw part-byte endpoints?
-• fill-mode needs byte address: shift down (truncate) fill-mode address
+• fill-mode needs byte address: shift down (truncate) APA address
 
 How would you emulate Raster OPs without ROP HW?
 • APA mode, VRAM to VRAM, same SRC and DST
@@ -39,13 +40,13 @@ IO_DRUN    = $D5    ; DMA count           (write: start DMA, 0=256; read: XXX un
 IO_FILL    = $D6    ; DMA fill byte       (write: set Data Latch [FILL]; read: last value to/from IO_DDRW)
 IO_DDRW    = $D7    ; DMA data R/W        (read: reads from src++; write: writes to dest++)
 IO_DJMP    = $D8    ; DMA jump indirect   (read: indirect table jump [stalls for +1 cycle]; write: set Jump Table [TABLE])
-IO_AINC    = $D9    ; APA increment       (read: second byte of indirect jump; write: increment DST += 640)
+IO_AINC    = $D9    ; APA increment       (read: second byte of indirect jump; write: increment DST += 320)
 IO_BNK8    = $DA    ; Bank switch $8000   (low 6 bits)
 IO_BNKC    = $DB    ; Bank switch $C000   (low 6 bits)
 -------    = $DC    ; 
 -------    = $DD    ; 
 IO_KEYB    = $DE    ; Keyboard scan       (write: set row; read: column bitmap)
-IO_MULW    = $DF    ; Booth multiplier?   (write {AL,AH,BL,BH} read {RL,RH})
+-------    = $DF    ; 
 
 DCTL direction:                        [implementation: drives different chip-enables]
     0 = mem -> mem                     
@@ -64,11 +65,11 @@ DCTL mode:                             [ALWAYS 2-cycles/byte due to counter incr
     6 = sprite memory                  (src/dest is sprite memory; 7-bit addr)
     7 = clear sprites                  (write $FF to Y coords in sprite memory; 7-bit addr, ignores bottom 2 bits)
 
-DMA_Copy       = 0     ; copy bytes from source to destinaton
-DMA_Fill       = 1     ; fill with FILL byte (2 cycles per byte)
-DMA_Masked     = 2     ; copy bytes, skip zero-bytes 
-DMA_AltFill    = 3     ; fill with FILL and PAGE bytes alternating (low bit selects)
-DMA_APA        = 4     ; APA addressing: low 3 bits of address select pixel; BPP from VCTL
+DMA_Copy       = 0     ; copy bytes from source to destinaton (2 cycles per byte)
+DMA_Fill       = 1     ; fill with [FILL] byte (2 cycles per byte)
+DMA_Masked     = 2     ; copy bytes, skip zero-bytes (NOT zero-pixels?)
+DMA_FillAlt    = 3     ; fill with [FILL] and [TABLE] bytes alternating (low bit selects)
+DMA_APA        = 4     ; APA addressing: low 2 bits of address select pixel; BPP from VCTL
 DMA_Palette    = 5     ; read src / write dest is palette memory, SRCL/DSTL only; ignores direction
 DMA_Sprite     = 6     ; read src / write dest is sprite memory, SRCL/DSTL only; ignores direction
 DMA_SprClr     = 7     ; write $FF to Y coords of sprites (inc by 4), DSTL only; ignores direction
@@ -96,7 +97,7 @@ SCRH    = $F2    ; horizontal scroll      (tile offset from 0, wraps)           
 SCRV    = $F3    ; vertical scroll        (row offset from 0, wraps)                                     [LIVE]
 FINH    = $F4    ; horizontal fine scroll (top 3 bits)                                     [Reloads End HBLANK]
 FINV    = $F5    ; vertical fine scroll   (top 3 bits)                                                   [LIVE]
-VCTL    = $F6    ; video control          (7:APA 6:Grey 5:Double 4:HCount 3-2:VCount 1-0:Divider)        [LIVE]
+VCTL    = $F6    ; video control          (7:APA 6:Narrow 5:16-Col 4:Grey 3-2:VCount 1:BPP 0:80-Col)     [LIVE]
 VENA    = $F7    ; interrupt enable       (7:VSync 6:VCmp 5:HSync 3:BG_En 2:Spr_En)                      [LIVE]
 VSTA    = $F8    ; interrupt status       (7:VSync 6:VCmp 5:HSync)  (read:status / write:clear)          [LIVE]
 VMAP    = $F9    ; name table size        (4:4 width 32,64,128,256; height 32,64,128,256)                [LIVE]
@@ -113,8 +114,8 @@ VCTL register [ANCGVVHD] set video mode:
 (5) 16 Color (C) attributes contain [BBBBFFFF] BG,FG colors (2x16 palettes)       [not APA]
 (4) Greyscale (G) disables Colorburst for improved text legibility
 (3-2) Vertical (VV) is 0=192 1=200 2=224 3=240 visible lines per frame
-(1) Horizontal (H) is 0=256 1=320 visible pixel-clocks per line (shift rate)
-(0) Divider (D) is 0=256|320 (2bpp) 1=128|160 (4bpp)
+(1) Horizontal (H) is 0=320 (2bpp) 1=160 (4bpp) visible pixels per line
+(0) 80 Column (8) is 0=steady 1=select d0/d1 on clock low/high (DDR)
 
 VCTL_APA       = $80   ; linear framebuffer at address 0 (or linear 8x8 tiles?)
 VCTL_NARROW    = $40   ; 5x8 tiles at 2bpp only; left 5 pixels of each tile (64 columns)

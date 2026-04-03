@@ -353,3 +353,103 @@ The APA increment can re-use these taps.
 Is vertical mode also supported on the source counter?
     it's less critical
 
+
+0.1 µF ceramic capacitor per IC
+Keep traces short; avoid long unterminated lines; use buffering
+
+Designers favored:
+74LS161 / 74LS163 → counters (synchronous)  "proper" video timing (use synchronous load to reset) [use for DIV 14 etc]
+74LS74 → D flip-flops (synchronous)
+74LS138 → decoders (synchronous)
+74LS157 → 4x2:1 multiplexer
+74LS04 / 74LS244 → buffering
+74LS90 / 74LS393 → ripple counters (low speed, cumulative delay) only in prototypes
+74LS166 / 74LS165 inverse → shift register (synchronous, parallel load) only in prototypes
+74LS373 → Octal transparent latch (available 1975–1976) → address latching, 3-state, 20-pin
+74LS374 → Octal D-type flip flop  (available 1975–1976) → edge-triggered, 3-state, 20-pin
+74LS377 → Octal D-type flip flop with enable () → common enable line (not 3-state), 20-pin
+"By 1977, 74LS373/374 was the standard modern approach."
+
+Use 74LS161 for DIV by 14 (any number up to 16)
+Also 74LS161 for DIV by 2, 4, 8, 16 (any four powers of two)
+
+Many designs were partially asynchronous.
+Designers traded correctness for chip count, cost, and simplicity.
+
+Feed clock directly into flip-flops (e.g. 74LS74, 74LS161)
+Use clock enable or synchronous inputs instead of gating the clock.
+Asynchronous clears tied into logic (risky but common)
+
+TI TTL Data Book (late 70s/early 80s)
+Application notes on synchronous counters!!
+
+Gated clocks + Schmitt trigger cleanup → Works at low speed (~1-8 MHz)
+
+Use Schmitt triggers for debouncing, cleaning external signals.
+Register all outputs going off-board (especially video sync)
+
+ASIC wants a register + mux structure that behaves like a shift register:
+8-bit Register --> 8:1 MUX --> pixel out
+3-bit Counter ------^
+(Shift registers create long propagation paths)
+
+
+ASIC / Gate-Array design rules:
+• single global clock (or well-defined domains)
+• all state changes on clock edges
+• reject: ripple counters (use 74LS161/163 synchronous)
+• reject: gated clocks
+• reject: using logic outputs as clocks
+• no asynchronous feedback loops
+• no combinational loops
+• no delay-dependent feedback
+• no reliance on propagation delay!
+• hazard-free by construction (if it can glitch, it will glitch)
+• all outputs leaving a block must come from flip-flops
+• synchronous reset preferred (or async reset must meet timing constraints)
+• async inputs must be synchronized (flip flops)
+• no asynchronous load/shift tricks!
+
+Clock trees in ASICs are carefully balanced.
+
+Gate-array vendors needed to verify:
+• setup time met
+• hold time met
+• clock-to-Q + logic delay fits clock period
+
+Typical porting process:
+1. Replace ripple counters → synchronous counters
+2. Remove gated clocks → use enables
+3. Register everything important → especially outputs
+4. Rework decode logic → no partial-bit heuristics
+5. Add synchronization → for async inputs
+
+Clocked stages:
+Address Gen → VRAM → Data Latch → Pixel Shifter → Palette → Output Register → DMA_Copy
+
+Registered signals: h_count, v_count, hsync, vsync, display_enable
+All timing signals: next_state = f(current_state) ; state = register(next_state)
+
+v_count ──┐
+          ├─→ row address logic ──┐
+h_count ──┘                       ├─→ address register → VRAM
+                                  │
+                            base address
+Cycle N:
+  address → VRAM       8-bit data reg
+                         v
+Cycle N+1:           8:1 MUX --> pixel out  (or 4:1 MUXes [custom multi-tap MUX])
+  data → latch           ^
+                    pixel_index = h_count[2:0]
+
+Cycle N:    generate address
+Cycle N+1:  VRAM outputs data
+Cycle N+2:  VRAM data latched
+Cycle N+3:  mux selects pixel
+Cycle N+4:  palette lookup
+Cycle N+5:  output register → DAC
+
+
+Bill Herd early 1980s
+"It cost between $500K - $4M to do a run of chips [re debugging]"
+"A jelly bean package cost 2 cents (8 cents inserted in board)"

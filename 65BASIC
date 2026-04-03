@@ -116,13 +116,22 @@ Memory Map
 &C000 - 16K BASIC ROM or 16K Cartridge/Expansion RAM window (paged)
 
 ZeroPg     &0000   IO at $C0
-StackPg    &0100
-SysPg      &0200   keyboard(16) sys-vars(16) sound(64) serial(64)
-Scratch    &0300   scratch space: compiler output, eval stack
-LineBuf    &0400   input line buffer, disk/tape block
-LoMem      &0500   start of BASIC program
+StackPg    &0100   stack(256)
+SysPg      &0200   keyboard(16) sys-vars(16) sound(64) serial(64) roms (8x8)
+Scratch    &0300   scratch space: compiler output (overflows into LineBuf)
+LineBuf    &0400   input line buffer, disk/tape block, eval stack
+LoMem      &0500   start of BASIC program (31488 free)
 
-65536 - 0x600 = 64000
+Could compile directly into BASIC space? But boundary crossing? Need a free page?
+How does BASIC deal with 16K bank crossings?
+
+32768 - 0x500 = 31488
+49152 - 0x500 = 47872 (C64 has 38911)
+65536 - 0x500 = 64256
+
+32768 - 0x600 = 31232
+49152 - 0x600 = 47616
+65536 - 0x600 = 64000 (nice)
 
 envelope  64    (16 params x4)
 pattern   32    (16 pointers to code?)
@@ -145,7 +154,7 @@ VRAM
 512*8*2 = 8K (&2000)  512 tiles @ 2-bpp (BG & Sprites)
 64*64*2 = 8K (&2000)  4 screens, or
 64*32*2 = 4K (&1000)  2 screens, and
-256*8*2 = 4K (&1000)  256 tiles @ 2-bpp (4 animation banks)
+256*8*2 = 4K (&1000)  256 tiles @ 2-bpp (4x64 animation banks)
 
 VRAM access via VDP can be an accelerator: 6502 only has one Y register.
 It can implement 'unpack' modes, write-direction, ROP modes.
@@ -171,37 +180,48 @@ The competition:
 80 Sep: TRS-80 CoCo 16K $399     (Rev.B 32K with "half-bad" 4164 DRAMs)
 81 Aug: IBM PC  16K/16K          (OEM character set)
 81 Dec: BBC B/32K A/16K          (Retailers reportedly made no markup)
-81    : VIC-20       5K $299     (+3K cart)
+81    : VIC-20 $299  5K          (+3K cart)
 82 Apr: ZX Spectrum 48K £175     (16K £125, 256×192, 15 colours, low production until Nov 82) Ferranti ULA, "half-bad" 4164s
-82 Aug: Commodore 64 64K $595 £399 (issues, slow sales, "took off in mid-1983")
+82 Aug: C64 $595, VIC-20 $199    Launch price (VIC-20 still popular; C64 slow sales, "took off mid-1983")
+
 83 Jan: Apple IIe 64K, IBM XT
-83 Jan:                          <-- Robo 2000 at CES announced $349 (might be too late)
+83 Jan:                          <-- Robo 48 at CES announced $499 (might be too late)  [price anchor]
 83 ?  : CoCo 2 64K $159          (6-bit DAC!)
-83 Jun: C64 @ $300, VIC20 @ $199 
-83 Aug:                          <-- Robo 2000 Christmas bundle $249 (2 games)
+83 Jun: C64 $389, VIC-20 $80     Summer price (minus $100 rebate for trade-in -> $289 [Timex -> $339]) "around $300"
+83 Oct: C64 $229, $199 bundled   Christmas: retail ~$300 starter packs (C64 $199 + Casette player + games)
+                                 PLUS mail-in $100 rebate for trade-in (actual C64 cost $99)
+83 Aug:                          <-- Robo 48 Christmas bundle $249 (2 games + "Word processor")  [slight premium]
+                                     (encourage casette player bundle $279 with $219 discounted)
+
+"The price war ended with Commodore hurting, Atari bleeding red ink, and TI out of the picture."
+
 83 Nov: ZX Spectrum [USA] 48K
 83 Late: Amiga Inc rumours       "super 68000 game machine"
 84 Jan: Atari 800XL ~64K?        "software for the C64 began to grow in 1984" (and the Floppy Disk market)
 84 Apr: CPC464 64K £199/£299     (came with Monitor and Casette player!)
+84 Mid: Origins Game Fare        Game developers decided to focus on C64
 84 May: Amiga/Atari finance!
 84 Jul: Jack Tramiel buys Atari  (Atari ST starts dev)
 84 Jul: Commodore buys Amiga     "widely reported"
-84 Aug:                          <-- Robo 2000 Christmas bundle $199 (3 games)
-84 Aug:                          <- Start designing Robo 2016
+84 Oct: C64 $219 catalog         Christmas: dealer $199 with disk/tape/printer/monitor/modem [selling as fast as manufacture]
+84 Oct:                          <-- Robo 48 "+16" Christmas Bundle $229 (3 games + "Word processor" + 16K pack)  [incresed value]
+                                     (encourage casette player bundle $249 with $199 discounted)
+84 Oct:                          <-- Robo +16K RAM Pack $39 (upgrade for existing customers)  [price anchor]
+84 Oct:                          <- Start designing Robo 2000
 84 ~Oct: Amiga demos to press    Boing Ball demo
 85 Jan: Amiga HW at CES          appeared in BYTE,Compute!,Popular
 85 Jan: Atari 520ST at CES       "By early 1985 the C64's price was $149; estimated production cost $35–50"
-85 ?  : C64 $149 C128K $299      (confusing offering: C128 + Amiga)
 85 Jul: Atari ST 512K $799/$999  (high end)
 85 Jul: Amiga 1000 256K $1285    (too expensive)
-85 Aug:                          <-- Robo 2000 Christmas bundle $169 (3 games)
-86 Aug:                          <-- Robo 2032 Launched $399 or $599 with color monitor
-86    : (What's the ST doing?)   NES launch in US (likely end of Robo 2000)
+85 Oct: C64 $149; C128K $299     Christmas: discounts $25-$100 with peripherals  (C128 + Amiga is confusing)
+85 Oct:                          <-- Robo 80 Christmas Bundle $179 (5 games + "Word processor" + 32K inside)  [incresed value]
+86 Jul:                          <-- Robo 2000 Launched $399 or $599 with color monitor (internal disk drive)
+86    : (What's the ST doing?)   NES launch in US (likely end of Robo 80)
 86 Oct:                          (150,000 Amigas sold US?)
 87 May: Amiga 500 $699 £499      Cost-reduced, "premium" price-point
-87 Aug:                          <-- Robo 2032 Christmas bundle $349 or $549 with monitor (2 games)
+87 Aug:                          <-- Robo 2000 Christmas bundle $349 or $549 with monitor (2 games)
 87 Oct: Atari 520STFM £260?
-88 Aug:                          <-- Robo 2032 Christmas bundle $299 or $479 with monitor (3 games)
+88 Aug:                          <-- Robo 2000 Christmas bundle $299 or $479 with monitor (3 games)
 89 Oct: Amiga 500, 512K £399     "Batman Pack" UK-only (Popular: 16-bit systems are now affordable)
 89 ?  : Sam Coupe                (10,000 gate ASIC, too late to market)
 89    :                          (games are still published for 8-bit systems up to ~92)
@@ -249,7 +269,7 @@ Design Goals:
 • Expandable and upgradeable  (users desire this; devs target lowest common..)
 • Targeting home games market (Tile BG, HW Sprites, HW Scrolling)
 • Productivity support        (expected by users: word processing, printing)
-• Powerful BASIC              (procedures, graphics, sounds [beeb])
+• Powerful BASIC              (procedures, graphics, sprites, sounds)
 • Approachable, easy to use   (friendly commands [1980s style])
 • Can make games on it        (bedroom coders)
 
@@ -257,7 +277,7 @@ Technical Goals
 • Tiled graphics (2bpp/4bpp) an extension of tiled text modes
   • Like the HW palette, these enable very fast changes to the screen
 • Sprites, for the same reason
-  • HW blitter is likely too slow at 2 mem-cycles per pixel (or 2/4px)
+  • HW blitter is likely too slow at 2 mem-cycles per pixel (or per 4px; 8 cycles per 16px)
 • Very simple custom HW (one 40-pin custom IC)
   • Every 80s home computer had one, or more (~2 exceptions)
   • Augment the 6502, cut redundant features, simplify to cost
@@ -273,12 +293,11 @@ https://en.wikipedia.org/wiki/Master_System
 https://www.copetti.org/writings/consoles/master-system/
 
 Timeline:
-• Jun 1982: hardware design, prototype, software        [started ~12 Jun]
-• Jan 1983: CES to show off the prototype HW to the press
-• Aug 1983: first manufacturing run available for Christmas [Sep-Oct]
+• Jan 1982: hardware design, prototype, software
+• Jan 1983: CES to show off the HW to the press
+• Jul 1983: first manufacturing run available for Christmas
 
-
-"Robo 2000" has 64K RAM + 16K VRAM + 16K ROM, 2 MHz 6502, announced Jan 1983.
+"Robo 80" has 64K RAM + 16K VRAM + 16K ROM, 2 MHz 6502, announced Jan 1983.
 A cost-optimised home computer for 1983.
 320 x 240, using tile map (40 x 30 visible of 64x32 tile-map)
 Cartridge port supports banked ROM/RAM (16K windows at &8000 and &C000)
@@ -338,7 +357,7 @@ Compatibility: can slow the speed to 2 MHz; half of ROM is exactly the '48 ROM.
 +128K RAM carts are popular (for a total 256K RAM) "256K" sticker on games.
 RTC was expected by this time for file timestamps.
 
-Priced US$349 or US$599 with composite color monitor.
+Priced US$349 or US$599 with composite color monitor (a low-cost 16-bit system)
 
 Is this just a faster Robo, or does it come with a multitasking GUI and DOS?
 
@@ -357,8 +376,9 @@ R65C02P4 4MHz 6502
 
 W65C816 was available for design-in around early 1986.
 Apple IIgs released September 1986 used a 2.8 MHz part.
-• Jan 1985: early samples of the 65816 were problematic (but available!)
+• Jan 1985: early samples of the 65816 were problematic (but available)
 • Competiton for parts with the IIgs
+• Low volume available •••••
 • Use the higher speed grade, 4 MHz
 • Possible private lincesing deal, like Ricoh for the SNES
 • Can't wait beyond Christmas 1986
@@ -384,7 +404,7 @@ Video bandwidth: 4*16 = 64 bits per tile (Robo 48 design, adding 16-bit)
 • 16 gfx-2bpp layer 1    • 16 gfx-2bpp layer 1 /
 • 16 gfx-2bpp layer 2    • unused
 
-Video bandwidth: 5*16 = 80 bits per tile (maybe 16Kx4 is fast enough for 5 reads)
+Video bandwidth: 5*16 = 80 bits per tile (fast enough for 5 reads?)
 • 2 Layers 2bpp:         • 2 Layers 4bpp,2bpp:
 • 16 tile+attr layer 1   • 16 tile+attr layer 1
 • 16 tile+attr layer 2   • 16 tile+attr layer 2
@@ -392,7 +412,7 @@ Video bandwidth: 5*16 = 80 bits per tile (maybe 16Kx4 is fast enough for 5 reads
 • 16 gfx-2bpp layer 2    • 16 gfx-2bpp layer 1 /
 • unused                 • 16 gfx-2bpp layer 2
 
-Video bandwidth: 6*16 = 96 bits per tile (maybe 16Kx4 is fast enough for 6 reads [Amiga fetches 6 planes])
+Video bandwidth: 6*16 = 96 bits per tile (fast enough for 6 reads? [Amiga fetches 6 planes])
 • 3 Layers 2bpp:         • 2 Layers 4bpp:
 • 16 tile+attr layer 1   • 16 tile+attr layer 1
 • 16 tile+attr layer 2   • 16 tile+attr layer 2
@@ -789,6 +809,7 @@ MMX, P6        280 nm  1996
 K6, Celeron    250 ns  1997  ARM7
 P4, AthlonXP   180 nm  1999
 
+MOS Technology licensed the 6502 architecture to Rockwell (R6502) and Synertek in the 1970s.
 
 "Less than 100 pounds - ZX80"
 
@@ -806,6 +827,8 @@ https://www.asciitable.com/
 http://www.emulator101.com/6502-addressing-modes.html
 https://www.benryves.com/bin/bbcbasic/manual/Appendix_Tokeniser.htm
 https://www.bbcbasic.net/wiki/doku.php?id=detokeniser
+
+https://worldofspectrum.net/pub/sinclair/books/
 
 RAM test: http://6502.org/source/general/address_test.html
 
@@ -1256,10 +1279,12 @@ RS - SAD-01 Breadboard, SKS-100 Jumpers
 HYB4164-2 150ns access / 280ns cycle time (random read/write) = 3.571429 MHz   (shipping ver)   $3.75/ea "overstocked"
 HY53C464-10 100ns access / 175ns cycle time (random read/write) = 5.714286 MHz (development)    $4.70/ea
 MCM4116BP15 150ns access / 375ns cycle time (random read/write) = 2.666666 MHz (OK at 1.78 MHz) $4.70/ea
+HM4816A-4   120ns access / 270ns cycle time (random read/write) = 3.703703 MHz (Hitachi 5V)
+HM4816A-7   150ns access / 320ns cycle time (random read/write) = 3.125    MHz (Hitachi 5V)
 DT1#fsN*^9IuXa*cPs
 
 A 175ns cycle (100ns DRAM) fits within the 186ns (5.3693181825) pixel cycle (w=256)
-Two cycles at 350ns fit within two pixels at 372ns, so 4 accesses per tile.
+One cycle at 320ns fits within two pixels at 372ns, so 4 accesses per tile (uncontested)
 
 tCP=20 + tPC=65
 
@@ -1726,3 +1751,75 @@ Usually don't want a length prefix: it costs a register, and extra
 checks when decoding. For strings it makes more sense, but so does a
 terminating zero (for number parsing etc)
 
+CrowdSupply
+
+"ROM", flags, version, table, [cmd: JMP, x, y], [int: JMP, x, y], {tbl: JMP, x, y}
+• activate an FS ROM: for LOAD/SAVE/RUN/CAT/etc
+• activate a Language ROM: 
+
+RetroBrew forums
+Gateron
+
+
+Simple video/audio output amps (NES clone)
+https://www.youtube.com/watch?v=_yVGCwotNZo
+
+
+Walnut Creek CP/M archive
+Kaypro II ADM-3A. VT52/VT100. ADM-3A was widely implemented.
+"The Amstrad PCWs were probably the largest-selling CP/M machines. They used VT52/Heathkit H19 codes"
+"I find a fairly even split in the terminals that software available via Walnut Creek, etc, was
+configured for out of the box between the ADM-3a, VT-52, Hazeltine 1500 and Osborne control sets."
+"I needed to talk to VMS systems, so I wanted a DEC emulation; VT52 was very easy, VT100 would have
+been too large and complex. ADM-3A would have been even easier."
+"If you want to get some idea of what terminal you should support, start with a dumb emulation,
+run the setup programs for products you're likely to use and find the ones they support."
+DEC VT-52, LSI ADM-3A, Hazeltine Esprit.
+TVI-950 because it had line insert and delete.
+VT100+ have verbose escape sequences.
+
+Introduction to VLSI Systems (1979) by Mead and Conway (automated design)
+Electronics hobby magazines
+
+BYTE Dec 1982 https://archive.org/details/byte-magazine-1982-12/page/n367/mode/2up
+
+
+Can we run CP/M in a cartridge?
+
+CP/M: CCP (Console Command Processor), BDOS (Basic Disk Operating System), and BIOS (Basic Input/Output System)
+together required as little as 6 KB of RAM (2K CCP, 3.5K BDOS, 'small' BIOS) ~ 8K CP/M in ROM?
+Minimum 20K to operate, 48K or more for practical use.
+
+• Store CCP, BDOS, BIOS in an 8K cartridge ROM
+• Include a Z80A in the cartridge, mapped to the system DRAM
+• Boot the Z80 from the 6502 (write the reset vector to RAM)
+• Needs hardware to remap pages 0 - 1 (remap the first 2K)
+• Switches to 6502 to access the disk (driver code is 6502 in ROM)
+
+Transient Program Area (TPA) where user programs ran started at address 0x0100 on the Z80,
+extended up to the start of the BDOS. Page 0 used for INT vec, CLI buffer, FCBs, sys vars.
+
+WordStar required at least 48K to run effectively, with 64K being ideal (~54K available)
+
+64K - 512 for 6502 = 65024 (63.5K)
+VRAM holds 80-column, 16-color text (with 6502 support)
+
+The de facto standard was 80 x 24, especially for business applications like WordStar and Turbo Pascal,
+due to compatibility with common terminals like the VT52 and ADM3A.
+
+Most software was available in the Xerox 820 [disk] format.
+By 1982, soft-sector, single-sided, 40-track 5.25-inch disks [MFM-format] had become the most
+popular format to distribute CP/M software on as they were used by the most common consumer-level
+machines of that time, such as the Apple II, TRS-80, Osborne 1, Kaypro II, and IBM PC.
+
+Unless you match a dominant format (e.g. Kaypro/Osborne), file exchange may require transfer utilities.
+
+• ROM Program | RAM Upgrade | CP/M Cartridge  (Conflict!)
+• User Port | Printer Port
+• Expansion Port | Disk Interface
+
+Problem: we want both the CP/M Cartridge and the RAM Upgrade at the same time.
+
+"The perceived success of your CP/M cartridge is how fast WordStar loads and saves"
+
+Video encoder - Analog Devices ADV7123 or similar

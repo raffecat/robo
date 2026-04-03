@@ -176,6 +176,14 @@ In LCMXO2-640, 16x4-bit (64-bit) RAM costs 3/4 Cell, leaving 1 slice available.
 • 64*8/64 = 8 cells  (palette)
 • 8*2*8/64 = 2 cells (second-half sprite gfx)
 
+256-byte SRAM = 192/4=48 sprites + 64 palette            (external palette/sprite RAM)
+HITACHI HM6116P-3 SRAM (2Kx8) 150ns; HM6116P-70 70ns     ("goto" 6116 chip)
+Toshiba TMM2016P-1 SRAM (2Kx8)
+NEC DG446C-2 (2Kx8) 200ns
+IDT 6116SA15 (2Kx8) SRAM 15ns 5V DIP-24
+NTE65101 (256x4) x2
+TMS/SMC/NEC/Mostek 5101 family (512 × 4)                 (extremely common)
+
 CPLD/FPGA                                                                 Prototype HW
 We need 8 x 8-bit shift registers for sprites            (8 cells)
 We need 8 x 8-bit latch for 'next' sprite gfx •          (8 cells)

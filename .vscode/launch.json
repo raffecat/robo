@@ -7,10 +7,18 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug",
+            "name": "Robo 48",
             "program": "${workspaceFolder}/emu/robo",
             "args": [],
-            "preLaunchTask": "build_sdl"
+            "preLaunchTask": "build_robo48"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "ECS-604",
+            "program": "${workspaceFolder}/robo-8/emu/ecs_604",
+            "args": [],
+            "preLaunchTask": "build_ecs_604"
         }
     ]
 }

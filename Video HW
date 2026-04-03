@@ -453,13 +453,16 @@ An 80-column mode is highly desirable:
 • use the 4 memory accesses per tile to load [chr0][chr1][gfx0][gfx1]
 • render 1bpp gfx0 then gfx1 at 640 clocks per line
 • can the chip technology shift at twice the pixel rate?
+• gate through alternate bits on rising/falling edge (no shift)
 
 80-column color text is just possible:
-• repurpose sprite RAM to hold the attribute byte for each character on a line
-• expand sprite RAM to 160 bytes (+32), so we can store (80 x 2) bytes
-• upload 10 bytes (20 mem cycles) per HBlank -> 10*8 = 80 bytes
-• during each line of text, upload colour data for the next line
-• hack: make the palette 64 bytes, share (alias) the top 32 bytes
+• repurpose sprite RAM to hold the attribute byte for each character on a text row
+• sprite RAM is 128 bytes, room for 80+48; we're short 32 bytes for double-buffer
+• upload 24 bytes (48 mem cycles) twice during HBlank cycles -> 24*2 = 48 bytes
+• wait for HBlank on the last line of the text row (on the 8th line)
+• upload the last 32 bytes (64 mem cycles) during the last HBlank -> 48+32=80 bytes
+• the last upload overwrites 32 bytes of the prior row's colours
+• 80+80=160-128=32+80=112+80=192-128=64+80=144-128=16+80=96+80=176-128=48..
 
 However, consider the goal for the machine:
 • a home games machine to hook up to the TV, or composite display
