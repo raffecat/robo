@@ -1,0 +1,261 @@
+// Robo Emulator - Renderer
+
+#include <SDL2/SDL.h>
+#include <string.h>
+#include "header.h"
+
+// NTSC Vert: 192 + 25 + 9 + 3 + 8 + 25 = 262
+// NTSC Horz: 128 + 31 + 6 + 16 + 2 + 10 + 4 + 31 = 228
+const int fb_hbord = 31; // border width in FB
+const int fb_vbord = 25; // border height in FB
+const int fb_width = 256+(fb_hbord*2);
+const int fb_height = 192+(fb_vbord*2);
+const int width = fb_width*2;  // MUST be twice as wide
+const int height = fb_height*2; // MUST be twice as high
+
+static SDL_Window* window = 0;
+static SDL_Renderer* renderer = 0;
+static SDL_Texture* texture = 0;
+static uint64_t vdp_clk = 0;
+static int vdp_nextbus = 0;
+
+// vdp timing
+uint16_t vdp_hcount = 0; // 8-bit horizontal count
+uint16_t vdp_vcount = 0; // 9-bit vertical line count (visible to ula.c)
+uint8_t vdp_hborder = 1;  // 1-bit latch (visible to ula.c)
+uint8_t vdp_hblank = 0;  // 1-bit latch
+uint8_t vdp_vborder = 0;  // 1-bit latch
+uint8_t vdp_vblank = 0;  // 1-bit latch (visible to ula.c)
+
+// pixel pipeline
+static uint8_t vdp_latch = 0x12; // 8-bit character latch
+static uint8_t vdp_shift = 0xF3; // 8-bit pixel shift register
+static uint8_t vdp_semigr = 0x03; // 4-bit semigraphics color latch
+//static uint16_t vdp_vaddr = 0x03; // 12-bit video address register (0-4096)
+
+// colors.py
+static uint32_t hw_pal[8] = { // RGB
+    0x0,
+    0x6f00ff,
+    0xff00db,
+    0xffab7a,
+    0xffff21,
+    0x68ff9f,
+    0x200ff,
+    0xcccccc,
+};
+
+// [00000000][00000000][00000000] -- fetch tile         (load low)
+// [00000000][00000000][00000000]
+// [00000000][00000000][00000000] -- fetch attrib       (nop)
+// [00000000][00000000][00000000]
+// [00000000][00000000][00000000] -- fetch gfx low      (load high)
+// [00000000][00000000][00000000]
+// [00000000][00000000][00000000] -- fetch gfx high     (nop)
+// [00000000][00000000][00000000]
+// [LLLLLLLL][00000000][00000000] -- load low
+// [HHLLLLLL][LL000000][00000000]
+// [HHHHLLLL][LLLL0000][00000000] -- nop
+// [HHHHHHLL][LLLLLL00][00000000]
+// [HHHHHHHH][LLLLLLLL][00000000] -- load high
+// [00HHHHHH][HHLLLLLL][LL000000]
+// [0000HHHH][HHHHLLLL][LLLL0000] -- nop
+// [000000HH][HHHHHHLL][LLLLLL00]
+// [NNNNNNNN][HHHHHHHH][LLLLLLLL] -- 16 cycle lag
+//           [------------------]
+//                ^ VidFinH (0,2,4,6,8,10,12,14)
+
+// framebuffer
+// SDL_PIXELFORMAT_ARGB8888 uses 32-bit integers; byte-order depends on the platform's endianness.
+// MSB -> { alpha, red, green, blue } <- LSB
+static uint32_t FB[fb_width*fb_height]; // 300K!
+//static uint32_t* FBspan = &FB[0];
+static uint16_t FBcol = 0;
+static uint16_t FBrow = 0;
+
+int init_render() {
+    SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS);
+    window = SDL_CreateWindow(
+        "ECS-604",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        width, height,
+        0
+    );
+    if (!window) return 0;
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE|SDL_RENDERER_PRESENTVSYNC); // SDL_RENDERER_ACCELERATED
+    if (!renderer) return 0;
+    // if (!SDL_RenderSetLogicalSize(renderer, width, height)) return 0;
+    texture = SDL_CreateTexture(
+        renderer,
+        SDL_PIXELFORMAT_ARGB8888,
+        SDL_TEXTUREACCESS_STREAMING,
+        width, height
+    );
+    if (!texture) return 0;
+    // fill DRAM with random bytes
+    for (int i=0; i<8192; i++) {
+        MainRAM[i] = i;
+        CartRAM[i] = i;
+    }
+    return 1;
+}
+
+void final_render() {
+    SDL_DestroyTexture(texture); texture=0;
+    SDL_DestroyRenderer(renderer); renderer=0;
+    SDL_DestroyWindow(window); window=0;
+    SDL_Quit();
+}
+
+void render() {
+    void* pixels;
+    int pitch;
+    if (SDL_LockTexture(texture, NULL, &pixels, &pitch) != 0) {
+        return;
+    }
+
+    // render the framebuffer.
+    // memcpy(pixels, FB, sizeof(FB));
+    char* dst_row = pixels; // pitch is in bytes
+    uint32_t* src_row = FB;    // all FB addressing is in pixels
+    for (int y=0; y<fb_height; y++) {
+        // first WINDOW row
+        char* dst_next_row = dst_row + pitch;
+        uint32_t* to1 = (uint32_t*)dst_row;
+        uint32_t* to2 = (uint32_t*)dst_next_row;
+        uint32_t* from = src_row;
+        for (int x=0; x<fb_width; x++) {
+            // window must be TWICE as high as FB
+            // window must be TWICE as wide as FB
+            // fill four pixels:
+            to1[0] = from[0];
+            to1[1] = from[0];
+            to2[0] = from[0];
+            to2[1] = from[0];
+            to1 += 2;
+            to2 += 2;
+            from += 1;
+        }
+        dst_row += pitch + pitch; // advance two rows
+        src_row += fb_width;      // advance one row
+    }
+
+    SDL_UnlockTexture(texture);    
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, texture, NULL, NULL);
+    SDL_RenderPresent(renderer);
+}
+
+// advance the renderer to catch up with the CPU clock (clockticks6502)
+// the current vdp_clk has already been processed
+void advance_vdp() {
+    // NTSC: 14.31818 Mhz: CPU is 1/14 at 1.022727; VDP shift clk is 1/2 at 7.15909 MHz (139.68ns)
+    // PAL 17.734475 MHz: CPU is 1/18 at 0.985248; VDP shift clk is 1/2 at 8.8672375 MHz (112.77ns)
+    uint64_t vdp_target = clockticks6502 * 7; // exactly 7 px per CPU cycle
+    while (vdp_clk < vdp_target) {
+        // Horizontal timer counts 256/8=32 characters, at a rate of 7px per CPU cycle.
+        // XXX this means the CPU address cannot be derived from the HCounter.
+        // No it can, we just get 4 duplicate reads during a line (use these for refresh)
+
+        if (--vdp_nextbus < 1) {
+            // VRAM memory access on each BUS cycle (1.022727 MHz) (every 14/2=7 pixels)
+            vdp_nextbus = 7;
+            // TODO: resolve bus timing: 1.02 MHz VDP Latch (7 CLK) -> 0.895 MHz Char Latch (8 CLK)
+            // if (vdp_vbusy && vdp_hbusy) {
+            //     // HAddress: low 5 bits (0-31); VAddress: 5 bits above that (0-23)
+            //     // Base: $0200 (awkward)
+            //     uint16_t addr = 0x400 + ((((vdp_vcount>>3)&31)<<5)|((vdp_hcount>>3)&31)); // [0,768)
+            //     vdp_latch = MainRAM[addr]; // Char
+            // }
+            uint16_t addr = 0x000 + ((((vdp_vcount>>3)&31)<<5)|((vdp_hcount>>3)&31)); // [0,1024)
+            vdp_latch = MainRAM[addr]; // Char
+        }
+        uint16_t vdp_hsub = vdp_hcount & 7; // 0-7 (low 3 bits of hcount)
+        // load next character every bus cycle
+        // (FIXME: on the rising edge of PHI2 [every 7 pixels])
+        // if (vdp_hsub == 4) {
+            // HAddress: low 5 bits (0-31); VAddress: 5 bits above that (0-23)
+            // Base: $0200 (this will access up to 1KB, only 768 displayed)
+            // uint16_t addr = 0x000 + ((((vdp_vcount>>3)&31)<<5)|((vdp_hcount>>3)&31)); // [0,1024)
+            // vdp_latch = MainRAM[addr]; // Char
+        // }
+        // load the shift register every 8th CLK
+        uint8_t prev_shift_out = (vdp_shift>>7); // pixel latch has 1px delay
+        uint8_t prev_semigr = vdp_semigr;        // also delay color by 1px
+        if (vdp_hsub == 0) {
+            // load the latched character (via CharROM) into the shift register
+            // on the first pixel of the next tile
+            int address = (vdp_latch << 3) + (vdp_vcount & 7);
+            vdp_shift = CharROM[address];
+            vdp_semigr = (vdp_latch>>4); // MCCCxxxx
+        }
+        // shift the register every CLK (suppressed when loading)
+        if (vdp_hsub != 0) {
+            vdp_shift = vdp_shift << 1; // wired up backwards so top bit shifts out first
+        }
+        if (vdp_vborder == 0 && vdp_hborder == 0) { // vdp_hborder == 0
+            // display area
+            // latch the pixel on the next CLK (prev_shift_out)
+            int vdp_pixel = prev_shift_out ? (VidPal & 15) : (VidPal >> 4); // palette select MUX
+            int hw_color = ((prev_semigr & 8) && prev_shift_out) ? (prev_semigr&7) : (vdp_pixel&7); // Semigraphics or Text
+            uint32_t output = 0xFF000000 | hw_pal[hw_color]; // HW palette (phase select MUX)
+            FBcol = vdp_hcount;
+            if (FBrow < fb_height && FBcol < fb_width) { // safety check
+                int coord = ((fb_vbord+FBrow) * fb_width) + fb_hbord + FBcol; // FBSpan+FBcol
+                FB[coord] = output;
+                FBcol++;
+            }
+        }
+
+        // Clock in the new HCount, VCount, and decodes.
+        vdp_clk++;
+        vdp_hcount++;
+        // NTSC Horz: 128 + 31 + 6 + 16 + 2 + 10 + 4 + 31 = 228 (x2 for pixels)
+        // [0][1][2][3][4][5][6][7][8][-]
+        // [/][0][1][2][3][4][5][6][7][8]
+        if (vdp_hcount == 8+1) {
+            vdp_hborder = 0;     // turn off border (after 1 character + 1 pixel)
+        }
+        if (vdp_hcount == 256+8+1) {
+            vdp_hborder = 1;     // turn on border (after 33 characters + 1 pixel)
+        }
+        if (vdp_hcount == 256+62) { // 318
+            vdp_hblank = 1;      // turn on HBLANK
+        }
+        if (vdp_hcount == 256+62+76) { // 394
+            vdp_hblank = 0;      // turn off HBLANK
+        }
+        if (vdp_hcount == 455) { // NTSC 455 -> 456/7 = 65.14; 65*7=455
+            // NTSC: 227.5 color-burst cycles per line at 3.57954 MHz
+            // NTSC: 455 pixels per line at 7.15909 MHz
+            // CPU: 455/7 = 65 cycles at 1.02272 MHz exactly
+            vdp_hcount = 0;      // end of line
+            //FBcol = 0;           // reset output column
+            FBrow++;             // next output row
+
+            // NTSC Vert: 192 + 25 + 9 + 3 + 8 + 25 = 262
+            vdp_vcount++;
+            if (vdp_vcount == 192) {
+                vdp_vborder = 1; // turn on vertical border
+            }
+            if (vdp_vcount == 192+25) {
+                vdp_vblank = 1;   // start of vblank
+                render();
+                request_irq();
+            }
+            if (vdp_vcount == 192+25+9+3+8) {
+                vdp_vblank = 0;   // end of vblank
+            }
+            if (vdp_vcount == 192+25+9+3+8+25) {
+                vdp_vcount = 0;    // end of field (262 lines)
+                vdp_vborder = 0;   // turn off vertical border
+                FBrow = 0;         // reset output row
+                //vdp_nextbus = 0;   // TESTING (bus rates other than 7)
+            }
+
+            // calculate output row address
+            // int coord = (((fb_vbord+FBrow) * fb_width) + fb_hbord);
+            // FBspan = &FB[coord];
+        }
+    }
+}
