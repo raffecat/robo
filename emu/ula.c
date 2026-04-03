@@ -285,9 +285,7 @@ static uint8_t ula_io_read(uint16_t address) {
             value = SprAddr; // was &127
             break;
         case IO_SPRD:                     // $FF: sprite data R/W
-            if (SprAddr < SPR_SIZE) {     // (was &127)
-                value = SPR_RAM[SprAddr];
-            }
+            value = SPR_RAM[SprAddr & (SPR_SIZE-1)];
             SprAddr++;                    // 8-bit register
             break;        
     }
@@ -465,9 +463,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             SprAddr = value; // was &127
             break;
         case IO_SPRD:                     // $FF: sprite data R/W
-            if (SprAddr < SPR_SIZE) {     // (was &127)
-                SPR_RAM[SprAddr] = value;
-            }
+            SPR_RAM[SprAddr & (SPR_SIZE-1)] = value;
             SprAddr++;                    // 8-bit register
             break;
     }
@@ -507,17 +503,13 @@ uint8_t dma_read_cycle() {
         }
         case DMA_Sprite: {
             // Read sprite memory, 7-bit address.
-            if (DMA_Src < SPR_SIZE) {     // (was &127)
-                value = SPR_RAM[DMA_Src];
-            }
+            value = SPR_RAM[DMA_Src & (SPR_SIZE-1)];
             break;
         }
         case DMA_SprClr: {
             // Read sprite memory, 7-bit address ignoring low 2 bits.
             // Quirk: HW doesn't implement inc-src-by-four.
-            if (DMA_Src < SPR_SIZE) {     // (was &127)
-                value = SPR_RAM[DMA_Src];
-            }
+            value = SPR_RAM[DMA_Src & (SPR_SIZE-1)];
             break;
         }
         default: {
@@ -606,19 +598,15 @@ void dma_write_cycle() {
         }
         case DMA_Sprite: {
             // Write sprite memory, 7-bit address
-            if (DMA_Dst < SPR_SIZE) {     // (was &127)
-                SPR_RAM[DMA_Dst] = DMA_DL;
-            }
+            SPR_RAM[DMA_Dst & (SPR_SIZE-1)] = DMA_DL;
             DMA_Dst = (DMA_Dst + DMA_dinc) & 0xFFFF;
             break;
         }
         case DMA_SprClr: {
             // Write $FF to sprite memory, 7-bit address ignoring low 2 bits.
-            if (DMA_Dst < SPR_SIZE) {     // (was &127)
-                SPR_RAM[DMA_Dst & 0xFC] = 0xFF;
-            }
+            SPR_RAM[DMA_Dst & (SPR_SIZE-1) & 0xFC] = 0xFF;
             // Increment DST by 4 (HW only wired up for DST)
-            // Vertical mode overrides this (doesn't increment low bits)
+            // XXX does vertical mode override this? (doesn't increment low bits)
             uint16_t inc = (DMA_dinc==1 ? 4 : (DMA_dinc == 65535 ? 65532 : DMA_dinc));
             DMA_Dst = (DMA_Dst + inc) & 0xFFFF;
             break;
