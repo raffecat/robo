@@ -1,0 +1,58 @@
+
+1977: design a low-cost system to enter the market in 1978.
+
+Specifications:
+• 1 MHz 6502
+• 4K DRAM (best price-per-bit; 450ns cycle)
+• 4K BASIC ROM
+• 2K Character ROM (fixed font)
+• 32 x 24 Text display
+• Programmable BG+FG colors for raster effects (2 of 8 colors)
+• 64 x 48 Semigraphics in 8 colors (Upper 128; semigraphics override FG color)
+• PSG: 8-bit Counter, square wave
+• Tech: 74LS VDP+PSG
+
+Position: fast-follow low cost machine for 1978
+Point of Difference: color + sound; hi-res graphics; lower-case! (vs TRS-80, Apple II)
+Target market: Home market, Word Processing, Education, Business?
+TAM: 100,000 units? (these new home computers seem popular)
+Strategy: low-cost base system + upsell: 4K RAM Cart, Data Recorder, Composite Monitor, Printer, ...
+
+
+1978/1979: secure Japanese order 50K 16Kx1 DRAM chips
+
+Two uses:
+• Premium 16K RAM Cart (forward compatible with next machine)
+• Baseline 16K memory for the next machine
+
+
+1980: design a fast-follow for the 1981 market (VIC-20)
+
+Specifications:
+• 1 MHz 6502
+• 16K DRAM (best price-per-bit; still 450ns cycle)
+• 8K BASIC ROMs (6K BASIC + 2K character ROM)
+• 32 x 24 Text display with Color RAM (16 colors; 1Kx4 SRAM, also a row buffer)
+• User defineable charcters (128/1K or 256/2K modes)
+• Text modes: 32x24 1-color per cell; 16x24 2-color per cell
+• APA modes: 256x192/1bpp, 128x192/2bpp + line-double modes to save RAM
+• APA modes use Color RAM to provide 1-2 colors per 8x8 cell
+• Programmable BG+AUX colors for raster effects (2 of 16)
+• Hardware smooth scrolling
+• PSG: 3 x 10-bit square wave + 1 x noise (software ADSR)
+• Tech: Gate Array VDP+PSG
+• Backwards compatibility: possible (same chcarcter ROM + logic in the GA)
+
+Position: fast-follow next gen machine for 1981
+Point of Difference: fast HW scrolling, 4-color modes with 3 unique colors per cell (one a half-bright variant)
+Target market: Home games market + Education to sell it to parents
+Strategy: low-cost base system + upsell (again): 16K RAM Cart, Disk Drive, Modem?, others as before.
+
+
+
+1982: design a fast-follow for the 1983 market (C64)
+
+DOTCLOCK:
+Apple II, CoCo used 7.16 MHz for 280/256px; C64/ST use 8 MHz for 320px (wider border)
+Early consoles (NES/SNES) used 5.37 MHz for 256 pixels.
+Sega Genesis used 6.7 MHz for 320 mode.

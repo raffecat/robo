@@ -1,0 +1,1099 @@
+Robo-4K
+
+Designed in 1977 for release in early 1978.
+To gain experience building the most basic computer.
+
+The computer has 8-color semigraphics, low-res and hi-res APA modes with 2 programmable
+colors per line; normal text has the same 2-color capability. It has a 1-channel square
+wave PSG. It also has lowercase letters for word processing, but only a 32 x 24 text
+screen (to allow the use of a home TV.)
+
+• 1 MHz NMOS/Synertek 6502                                  $7 at volume
+• 4K DRAM MK4096/2104A (best price-per-bit)                 ~$8 for 4KB set at 100K+ volume (~$3–$5 per 4K×1 chip retail / ~4)
+• 4K BASIC ROM (Integer BASIC)  [single highest BOM cost!]  ~$10 per set (4K+2K or 3x2K) at 100K volume
+• 2K Character ROM (256 x 8x8 glyphs) on VDP Bus            ---
+• 32-column text (32 x 24) i.e. 256 x 192                   $25 total for these components
+• 64x48 Semigraphics in 8 colors (high 128 characters)
+• 256x192 High-res Graphics; 128x96 Low-res
+• 2816 bytes free in BASIC (used: 512 system; 768 display)
+• 8-bit PSG, one channel square wave                        (74LS161 x2 8-bit Counter + 74LS374 Latch + D-FF)
+
+Point of Difference: color + sound; hi-res graphics; lower-case (vs TRS-80, Apple II)
+Target market: Home market, Word Processing, Education, Small Business
+
+Small Business - Reliability (business wanted all-in-one designs and lowercase)
+Education - Color graphics for engagement + volume discounts
+Home/Hobbby - Growth Market (TV-compatible 32x24, low cost, tech specs)
+Position: Best of both worlds, more affordable alternative to Apple II.
+
+Text modes:                                Base 4K:           Base 5K:           Base 8K:           Base 16K:
+0  32 x 24  2-color  Extended ASCII        2816 bytes free    3840 bytes free    6912 bytes free    15104 bytes free
+1  32 x 24  8-color  Semigraphics + ASCII  2816 bytes free    3840 bytes free    6912 bytes free    15104 bytes free
+                                                                                                                               
+APA modes:                                 Base 4K:           Base 5K:           Base 8K:                                      
+2  128 x 96   2-color Low-Res     1.5 KB   2048 bytes free    3072 bytes free    6144 bytes free    14336 bytes free
+3  128 x 192  2-color Medium-Res  3 KB     512 bytes free     1536 bytes free    4608 bytes Free    12800 bytes free
+4  256 x 96   2-color Medium-Res  3 KB     512 bytes free     1536 bytes free    4608 bytes Free    12800 bytes free
+5  256 x 192  2-color High-Res    6 KB     not available      not available      2048 bytes free    9728 bytes free
+
+00000000 00000000 Bank 0 (Base 8K)
+00100000 00000000 Bank 1 (16K Cart Bank 1)
+01000000 00000000 Bank 2 (16K Cart Bank 2)
+01100000 00000000 Bank 3
+10000000 00000000 Bank 4
+
+$0000 4K RAM  512-byte system area, then APA mode buffer (1.5/3/6K)
+$1000 1K RAM  last 768 bytes for text mode (always ends at end of RAM)
+Expansion Cart goes at the bottom, moving other RAM up (so 16K -> 4K/16K -> 1K is contiguous)
+But on the 16K model, Expansion Cart goes in the middle (it might be <16K)
+
+4096 - 1536 - 512 = "2048 Bytes Free"  (2K)
+4096 - 3072 - 512 = "512 Bytes Free"   (!)
+8192 - 768 - 512  = "6912 Bytes Free"  (6.75K) [+4K RAM Cart]
+8192 - 1536 - 512 = "6144 Bytes Free"  (6K)    [+4K RAM Cart]
+8192 - 3072 - 512 = "4608 Bytes Free"  (4.5K)  [+4K RAM Cart]
+
+All APA modes support four HW palettes; 1bpp modes use the first two colors.
+Can we fit a 4-color HW palette (2+2+2+2 = 8 bits)
+Black|DkBlue|DkGreen|DkBrown
+Red|Orange|Yellow|Cream
+Green|Blue|Cyan|Magenta
+Yellow|Orange|Blue|Cyan
+
+In 100K volume, 74LS series chips are commodities costing under $0.20 each.
+
+4Kx1 DRAM
+"By 1977, the industry was transitioning to 16K chips, driving down the price of 4K"
+"volume discounts for 100K units typically slashed costs by 90% or more"
+"High-volume OEM pricing (10K–100K units) was typically ~2× to 4× cheaper than retail in 1977–1979"
+"DRAM price curve: ~30–35% drop per doubling of volume"
+
+4K DRAM was cheaper per bit until 1978-1979.
+MK4096, Intel 2107C, TI TMS4027 (2107C-4 300/470; 270C-3 250/430) 22-pin ~$3.50-5.00
+22-pin: 12 address, Din, Dout, CE+CS, WE, -5,Gnd,+5,+12V (no RAS/CAS)
+RAS pulse width: low for 150–200ns to latch the row
+RAS to CAS Delay: typically 35-50ns
+Precharge time:  After a cycle, RAS must stay high for about 100ns to "recharge" the bit lines.
+Refresh: all 64 rows every 2ms. (500 Hz * 64 = 32000)
+Intel 3242 or Mostek MK5087 "DRAM controller" chips.
+
+Apple II (1977): Shipped with 4 KB standard.
+TRS-80 Model I (1977): Introduced with 4 KB RAM.
+Commodore PET 2001 (1977): Shipped with 4 KB or 8 KB of SRAM!
+Atari 400/800 (1979): The Atari 800 shipped with 8 KB of RAM (expensive!)
+"Most users quickly added memory expansion" -> +4K Cart $49, +16K Cart $149
+
+512x4 SRAM (late 70s): ~$10–$20 per chip ($40–$80 total for 1K)
+1K×1 SRAM (late 70s): ~$8–$15 per chip ($64–$120 just for 1K)
+
+"For a 100K unit production run, using a single Intel 3242 instead of four discrete TTL
+chips reduces your failure points and simplifies your testing/QA process."
+2ms / 128 = 15.625µs between RAS-only refreshes. 63.555765µs / 15.625µs = 4.06756896 times per line,
+or "4 refresh cycles per horizontal line".
+As the VDP fetches 8 bytes per 7 charcter cells, I have 4 x 500ns slots left over per line.
+So I can use those 4 spare slots to perform a RAS-only refresh using counter taps.
+128 rows / 4 per line = 32 lines. 32 lines x 63.5µs = 2.032µs (a 'hair' over spec.)
+Needs 2 x 74LS157 (4x 2:1 Mux) to switch to the Refresh Address. And RAS-only logic (suppress CAS.)
+Use 4 x 74LS157 to select the 14-bit Address Source.
+Use 2 x 74LS157 to multiplex the low and high address halves.
+CPU Path: Use a 74LS245 Octal Bus Transceiver, enable during CPU cycles, set direction from R/W.
+
+Always: fetch a byte at 1.02 MHz bus-rate: 36 bytes per 256 px (use 4 cycles for refresh.)
+APA modes: bypass the character ROM, load from latch to latch (cost: 2 x 74LS157 2:1 MUX)
+
+Half-width mode:
+• very useful for a 4K machine (1.5K VRAM -> 2K free for BASIC)
+• clock VDP at half-rate while scanout is active?! (breaks Refresh, EndScan/EOL decodes..)
+• fiddle address (MUX >>1 ??) to load the same byte twice; suppress loading into shifter; halve shifter clock.
+• ^ needs to use half the RAM, i.e. slower advance
+
+74LS propagation delays ~15ns:
+T=0ns:  Address Mux selects Row Address.
+T=25ns: RAS falls. (Row is latched).
+T=55ns: Address Mux selects Column Address. Row Address Hold (tRAH) is met. 
+T=85ns: CAS falls. (Column is latched).
+T=275ns: Data becomes valid (based on tRAC=250ns).
+T=350ns: Data is latched by the CPU or VDP. RAS/CAS both return High.
+T=500ns: Slot ends. This leaves 150ns for RAS Precharge (tRP), exceeding the required 100ns.
+
+
+0    ↑↓←→                               Symbols
+32    !"#$%&'()*+,-./0123456789:;<=>?
+64   @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_   
+96   `abcdefghijklmnopqrstuvwxyz{|}~ 
+128   ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█ ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█   Color 0,1
+160   ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█ ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█   Color 2,3
+192   ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█ ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█   Color 4,5
+224   ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█ ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█   Color 6,7
+     çćḉĉÇĆḈĈČèéêėëēęěȩ                 Extended
+
+4-char circle. 1-char circle. solid circle. hollow bullet. solid bullet.
+
+
+Inverse mode: uses the first half of the ROM twice; second copy is inverse.
+Graphics characters: could generate these in the VDP (if we use one!)
+
+
+Aug 1977 TRS-80 had 64 x 16 character matrix (512 x 128). Sixels (6-bit) 2x3 pseudo-graphics.
+Uppercase only. 4K RAM + 4K BASIC with fp. Up to 48K.
+"Unlike competitor Commodore, which had announced the PET several months earlier but had not yet shipped any"
+
+Alps Electric Co Japan - sealed key-switch keyboard ~1979
+
+Use a 1kΩ to 2.2kΩ resistor to tie unused inputs to 5V (or GND?)
+
+CD4060 14-bit binary counter - often used in Video circuitry; on-chip oscillator
+
+
+ROMs:
+8Kbit  (1Kx8)   Intel 2308 / 1702A     ~$8.00 – $10.00    ~0.10¢ – 0.12¢
+16Kbit (2Kx8)   Intel 2316 / EA 4600   ~$12.00 – $15.00   ~0.07¢ – 0.09¢ ••
+
+2716 EPROMs ($30.00) are pin-compatible with 2316 ROM, for development.
+
+4K BASIC was standard in 1977: 2 x 2316 (2Kx8) ~$20 for 20K (~$14 for 50K)
+MS 4K BASIC stripped out "luxury" features like string manipulation (mostly),
+transcendental functions (SIN, COS, ATN), and formatted printing.
+
+$2,000 per mask / 10K units = $0.20
+10K Volume Unit Price: ~$12.00 - $15.00 per unit (small run)
+20K Volume Unit Price: ~$9.00 – $11.00 per unit (efficient production run)
+50K Volume Unit Price: ~$5.50 – $8.00 per unit (tier 1 pricing)
+
+2K ROM (Intel 4004 era, early 1970s): ~$13 each at ~50K units.
+Extrapolating to 1978–79: improved process, higher yields, "packaging costs became dominant"
+100K units, Japanese supplier:
+2K ROM	~$2–$4
+4K ROM	~$3–$6
+So up 4+4+4=$12 or 6+4=$10 per set at 100K.
+
+By late 1978, the 16K mask ROM (like the Intel 2316) became a true commodity.
+Volume prices fell from the $10–$12 range in 1977 to roughly $4.00–$6.00 by 1979.
+ROM cost per bit was often lower than DRAM by the late 70s.
+Japanese ROM pricing could undercut US suppliers by the late 70s (NEC,Hitachi,Fujitsu)
+
+"In 1977, your ROM set was roughly 7 times more expensive than your CPU."
+Mask ROMs had a 8–12 week lead time.
+Wafer Economics: In 1977, a single 4-inch wafer could yield hundreds of 16K ROM dies.
+A 50K order represents hundreds of wafers, providing the manufacturer with enough
+guaranteed business to justify lower margins.
+Market Share Wars: Suppliers like MOS Technology, Intel, and Mostek would often under-bid
+each other to lock in a computer design for the next 24 months, knowing that "design-in"
+made it difficult for the customer to switch suppliers later.
+
+By late 1978, the 16K mask ROM (like the Intel 2316) became a true commodity.
+Price Drop: Volume prices fell from the $10–$12 range in 1977 to roughly $4.00–$6.00 by 1979.
+
+Character Generators:
+Mullard SAA5050 Teletext - expensive, $20 in volume
+Motorola MCM6571 - cheaper, $5 in volume
+Signetics 2513 - 
+GI Y-3-8900 - $10-15 in volume, part of a chipset bundle
+2K ROM + 74LS166 shifter - $10 ROM + $2 IC = $12
+
+If your system already used two 16K ROMs for your BASIC, ordering a third
+16K ROM for characters often got you a better "total volume" discount.
+
+OK use a 2KB character ROM:
+First 32 characters - line graphics
+Next 96 characters - standard ASCII
+Next 16 characters - 2 x 2 pseudo-graphics (mirrored in Gfx mode)
+Next 48 characters - international characters
+Last 64 characters - 2 x 3 pseudo-graphics
+
+BASIC ROM
+ |
+Decoder ---- IO Registers
+ |
+ |
+6502 -----MUX---- DRAM
+           |
+        VDP Counters -> MUX
+DBUS -> Pixel Shifter
+        Resistor DAC
+           |
+      Character ROM
+
+74LS157 DRAM MUX select line is connected to Φ2.
+
+                                                             1bbp/2bpp Select -- Pixel Clock
+                                                                    |               |
+                                                                  2 x DFF           |            2x 74LS04
+          VCount+HCount                                 /-------- 74LS74            |            Delay Line
+                |                                       |          |   |            |                |
+    DRAM -- Bus MUX -- VDP latch -- Character ROM -- Shifter    4:1 Select --- 3-bit Latch ---- 1 of 8 74LS151
+          2 x 74LS157   74LS373      2316 2Kx8       74LS166   2 x 74LS153       74LS373      Tap the Delay Line
+                                                                     |                               |
+                                                                  Palette                     2N3904 Transistor
+                                                                  74LS373              Total "Color Engine" Cost: ~$1.05
+                                                                (IO Register)
+
+
+New version:
+
+        DRAM Address
+             |            (1.02 MHz)
+         2:1 MUX ------ RAS / CAS Timing
+             |                       |           ____________________
+ Addr -- 4:1 MUX ---- 6502 Address   |         /                      \
+ MUX         |||              _______/        |       APAMode          |                       Pixel Clock       2x 74LS04
+        VCount+HCount ______ | ______________/           |             |                            |            Delay Line
+                             |                       2 x 74LS157       |           Quad             |                |
+    DRAM -- Data Bus -- VDP latch -- Character ROM -- 2:1 Select -- Shifter -- 2:1 Select --- 4-bit Latch ---- 1 of 8 74LS151
+                         74LS373      2316 2Kx8           |         74LS166      74LS157        74LS373      Tap the Delay Line
+                         |    \__________________________/           |               |                         1-bit Intensity
+                       1 MHz                                      Every           Palette                            |    
+                       Clock                                       8th            74LS373                     2N3904 Transistor
+                                                                  Pixel         (IO Register)          Total "Color Engine" Cost: ~$1.05
+
+
+Pixel Pipeline:                                       APAMode
+                          PHI2                           |          HCount%8                   Pixel Clock       2x 74LS04
+                            |                            |             |                            |            Delay Line
+                            |                        2 x 74LS157       |           Quad             |                |
+    DRAM -- Data Bus -- VDP latch -- Character ROM -- 2:1 Select -- Shifter -- 2:1 Select --- 4-bit DLatch ---- 1 of 8 74LS151
+                         74LS373      2316 2Kx8           |         74LS166      74LS157        74LS373      Tap the Delay Line
+                              \__________________________/                        1/   \0                            |
+                                                         \                        /     \BG                          |    
+                                                          \____________1_ 2:1 Select    VIDPAL                2N3904 Transistor
+                                                             top 3 bits    74LS157     74LS373
+                                                                             /   0\______/
+                             semigraphics              misaligned           /          FG
+                            addr clamping                 color..       SemiColor
+
+2 x 4:1 MUX? (!Semi:BG, !Semi:FG, Semi:BG, Semi:top3)
+Another Octal Latch to stabilise top 3 bits?!
+
+
+Address MUX
+Φ2        <--- 6502 (higest priority)
+Text Mode <---\ either-or
+APA Mode  <---/ Bytes 1-7 (visible display)
+Refresh   <--- Every 8th byte (visible display: 4 times per row)
+
+
+2 x 74LS157  Bus MUX (16-bit)
+3 x 74LS373  VDP Latch, Color Latch, Programmable Palette (3 colors)
+2 x 74LS153  Dual 1 of 4 (Palette lookup)
+1 x 74LS166  Pixel shifter
+1 x 74LS74   Dual D latch for 2bpp decode
+2 x 74LS04   Delay line
+1 x 74LS151  Delay Tap Select
+1 x 2N3904   Transistor Amp
+4 x 74LS161  H Counter, V Counter
+1 x 74LS30   8-input NAND (Reset)
+1 x 74LS138  3-to-8 Decoder (HBlank, HSync, Colorburst) ??
+1 x 74LS10   Triple 3-input NAND (262 reset, VSync) ??
+
+TOTAL Character Gen     13 Chips ~$6.95 USD
+Timing Chain (H + V)	7 Chips	 ~$3.70
+Total Video Subsystem	20 Chips ~$10.65
+
+At ~$6.50, your entire video sub-system is roughly the same price as the 6502 CPU.
+This puts your total system BOM (including 4K RAM and 8K ROM) in the $40–$50 range.
+For a 1977 product, that allows for a $199–$249 retail price.
+
+
+8 ICs VDP with register DAC.
+
+Motorola MC1372 Color TV Modulator ~$2.50 – $4.00 in volume.
+Chroma (color) and Luma (brightness) -> NTSC/PAL composite signal.
+Low cost: discrete transistor mixer to create the Composite signal for the "Home TV" user.
+
+Composite color generator:
+Chain of 74LS04 Inverters to delay the 3.579 MHz color clock.
+
+
+REGISTERS
+
+DDDahwmC  AAABBBCC  AAABBBCC  AAABBBCC-C   Palette
+|||       |||          |||          ||-|
+3xMUX:0   3xMUX:1   3xMUX:2    3xMUX:3
+
+Register $00FF  VIDCTL -> Latch
+d0     Enable Color Semigraphics (c)
+d1     APA 128/256 Width (w)
+d2     APA 96/192 Height (h)
+d3     Enable APA Mode (a)
+d4     Disable colorburst (g)
+
+Register $00FE  VIDPAL -> Latch
+d2-d0  3 bits of FG Color
+d5-d3  3 bits of BG Color
+d7-d6  2 bits of Border Color
+
+Register $00FD  VIDLINE
+d7-d0  Vertical Line (read-only <- VCount)
+
+Register $00FC  KEYSCN
+d0-d7  Keyboard Scan Columns (read <- Col Buffer / Joystick) [Joystick: U,D,L,R,Fire]
+d0-d4  Keyboard Scan Row (write -> Row Latch, 1 bit active)
+d5     Joystick Port B (write -> Active Port, 1 bit active)
+d6     Joystick Port A (write -> Active Port, 1 bit active)
+
+Register $00FB  PSGFRQ (0=Mute) -> PSG Latch
+d7-d0  Frequency Divider
+
+4 Latches (VIDCTL, VIDPAL, KEYSCN, PSGFRQ)
+3 74LS244 Buffers (KEYSCN, JOYINx2)
+
+
+PSG
+
+1 x 74LS373 Octal Latch (counter reload)
+2 x 74LS193 4-bit Counters
+1 x D-Flip Flop (toggled by the counter)
+BOM Cost: ~$1.20 for the three chips
+
+https://mixbutton.com/music-tools/frequency-and-pitch/music-note-to-frequency-chart
+
+https://www.realestate.com.au/property-house-vic-monbulk-150709072
+
+
+1976  Motorola MC6821 PIA: 2 x 8-bit IO; interrupt latching
+Zilog Z80 PIO: 2 x 8-bit Ports, interrupt-driven keyboard, parallel printers (READY/STROBE signals)
+Intel Intel 8255 PPI
+
+MOS 6522 VIA: "Preliminary Data Sheet" in November 1977.
+MOS 6520 PIA: Ship "Revision A" with the 6520 PIA and discrete logic to hit the 1977 Christmas season.
+
+
+
+0ns	    0°	    Reference (Burst)
+~35ns	45°	    Yellow / Gold
+~70ns	90°	    Orange / Red
+~105ns	135°	Magenta / Pink
+~140ns	180°	Blue / Indigo
+~175ns	225°	Cyan / Sky Blue
+~210ns	270°	Green / Aqua
+
+Gate 2 Out (~25ns delay): Feed to Palette Mux (Yellow/Orange territory).
+Gate 4 Out (~50ns delay): Feed to Palette Mux (Red/Magenta territory).
+Gate 6 Out (~75ns delay): Feed to Palette Mux (Blue/Cyan territory).
+add a trimmer capacitor (variable cap) to the first gate to dial in the color.
+12 inverters covers ~half of the color wheel.
+get the "other half" of the color wheel by inverting the tapped signal: Yellow -> Blue/Cyan
+
+
+12 + 32 + 32 (4+20+8) + 60 + 256 + 63 = 455
+
+0 = hblank            12    11xx         3-input NAND IC1   #0 OR #2 OR #4    -> HBL
+1 = hsync             32    1xxxxx       2-input NAND IC2                     -> HSYN
+2 = hblank            4     1xx          2-input NAND IC2
+3 = colorburst        20    1x1xx        3-input NAND IC1                     -> HCB
+4 = hblank            8     1xxxxx       2-input NAND IC2
+5 = left border       60    1111xx       4-input NAND IC3 + 2-input NAND IC2
+6 = visible           256   1xxxxxxxx    2-input NAND IC4                     -> VIS
+7 = right border      63    111111       4-input NAND IC3 + 3-input NAND IC1
+
+3 x 74LS161 Sync 4-bit Counter   IC5, IC6, IC7
+1 x 74LS74  Dual D-FF (1/2)
+1 x 74LS10  Triple 3-input NAND  IC1
+2 x 74LS00  Quad 2-input NAND    IC2, IC4(1/4)
+1 x 74LS20  Dual 4-input NAND    IC3
+1 x         3-input OR gate
+----
+9 chips (signals combined, NO early enable)
+
+
+IN DESIGN, CLK/2 -
+
+NTSC Vertical: 192 + 25 + 9 + 3 + 8 + 25 = 262
+
+16 + 2 + 10 + 4 + 31 + 128 + 31 + 6 = 228
+
+ SHS 0   = RST                               (aliases are OK)    Set Horizontal Sync       00000110    11x AND 0000xxxx(2)
+ RHS 16  = 00010000    d4                    (aliases are OK)    End Horizontal Sync       00010110    11x AND d4
+ SCB 18  = 00010010    000 d4 d1             (aliases OK)        Set Colorburst            11xxx AND 000xxxxx(2)
+ RCB 28  = 00011100    d4 d3 d2              (aliases are OK)    End Colorburst            00100010    d5 AND d1
+ RHB 32  = 00100000    d5                    (aliases are OK)    End Horizontal Blank      00100110    11x AND d5
+ SFE ?   =                                   (no aliases)        Fetch Enable (120)        00111100     1111xx(3) AND 00xxxxxx
+ SDE 63  = 00111111    00 1 111 11           (no aliases)        Display Enable (128)      01000100    ~d7 AND d6 AND d2
+ RDE 191 = 10111111    10 1 111 11           (aliases are OK)    End Display               11000100    d7 & d6 & d2
+ SHB 221 = 11011101    11 x 111 x1                               Set Horizontal Blank      
+ RST 227 = 11100011    11 1 xxx 11
+
+2 x 74LS161 Sync 4-bit Counter
+3 x Quad AND  (7+5=12)
+1 x Triple 3-input
+3 x Dual D-FF
+---
+9 chips (signals combined, WITH early enable)
+
+
+256 + 59 + 16 + 32 + 32 + 60 = 455    (Simplified, modulo 8)
+
+0 = hblank            16    1xxxx        2-input AND IC1
+1 = hsync             32    1xxxxx       2-input AND IC1
+2 = hblank            4     1xx          2-input AND IC1
+3 = colorburst        20    1x1xx        3-input AND IC2
+4 = hblank            8     1xxxxx       2-input AND IC1
+5 = left border       60    1111xx       3-input AND IC3 + 2-input AND ((1x1xx AND d2 AND d4) AND #5)
+6 = visible           256   1xxxxxxxx    2-input AND IC4
+7 = right border      63    111111       3-input AND IC3 + 2-input AND ((1111xx AND d1 AND d0) AND #7)
+
+3 x 74LS161 Sync 4-bit Counter   IC5, IC6, IC7
+1 x 74LS74  Dual D-FF (1/2)
+1 x 74LS    Triple 3-input AND   IC2
+2 x 74LS    Quad 2-input AND     IC1, IC4 (7/8)
+1 x         3-input OR gate
+---
+8 chips (signals combined, NO early enable)
+
+
+HCount increments every 4 pixels (7.15909 / 4 = 1.7897725 MHz)
+1 of 8 decoder: on 4,8,16 lines (enables: G2A = count.32; G2B = count.64; G1 = !count.128)
+#0 = H blank (16px)
+#1 = H sync (16px)
+#2 = H sync (16px)
+#3 = H blank (16px) -- Colorburst ((#3 AND NOT count.4) OR (#4 AND count.4))   AOI 74LS51?
+#4 = H blank (16px)
+#6 = border (16px)   set Border Latch (at count = 36, set Display Latch)     3-in NAND [00100100] #6
+#7 = unused (16px)                    (at count = 100, clear Display Latch)  3-in NAND [01100100]
+                                      (at count = 136 AND X, reset)          3-in NAND [10001000] (PCLK.0 AND PCLK.1)
+
+2 x 74LS161 Sync 4-bit Counter
+1 x 74LS138 3-to-8 Decode
+1 x 74LS51  Colorburst Gate AOI
+1 x 74LS20  Triple 3-input NAND
+1 x 74LS74  Dual D latch (Border Latch, Display Latch)
+1 x 74LS00  Quad 2-input NAND [1/4]
+1 x         Dual 3-input OR
+----
+8 chips (signals combined, NO early enable)
+
+
+MMI PAL chips were officially introduced in March 1978 by Monolithic Memories, Inc.
+
+Bipolar PROMs: Many designers used small PROMs (like a 256x8 bit bipolar PROM)
+as makeshift address decoders. They were cheap, available in 1977, and could
+replace several logic gates. Signetics 82S129 or MMI 6301. 16-pin chip.
+MCM2708 or MCM2716 PROMS
+~50ns access time. video timing decodes.
+1977	$2.50 – $3.50  10K volume
+1978	$1.85 – $2.25  10K volume
+
+"The Signetics 8223 is a 256-bit PROM. It is readily available from a number of
+surplus suppliers for about $3.00." [1978]
+"National Semiconductor 2048-bit MM5203 erasable PROM, available, surplus, for
+about $9.00. 256x8 or 512x4" [1978]
+
+1488/1489 RS232 $1.50 
+
+One PROM can generate 4 output signals from 8 inputs.
+
+8-bit HCount -> PROM -> (HBlank, HSync, Colorburst, Visible) ~3.5 MHz
+Reset: 227 decode -> delay 1 -> reset
+
+74LS51: Dual 2-wide 2-input AOI
+74LS54: 4-wide 2-input AOI (four 2-input ANDs)
+74LS55: 2-wide 4-input AOI (4-bit value matching)
+
+
+
+To get a "broadcast-legal" NTSC signal in 1977 without a dedicated encoder chip,
+you use a Passive Resistor Summer followed by a 2N3904 Transistor Emitter-Follower.
+
+NTSC composite video is a 1.0V Peak-to-Peak signal into a 75Ω load. The "correct" voltages are:
+• Sync: 0V (The "floor")
+• Blanking/Black: 0.3V (The "pedestal")
+• White: 1.0V
+• Color Burst: A 0.3V p-p oscillation centered on the 0.3V blanking level.
+
+Signal	        Logic State	Resistor (Approx)	Resulting Effect
+Sync (H+V)	    Low (0V)	Direct/Diodes	Pulls the signal to 0.0V.
+Blanking	    High (5V)	1kΩ	            Sets the "Black" level at ~0.3V.
+Video Pixels	High (5V)	470Ω	        Adds ~0.7V on top of Black (~1.0V White).
+Color Burst	    3.58MHz	    2.2kΩ	        "Injects" a small 0.3V wiggle onto the Black level.
+
+The "Sync" Floor:
+You use a 74LS05 (Open Collector) or a diode-OR gate.
+When Sync is active, it physically shorts the video line to ground (0V).
+The "Luma" Ladder:
+Connect your Blanking signal (0V during SYNC) through a 1kΩ resistor to the "Mixing Node."
+Connect your Pixel Data through a 470Ω resistor to the same node (0V during HBlank)
+The "Chroma" Injection:
+Take your 3.58MHz Phase Tap (from your 74LS151).
+AND it with your Colorburst Enable signal using a 74LS08.
+Feed that through a 2.2kΩ resistor into the mixing node.
+
+3. The 2N3904 Output Stage (The "Buffer")
+The mixing node has high impedance and cannot drive a 75Ω TV cable directly. You must use a NPN Transistor (2N3904):
+Collector: Tied to +5V.
+Base: Connected to your Mixing Node.
+Emitter: This is your Video Out. Connect it to the RCA jack through a 75Ω resistor (to match the cable impedance) and a 100µF electrolytic capacitor (to block DC).
+
+Look at Sinclair ZX80 and Apple II for reference.
+
+The "TTL Low" isn't 0.0V
+A 74LS chip (like your 166 Shifter or 151 Mux) doesn't output 0V when it's "Low." According to the 1977 data sheets:
+V_OL (Typical): 0.35V
+V_OL (Maximum): 0.50V
+
+Using a second 2N3904 as a sync switch:
+Collector: Connect this directly to your Mixing Node (the base of your output transistor).
+Emitter: Tie this to System Ground.
+Base: Connect this to your Sync Signal through a 1kΩ to 4.7kΩ resistor
+During Active Video (Sync = LOW): The transistor is "Cut Off." It acts like an open circuit with very high impedance.
+During Sync (Sync = HIGH): The transistor "Saturates." It becomes a low-resistance path (0.1V to 0.2V) directly to ground.
+It "short-circuits" the entire resistor ladder. No matter what the other 74LS chips are outputting,
+the mixing node is dragged down to the "Sync Tip" level.
+
+In 1977, the "lazy" engineering approach — holding Blank High and letting Sync override it —
+was the industry standard. It saves you at least one 74LS08 (AND) or 74LS02 (NOR) gate in your timing chain.
+
+Front Porch: Blank = HIGH, Sync = LOW. (Mixing node sits at 0.3V Black).
+Sync Pulse: Blank = HIGH, Sync = HIGH. (Transistor saturates, node drops to 0.1V Sync Tip).
+Back Porch: Blank = HIGH, Sync = LOW. (Node returns to 0.3V Black).
+Active Video: Blank = LOW, Sync = LOW. (Node is controlled by Pixel/Palette resistors).
+
+
+
+Simplified BASIC
+
+• variables above program (LET, DIM)
+• basic stack on the 6502 stack
+• heap top-down below video RAM (Strings, PROC-LOCALs)
+• no local arrays, no redim
+• PROC frames go in the HEAP (treated "as if" they're strings: chained 254-byte segments)
+• LOCAL vars are appended to the tail PROC frame (Simple to undo: walk segments, mark free)
+• Heap management: always allocate a new string (up to 254 bytes + length + refs)
+• Heap management: when out of space, collect some garbage (move live strings upwards until enough room)
+• Heap management: empty segments have length=0 followed by actual length (min segment is 2 bytes)
+• Strings only allocate a segment if non-empty
+
+BASIC Line Search
+
+• SLOW version: lines start with <255><line.lo><line.hi><prevlen><thislen> (5 bytes)
+• Walk forwards: LDY #3; .loop LDA (Ptr,Y); CLC; ADC Ptr; STA Ptr; BCS inc_hi; CMP (Ptr),X=0; BNE loop; check high byte ...
+• Walk backward: LDY #2; .loop LDA (Ptr,Y); SEC; SBC Ptr; STA Ptr; BCC dec_hi; CMP (Ptr),X=0; BNE loop; check high byte ...
+• The 255 sentinel is the LINE opcode
+
+BASIC Line Index?
+
+• Costs 4 bytes per line: <line.lo><line.hi><addr.lo><addr.hi> (4 bytes)  [costs 3 bytes per line]
+• BASIC program duplicates: <255><line.lo><line.hi> (3 bytes)
+• BASIC program without index: <255><line.lo><line.hi><len> (4 bytes)
+
+BASIC Variable Index?
+
+• SLOW version: inline all var names
+• append HEAP Vars as DIM'd/assigned
+• link-list all vars that start with the same letter
+• keep 52 head pointers (104 bytes) in System Workspace
+
+Slowness comes from:
+  (a) searching the link-list for a matching var name
+  (b) comparing var names character by character
+
+• INDIRECT version:
+  • convert all var names to indices into slot-arrays
+    • <VAR1> or <VAR2><num> or <VAR3><num.lo><num.hi>
+    • 52 x <VAR1> opcodes so single-letter vars remain 1 byte
+  • dynamically allocate string and arrays, but pre-allocate numbers
+  • doesn't actually cost any more memory (vs inline-name + var-heap-name)
+  • keep root pointers to each table (tables move as the program is edited) [12*2=24]
+  • runtime values can be in separate arrays (2 x number of root pointers)  [12*2*2=48]
+
+    Numbers:
+        <numL>{<num[5]><name[1]>}      - 1 ref -> 6 bytes (up to 52)                            [7]
+    <num2.L/H>{<num[5]><name-ptr[2]>}  - 2 ref -> 7 bytes (up to 256) -> <len><name> NAME-HEAP  [10+name]
+    <numN.L/H>{<num[5]><name-ptr[2]>}  - 3 ref -> 7 bytes (above 256) -> <len><name> NAME-HEAP  [11+name]
+
+    Strings:
+        <numL$>{<str-ptr[2]><name[1]>}      - 1 ref -> 3 bytes (up to 52)                             [4]
+    <num2$.L/H>{<str-ptr[2]><name-ptr[2]>}  - 2 ref -> 4 bytes (up to 256) -> <len><name> NAME-HEAP   [7+name]
+    <numN$.L/H>{<str-ptr[2]><name-ptr[2]>}  - 3 ref -> 4 bytes (above 256) -> <len><name> NAME-HEAP   [8+name]
+    When assigned: \-> <len><string> in STR-HEAP
+
+    Arrays:
+        <numLA>{<arr-ptr[2]><name[1]>}      - 1 ref -> 3 bytes (up to 52)                             [4]
+    <num2A.L/H>{<arr-ptr[2]><name-ptr[2]>}  - 2 ref -> 4 bytes (up to 256) -> <len><name> NAME-HEAP   [7+name]
+    <numNA.L/H>{<arr-ptr[2]><name-ptr[2]>}  - 3 ref -> 4 bytes (above 256) -> <len><name> NAME-HEAP   [8+name]
+    When assigned: \-> <size[2]><ndim>{<dim[2]>}{slots[5]} in BIG-HEAP
+
+    String Arrays: (as above, replace slots[5] with slots[2])
+
+  • Can we GC variables on RUN/SAVE?
+    • Walk the program, marking all N used variables in scratch space?
+    • Scan the variable tables, remove unmarked variables
+    • Walk the program again, fixup refs (but they're now invalid..)
+
+
+BASIC Variable Lookup
+
+• Single-letter: up to 52 vars in the <VAR1> segment
+
+BASIC stack on 6502 stack
+
+• Stack is empty at beginning of program
+• GOSUB pushes <ret.lo><ret.hi><0> (3 bytes)
+  Return address points to the next BASIC opcode.
+• REPEAT pushes <ret.lo><ret.hi><3> (3 bytes)
+  Return address points to the first BASIC opcode after REPEAT.
+• PROC pushes <ret.lo><ret.hi><6> (5 bytes)
+  Return address points to the next BASIC opcode.
+• FN pushes <ret.lo><ret.hi> (2 bytes)
+  Return address points to the next BASIC opcode.
+• FOR pushes <var.lo><var.hi> <end.0><end.1><end.2><end.3><end.4>
+                              <step.0><step.1><step.2><step.3><step.4>
+                              <ret.lo><ret.hi><2> (15 bytes)
+  Return address points to the first BASIC opcode after FOR X = 1 TO 2 STEP 1.
+• Expression eval pushes <val.0><val.1><val.2><val.3><val.4> (5 bytes)
+• IF pushes <4> (1 byte)
+  Marker says we're inside a multi-line IF.
+  Scans for ELSE / END IF if the condidion is false (report if DEF, END, EOP found; nested IFs..)
+• ELSE pops <4> (required) and pushes <5> (1 byte)
+  Scans for END IF if the IF was executed (report if DEF, END, EOP found; nested IFs..)
+  Marker says we're inside a multi-line ELSE.
+• END IF pops <4> or <5> (required)
+
+8*15  = 120 for 8 nested FOR loops
+8*3   = 24  for 8 nested GOSUBs, REPEATSs, PROCs
+14*5  = 70  for 14 nested expressions
+8*2   = 16  for 8 BASIC subroutine calls
+8*2+6 = 22  for 8 interrupt subroutine calls (plus 6 bytes context save)
+----------
+      = 214 bytes BASIC stack (218 available)
+      = 252 bytes stack (38 reserved for 6502 stack)
+
+
+VDP HCount Timing
+
+256 + 59 + 16 + 32 + 32 + 60 = 455    (Simplified, modulo 8)
+
+End scan   256                        1 0000 0000   255 clocked in -> "ended" at 256 (exact, pixels need +1 delay)
+HBlank on  256+60=316                 1 0011 1100   316 clocked in -> "blanked" at 317 (+1 delay)
+HSync on   256+60+16=328              1 0100 1000   328 clocked in -> "syncing" at 329 (+1 delay)
+HSync off  256+60+16+32=360           1 0110 1000   360 clocked in -> "sync off" at 361 (+1 delay)
+HBlank off 256+60+16+32+32=392        1 1000 1000   392 clocked in -> "blank off" at 393 (+1 delay)
+Reset      256+60+16+32+32+59=455     1 1100 0110   454 clocked in -> 000 instead of 455 (exact)
+
+Blank 80 * 139.683 = 11.17464µs
+Front 16 * 139.683 = 2.235µs
+Sync  32 * 139.683 = 4.469µs
+Back  32 * 139.683 = 4.469µs
+Total 455 * 139.683 = 63.555765µs
+
+256 + 60 + 12 + 32 + 32 + 63 = 455    (Exact timing)
+
+
+Text Mode: fetch name byte every 4 counts (via MUX); shift out at 7.158 MHz.
+APA Mode: fetch a graphics byte every 8 counts (via MUX); shift out at 3.579 MHz.
+
+2:1 MUX - select RAS/CAS (2 x Quad 2:1 MUX)
+4:1 MUX - select CPU/256w/128w/Refresh Address (8 X Dual 4:1 MUX, or 4 x OE Bus drivers?)
+2:1 MUX - bypass ROM Font (2 x Quad 2:1 MUX) [or output enables?]
+2:1 MUX - select 192h/96h Vertical Address
+
+The same hardware supports:
+128 x 96   lo-res   (1.5K)
+256 x 96   med-res  (3K)
+128 x 192  med-res  (3K)   
+256 x 192  hi-res   (6K)
+
+
+APA mode mini-font for labelling graphics:
+48 characters at 5x5: 5+5+5+1 (2 bytes) x 2 = 4 bytes/char * 48 = 192 bytes (5*48 = 240; ~1 page)
+
+  * * *       * *         * * *     * * * *           *     * * * *       * * *     * * * * *
+*     * *   *   *       *       *           *       * *     *           *                   *
+*   *   *       *           * *       * * *       *   *     * * * *     * * * *           *  
+* *     *       *         *                 *   * * * * *           *   *       *       *    
+  * * *     * * * * *   * * * * *   * * * *           *     * * * *       * * *       *      
+
+  * * *       * * *  
+*       *   *       *
+  * * *       * * * *
+*       *           *
+  * * *       * * *  
+
+  * * *     * * * *       * * * *   * * * *     * * * * *   * * * * *     * * *     *       *
+*       *   *       *   *           *       *   *           *           *           *       *
+* * * * *   * * * *     *           *       *   * * * *     * * * *     *     * *   * * * * *
+*       *   *       *   *           *       *   *           *           *       *   *       *
+*       *   * * * *       * * * *   * * * *     * * * * *   *             * * *     *       *
+
+* * * * *   * * * * *   *       *   *            *       *   *       *     * * *     * * * *  
+    *           *       *     *     *            * *   * *   * *     *   *       *   *       *
+    *           *       * * *       *            *   *   *   *   *   *   *       *   * * * *  
+    *           *       *     *     *            *       *   *     * *   *       *   *        
+* * * * *   * *         *       *   * * * * *    *       *   *       *     * * *     *        
+
+  * * *     * * * *       * * * *   * * * * *   *       *   *       *   *       *   *       *
+*       *   *       *   *               *       *       *   *       *   *       *     *   *  
+*       *   * * * *       * * *         *       *       *   *       *   *   *   *       *    
+*     *     *     *             *       *       *       *     *   *     * *   * *     *   *  
+  * *   *   *       *   * * * *         *         * * *         *       *       *   *       *
+
+*       *   * * * * *
+  *   *           *  
+    *           *    
+    *         *      
+    *       * * * * *
+
+48*2/3*5 = 160 at 5x5 (3.9% of ROM)  (with mirroring cleverness, still ~142 bytes)
+64*2/3*5 = 210 at 5x5 (5.1% of ROM)
+72*2/3*5 = 240 at 5x5 (5.8% of ROM)
+
+Mirror L/R: A,H,I,M,O,T,U,V,W,X,Y,8  (12)
+Mirror T/B: B,C,D,E,K,P,3            (8)  (H,I,O,X in both)  (12+7=19; 36-19=17)
+
+2 bits per char: [Mirror][LR/TB] 48*2/8 = 12 bytes
+First Half array: (48*2) = 96 bytes (5x3=15 bits)
+Extra Half array: (17*2) = 34 bytes
+12 + 96 + 34 = 142 bytes
+
+
+Top-3: A BPR C D EF G H IJT K L M N OQ S UV W 
+
+14 x Top-2 (Caps):
+
+  * * *     * * * *       * * * *   * * * * *     * * *     *       *
+*       *   *       *   *           *           *           *       *
+
+* * * * *   *       *   *           *       *   *       *     * * *  
+    *       *     *     *           * *   * *   * *     *   *       *
+
+*       *   * * * * *
+  *   *           *  
+
+10 x Mid-1 (Caps):
+
+* * * * *  A
+* * * *    B
+*          C
+*       *  D
+*     * *  G
+* * * * *  H
+    *      I
+* * *      K
+*   *   *  M
+  * * *    S
+
+
+
+7 x Top2 (Digits, 1 common with Caps)
+
+  * * *       * *       * * * *           *     * * * *     * * * * *     * * *  
+*     * *   *   *               *       * *     *                   *   *       *
+
+
+
+Graphics Font:
+26+10+12 = 48
+48*7/2 = 168 (4.1% of ROM)
+64*7/2 = 224 (5.46% of ROM)
+ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:,-.+<=>'%$_
+^ far from ideal. find a way to map the rom
+
+  * *     * * *       * * *   * * *     * * * *   * * * *     * *     *     *
+*     *   *     *   *         *     *   *         *         *         *     *
+* * * *   * * *     *         *     *   * * *     * * *     *   * *   * * * *
+*     *   *     *   *         *     *   *         *         *     *   *     *
+*     *   * * *       * * *   * * *     * * * *   *           * *     *     *
+
+* * *     * * * *   *     *   *         *     *   *     *     * *     * * *  
+  *           *     *   *     *         * * * *   * *   *   *     *   *     *
+  *           *     * *       *         *     *   *   * *   *     *   * * *  
+  *           *     *   *     *         *     *   *     *   *     *   *      
+* * *     * *       *     *   * * * *   *     *   *     *     * *     *      
+
+  * *     * * *       * * *   * * *     *     *   *     *   *     *   *     *
+*     *   *     *   *           *       *     *   *     *   *     *     * *  
+*     *   * * *       * *       *       *     *   *     *   *     *          
+*   *     *   *           *     *       *     *   *   *     * * * *     * *  
+  *   *   *     *   * * *       *         * *       * *     *     *   *     *
+
+*     *   * * * *
+*   *           *
+  *           *  
+  *         *    
+  *       * * * *
+
+
+CoCo Frogger uses a 3x5 font along the top in 128x192 mode, 4 colors (1980, $399 4K / $599 16K)
+
+
+Tape - Kansas City Standard (KCS) at 300 baud using FSK, or CUTS.
+https://hackaday.com/2022/10/11/a-cassette-interface-for-a-6502-breadboard-computer-kansas-city-style/
+BYTE issue 6, Feb 1976, pp 72,73 – Hal Chamberlin?
+"triangle wave -> tape -> sine wave back"
+FSK 3:2 ratio should work better (harmonics)
+zero-crossing (1) or lack thereof (0) within a fixed time window
+start bit (1 x zero-crossing) before each byte
+sync tone 01010100000101010000.. repeated (6:4 ratio; won't match start-bits)
+blank space between blocks: no zero-crossings
+Block header: Sync(8) Name(12) Block#(1) Total#(1) Len(1) Sync(2) Data CRC(2) Blank(4)
+• two zero-crossings is a 1
+• one zero-crossing, one non-crossing is an 0
+• two or more non-crossings is a sync mark (start bit)
+• block sync is 16 x 1-bit followed by 4 x 0-bit
+
+   __      ___    ___    __      __
+__|  |____|   |__|   |__|  |____|  |   2 vs 3 timing
+
+BBC micro and ZX Spectrum, which used zero-crossing techniques to encode data at over 1000 baud
+using barely more than a couple of Schottky diodes, a few resistors and caps springs to mind.
+https://worldofspectrum.net/documentation/
+
+Use a Schottky diode (1N5711) to clip and condition the audio signal, limiting negative voltage
+and sharpening zero crossings. Feed it through a bus receiver (74LS245) for isolation.
+A series capacitor (e.g., 1–10 µF) blocked DC offset and protected the input, forming a
+high-pass filter with the input impedance.
+Bit period is ~800µs at 1200 baud, but also ~64 µs per half-bit for 1200 baud ?!
+
+
+1020000/2/(975*16) = 32.69230769230769  (32.7 Hz) C1
+1020000/2/(920*16) = 34.64673913043478  (34.65 Hz) C#1
+
+1020000/2/(17*16) = 1875.0    (1864.66 Hz A#6)
+1020000/2/(16*16) = 1992.1875 (1975.53 Hz B6)
+
+1020000/2/(12*16) = 2656.25 (2637.02 Hz E7)
+1020000/2/(10*16) = 3187.50 (3135.96 Hz G7)
+1020000/2/(9*16) = 3541.666 (3520.00 Hz A7)
+1020000/2/(8*16) = 3984.375 (3951.07 Hz B7)
+
+1020000/2/(7*16) = 4553.57  (4434.92 Hz C#8)
+1020000/2/(6*16) = 5312.5   (5274.04 Hz E8)
+1020000/2/(5*16) = 6375     (6271.93 Hz G8)
+1020000/2/(4*16) = 7968.75  (7902.13 Hz B8)
+
+
+BOM
+
+1    CPU
+3    ROMs
+16   DRAMs  (6250 sets in 100K)   [20]
+----------
+addr decode
+1    3-to-8 Decoder (8K Bank decode)                 Maybe a PAL for address decoding ~4 ICs (or move IO to $E000 ~2 ICs)
+1    3-to-8 Decoder (IO Address decode)
+1    4-in AND (IO Base address 0xF0)
+1    8-in AND (Zero Page 0x00xx)
+4    IO Registers (VIDCTL, VIDPAL, KEYSCN, PSGFRQ)
+3    74LS244  IO Buffers  (KEYSCN, 2 x JOYIN)        [11]
+----------
+bus sharing
+?    RAS/CAS and Bus Sharing timing ???              Maybe another PROM? PAL?
+2    74LS157  2:1 MUX RAS/CAS (2x4=8)
+8             4:1 MUX CPU/Refresh/VDP-Text/VDP-APA (8x2=16)   Find a better way... much delays here
+1    74LS245  6502 Data Bus Transciever  [11]                    2 x CPU OE + 2 x 2:1 -> 2 x OE + 1 x refresh OE (7 ICs)
+----------
+video timing
+4    74LS161  H Counter, V Counter
+1    74LS30   8-input NAND (Reset)                   PROM 256x4 replaces H decodes ~13 ICs (swap for PAL TV)
+3    12 2-in AND                                     AOI 2x4 for VBlank decode
+2    6 3-in AND
+1    3 2-in OR
+3    14 inverters
+4    Dual S-R latch clocked (8)
+2    2:1 MUX VAddress (192/96)
+2    2:1 MUX HAddress (256/128)          [22]
+----------
+pixel pipe
+2    74LS373  VDP Latch, Pixel Latch
+2    74LS157  2:1 CharROM Bypass (APA Modes)
+1    74LS157  2:1 Palette MUX
+1    74LS166  Pixel shifter
+2    74LS04   Delay line
+1    74LS151  Delay Tap Select        [9]
+----------
+psg
+1    74LS374  PSG Latch
+2    74LS161  PSG Counter
+1    74LS112  PSG T-FF Output (1/2)   [4]
+----------
+20 + 11 + 11 + 22 + 9 + 4 = 77 ICs                  (77-13-4 = 62 ICs, ~$21)
+
+COSTS:
+APA Mode    (2 x CharROM Bypass)                           [2] ICs
+Lo-Res APA  (2 x 2:1 VAddress + 2 x 2:1 HAddress)          [4] ICs
+Palette     (VIDPAL Latch, 2:1 Palette MUX)                [2] ICs
+SemiColor   (1 x 2:1 MUX)                                  [1] IC
+PSG         (8bit Latch, 2 x Counter, T-FF)                [4] ICs    total [13] ICs
+
+MISSING:
+RAS/CAS timing logic
+Split-screen mode
+
+Plus: PCB, power supply, keyboard switches, 74LS logic for video generation and I/O.
+In the late 1970s, a 3x to 5x multiplier from manufacturing cost to retail was common for hardware.
+Secure 10K order of 16Kx1 chips from NEC/Hitachi/Fujitsu for 'premium' +16K memory cart [late 1978]
+
+Small PROMs (e.g. 256×4, 512×4 bipolar PROM)
+$2.00 – $5.00 typical OEM range (50-100K vol)
+(Depends heavily on vendor and speed grade, but this is the right ballpark.)
+vs 6 ICs → ~$1.50 – $3.60; 10 ICs → ~$2.50 – $6.00
+
+Insertion cost: $0.10 – $0.30 per inserted component (late 70s)
+6 ICs → +$0.60 – $1.80; 10 ICs → +$1.00 – $3.00
+
+Combined:
+6–10 TTL ICs: $1.5 – $6 + assembly $0.60 – $3 → total ~$2.10 – $9
+One PROM IC: $2 - $5 + assembly $0.10 - $0.30 → total ~$2.10 – $5.30
+
+
+TRS-80 ~70 ICs (!) on the board.. 60 on Rev2.. 49 on Rev3?
+PET ~67 ICs
+https://www.trs-80.com/sub-models-model1.htm  Peripherals
+
+"In December 1976 French and Leininger received official approval for the project but were
+told to emphasize cost savings; for example, leaving out lowercase characters saved US$1.50
+in components and reduced the retail price by US$5."
+In fact, they left out 1 bit of video RAM, leaving 7-bit RAM,
+suggesting their cost of 1Kx1 SRAM was US$1.50 even in a 3500 unit manufacturing run.
+"The original US$199 retail price required manufacturing cost of US$80" (The final price was US$399.)
+
+Apple II: 40 x 24 text, 40 x 48 16-color, 280 × 192 hires, 4K RAM, 1-bit audio/casette (US$1,298)
+PET-2001; 40 x 25 text PETSCII
+TRS-80: 64 x 16 text with 128 x 48 semigraphics (2 x 3 cells, 64 chars)
+
+
+Robo-4K: 32 x 24 text with 64 x 48 semigraphics 8-color (2 x 2 cells, 16 chars)
+                      and 128 x 24 semigraphics 2-color (4 x 1 cells, 16 chars)
+                      and 128 x 96 graphics (1.5K)
+
+
+Pixel Pipeline:                                       APAMode
+                          PHI2                           |          HCount%8                   Pixel Clock       2x 74LS04
+                            |                            |             |                            |            Delay Line
+                            |                        2 x 74LS157       |           Quad             |                |
+    DRAM -- Data Bus -- VDP latch -- Character ROM -- 2:1 Select -- Shifter -- 2:1 Select --- 4-bit DLatch ---- 1 of 8 74LS151
+                         74LS373      2316 2Kx8           |         74LS166      74LS157        74LS373      Tap the Delay Line
+                              \__________________________/                        1/   \0                            |
+                                                         \                        /     \BG                          |    
+                                                          \____________1_ 2:1 Select    VIDPAL                2N3904 Transistor
+                                                             top 3 bits    74LS157     74LS373
+                                                                             /   0\______/
+                             semigraphics              misaligned           /          FG
+                            addr clamping                 color..       SemiColor
+
+
+Address Bus:
+                       DRAM Address
+                            |          (2 x 500ns Cycle)
+                        2:1 MUX ------ RAS / CAS Timing
+                            |
+                       4:1 MUX ---- 6502 Address
+                           |||
+                       VCount+HCount
+                (Text, APA-128x96, Refresh)
+
+
+Data Bus:
+                                           ↓PHI2
+                                             |
+                   DRAM -- Data Bus -- VDP latch
+                                 |
+                          74LS245 Transciever -- ↑PHI2
+                                 |
+                            6502 Data Bus
+
+↑↓←→
+
+
+Memory Map
+
+[Zero][Stak][Txt0][Txt1]  01 0000.00000 - 01 1111.11111 (16 lines)
+[Txt2][----][----][----]  10 0000.00000 - 10 0111.11111 (8 lines)
+[----][----][----][----]
+[----][----][----][----]  2816 (2.75K) free
+
+[Zero][Stak][Gfx0][Gfx1]  01 0000.00000 - 01 1111.11111 (32 lines)
+[Gfx2][Gfx3][Gfx4][Gfx5]  10 0000.00000 - 11 1111.11111 (64 lines)
+[----][----][----][----]
+[----][----][----][----]  2048 (2K) free
+
+Need a 2-bit counter (up to 1.5K)
+Need a 3-bit counter (up to 3K)
+Need a 4-bit counter (up to 6K)
+
+Split Screen
+
+[Zero][Stak][Gfx0][Gfx1]  ->  Zero Page (64-byte slices):
+[Gfx2][Gfx3][Gfx4][Gfx5]      [InputBuffer][InputBuffer][TextWindow][SystemVars]
+[----][----][----][----]       ^ 128-byte lines          ^ bottom
+[----][----][----][----]                              2 lines of text
+
+100.00000 - 101.11111 (2 lines)
+
+
+RGB to YQI...
+Y = 0.3R + 0.59G + 0.11B
+which is the luminance or grey-scale component
+Q = 0.21R - 0.52G + 0.31B
+I = 0.6R - 0.28G - 0.32B
+which give the two quadrature components of chrominance.
+
+So for RGB red (255,0,0) which we scale to (1,0,0) for simplicity...
+Y = 0.3*1 + 0.59*0 + 0.11*0 = 0.3
+Q = 0.21*1 - 0.52*0 + 0.31*0 = 0.21
+I = 0.6*1 - 0.28*8 - 0.32*0 = 0.6
+I&Q are two vectors at right-angle (quadrature). The representative
+phase is the angle subtended when you join the vectors (this is the
+angle on the colour wheel, which gives the hue) and the magnitude is how
+far from the centre of the wheel the colour lies, which gives the
+saturation. The *angle* is given by the arctan of the length of Q
+divided by the length of I.
+So for our example of red, with Q=0.21 and I=0.6, the phase is
+arctan(0.21/0.6) = 19.3 deg.
+Since the I axis is defined as being 57deg from the burst, looking at
+the vector scope burst is at 180, so I is at 123deg. Subtracting 19.3
+from 123 gives 103.7 which corresponds with the Red square on the vector
+scope.
+
+    R      G      B
+Y   0.299  0.587  0.114
+I = 0.596 −0.274 −0.322
+Q   0.211 −0.523  0.312
+
+R = Y + 0.9561*I + 0.619*Q
+G = Y - 0.272*I - 0.647*Q
+B = Y - 1.106*I + 1.703*Q
+
+
+D. G. Fink's "TV System Engineering" was the definitive text.
+
+U = B-Y; V = R-Y; Colorburst=180° at -U (difference signals)
+
+Human Vision model (rotated 33° from UV model)
+I = orange-cyan "in-phase" axis (1.5 MHz bandwidth)
+Q = purple-green "quadrature" axis (0.5 MHz bandwidth)
+
+UV Model: Burst is at 180° relative to the +U axis.
+IQ Model: Burst is at 213° (180+33) relative to the +I axis.
+Relative to Colorburst, The +I axis (Orange) is at 147° (360-213)
+Relative to Colorburst, The +Q axis (Purple) is at 57° (147-90)
+
+In the original NTSC spec, the I axis (orange-cyan) sits at 57° relative
+to the burst, and the Q axis (purple-green) sits at 147°
+
+Color 	Phase (Degrees relative to U = B-Y axis)
+Magenta	60.7°
+Red	    103.5°
+Yellow	167.1°
+Green	  240.7°
+Cyan	  283.5°
+Blue	  347.1°
+
+Color	Phase relative to Burst (at +180° relative to standard reference):
+Green	  60.7
+Cyan	  103.5
+Blue	  167.1
+Magenta	240.7
+Red	    283.5 or -76.5
+Yellow	347   or -13
+
+Delay relative to Burst at 0°:
+Colorburst    0°    0 ns             (Olive / Green-Yellow)
+Magenta      61     47 ns
+Red         103.5   80 ns  (105 ns)
+Yellow      167.1   130 ns
+Green       240.7   187 ns
+Cyan        283.5   220 ns
+Blue        347.1   269 ns
+
+Each inverter "adds" 180° (by inverting the signal)
+Red looks better with an additional 33° shift (25 ns)

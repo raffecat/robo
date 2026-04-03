@@ -1,0 +1,78 @@
+Low-cost 16-bit Computer
+
+CPU: 8 MHz 68000
+VDP: custom Video/Audio/DMA chip
+
+Games typically use double-buffered 320x240 at 8bpp.
+
+64K-128K VRAM + 128K main RAM:
+320 x 200 x 4-bit = 32000 x 2 = 64000    (32000 * 30 = ~1 MHz fill; ~2 MHz dual-cycle copy DMA)
+320 x 200 x 8-bit = 64000 x 2 = 128000   (64000 * 30 = ~2 MHz fill; ~4 MHz dual-cycle copy DMA)
+640 x 200 x 4-bit = 64000
+640 x 200 x 8-bit = 128000
+640 x 400 x 4-bit = 128000
+640 x 400 x 8-bit = 256000 (expansion +128K VRAM)
+800 x 600 x 4-bit = 240000 (expansion +128K VRAM)
+
+Games - 320 x 200 x 4-bit x 2 = 64K VRAM + 192K main RAM
+Desktop - 640 x 200 x 4-bit = 64K VRAM + 192K main RAM
+Expansion - adds another 256K main RAM (512K total)
+
+The DMA can perform:
+• solid color fill
+• scaled bitmap/pattern fill (transparent or opaque)
+• scaled tilemap copy (indirect 8x8, 16x8, 16x16, 32x16 tilemap copy)
+• source 1/2/4/8 bpp (palette base | pixel)
+
+This is sufficient for SNES/Amiga-level multilayer graphics, except Mode 7.
+
+Can the DMA also perform:
+• affine trapezoid bitmap/pattern copy (parallel top/bottom)
+• screen-space affine transform
+• power-of-two repeated source
+• fifo queue? (can the CPU run in parallel?)
+
+OR is it possible to do this using raster updates?
+• trapezoid rendering (two bresenham edges)
+• linear texture-coordinate interpolation (both X and Y)
+• basically scaling in X,Y with DX,DY increments
+• it's the same as the SNES Mode 7 HW but for all DMAs
+• cache the last 16-bit read until address changes
+• maybe read-ahead into a pixel fifo
+• in practice, scaling up is cheap; rotating is expensive
+
+Enable bits For
+• enable scaling
+• enable affine scaling (DU,DV along horizontal spans)
+• enable trapezoid edges (otherwise rectangular)
+
+But DU,DV must be re-calculated on each line, involving division?
+
+
+320*240*2 4bpp = 75K  (leaves 181K of 256K)
+320*240*2 8bpp = 150K (leaves 106K of 256K, 362K of 512K)
+320*200*2 8bpp = 128K (leaves 128K of 256K, 384K of 512K)
+640*240*1 8bpp = 150K (high-res hi-color)
+640*480*1 4bpp = 150K (desktop mode)
+640*480*1 8bpp = 300K (future mode, needs ~1M)
+
+Maybe 256K chip RAM, including framebuffers + sound samples + DMA list
+plus  256K main RAM (4 banks)
+equals 512K total (8 banks)
+
+Basically write a DMA list into main RAM,
+start the DMA in parallel which will read from main RAM,
+write to chip RAM (pipelined [read-ahead] for high utilisation,
+however Display DMA and Audio DMA will steal chip RAM cycles,
+giving the CPU those cycles in main RAM.)
+
+
+Affine mappings include scales, rotations, translations, and shears;
+they are linear mappings plus a translation.
+
+Geometrically, the vectors (a,d) and (b,e) are basis vectors
+of the destination space, and (c,f) is the origin.
+
+Affine mappings can map any triangle in source space into any triangle in destination space,
+or map a source rectangle into a destination parallelogram, but no more general distortions are
+possible. To warp a rectangle into a general quadrilateral, we will need bilinear.

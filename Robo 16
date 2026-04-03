@@ -1,0 +1,616 @@
+A low-cost 1980 computer.
+
+Designed in 1979:
+• 1 MHz 6502 (bus multiplexing for VDP)
+• 16K DRAM (best price-per-bit in 1980)
+• 2K character ROM (256 x 8x8 glyphs)
+• 8K BASIC ROM
+• 32-column text (32 x 24) i.e. 256 x 192
+• 16 colors (1 per cell)
+• 128/256 custom characters [uses 1KB/2KB] (switchable)
+
+32*24 characters = 768 bytes (256 x 192) in DRAM
+32*24 attributes = 384 bytes (16 color) in 512x8 Color SRAM [not enough DRAM bandwidth!]
+
+In BASIC 16K - 768 - 768 bytes = "14848 bytes free"
+Enable custom characters (1K) -> "13824 bytes free"
+Enable custom characters (2K) -> "12800 bytes free"
+
+128 x 96 x 1bpp APA mode = 1536 bytes [1.5KB]
+256 x 96 x 1bpp APA mode = 3072 bytes [3KB]
+128 x 192 x 1bpp APA mode = 3072 bytes [3KB]
+256 x 192 x 1bpp APA mode = 6144 bytes [6KB]
+32*24 attributes = 768 bytes (16 color) in Color RAM
+2-entry HW palette for BASIC graphics
+
+128 x 96 x 2bpp APA mode = 3072 bytes [3KB]
+128 x 192 x 2bpp APA mode = 6144 bytes [6KB]
+32*24 attributes = 768 bytes (16 color) in Color RAM
+4-entry HW palette for BASIC graphics
+
+In BASIC 16K - 6K - 768 bytes = "9472 bytes free"
+
+256 x 192 x 2bpp APA mode = 12288 bytes [12KB]  (motivates +16K RAM expansion)
+(2x higher memory bandwidth!)
+
+In BASIC 32K - 1.5K - 768 bytes = "30464 bytes free"
+In BASIC 32K - 12K - 768 bytes = "19712 bytes free"
+
+
+NTSC ~15.734 kHz  262 lines                                     (C64 65 cycles/line)
+PAL   15.625 kHz  312 lines  64 µs PAL line (speccy 312 lines)  (C64 63 cycles/line)
+
+
+HM4816A-4   120ns access / 270ns cycle time (random read/write) = 3.703703 MHz (Hitachi 5V)
+HM4816A-7   150ns access / 320ns cycle time (random read/write) = 3.125    MHz (Hitachi 5V)
+
+One cycle 320ns fits within two pixels at 372ns, so 4 accesses per tile (uncontested)
+
+
+16K Price Crash:
+In August 1979, a single 16Kx1 chip (4116) cost about $11.24 retail.
+By January 1980, prices from mail-order suppliers like Jameco dropped to $9.95.
+Japanese firms began selling DRAM at or below US market rates to capture share.
+Costs fell roughly 30-35% annually as production volume doubled.
+
+By 1980, 4K chips were "legacy" parts. They required the same amount of
+manufacturing effort, so their price-per-bit was significantly higher.
+
+Same or lower manufacturing cost for 16Kx8 (16KB) vs 4Kx8x2 (8KB).
+
+
+64K Price Crash:
+In early 1981, 64K chips were "premium" components, costing roughly $50.00 each.
+By late 1982, the price plummeted to approximately $5.00–$6.00 at the wholesale
+level due to massive production scaling by Japanese manufacturers. 
+
+Mid-1983 was the tipping point: 64K cheaper than 48K.
+
+
+Before 1980:
+• Commodore PET 2001, TRS-80 Model I [monochrome]
+• Apple II 1979 rev 1: B&W, Green/Violet, Orange/Blue (arifact) + low-res 40 x 48 with 16 colors
+• Atari 400 & 800 (1979): 256 colors, sprites (CTIA/GTIA) [expensive!]
+• TI-99/4: 16 colors [slow]
+
+In 1980:
+• TRS-80 CoCo 8 colors [RGB]
+• VIC-20 (Sep 1980 Japan; May 1981 US) [16 colors, 8 foreground] 8K Kernal 8K Basic 4K char ROMs
+• Sinclair ZX80 UK [budget]
+• Acorn Atom UK
+
+VIC-20:
+• normal text mode 22 x 23 of 8x8 characters, one color each (color RAM)
+• lo-res text mode 22 x 23 of 4x8 characters, double-wide, three colors each (one auxiliary)
+• hi-res mode with 8x16 characters (is this double-height mode?)
+• bitmap mode 160 x 160 made of 20 x 12 double height characters
+• line counter for raster effects
+
+IBM:
+Aug 1981: PC (5150) designed for 16Kx1 chips (maximum 64K on-board) 8088 4.77 MHz
+Mar 1983: PC/XT (5160) designed for 64Kx1 chips (maximum 256K on-board) 8088 4.77 MHz
+Aug 1984: PC/AT (5170) designed for 256Kx1 chips (maximum 512K on-board) 80286 6 MHz
+Apr 1986: PC/AT (5170) upadted to 8 MHz
+Apr 1987: PS/2 with VGA; MCA bus (incompatible) 8086/80286 8 MHz
+
+
+
+What if I used a palette per tile?
+
+• 1 MHz 6502 (bus timing trick for VDP)
+• 16K RAM (best price-per-bit in 1980)
+• 2K character ROM (256 glyphs) [merge with BASIC ROM?]
+• 8K BASIC ROM
+• 32-column text (32 x 24) i.e. 256 x 192
+• 16 colors
+• palette per cell (1 of 4 palettes; 2 bits per cell) [32*24/2 = 384 nibble Color-RAM; 512x4 SRAM]
+• 4 palettes [4*4 = 16 bytes]
+• 128/256 custom characters [uses 1KB/2KB] (switchable)
+
+Every 8 pixels can perform 4 DRAM accesses [highest bin DRAM?!]
+The CPU gets 1 double-wide access per tile (during visible display, only in the low 16K)
+The VDP gets 2 accesses (Character RAM, RAM/ROM glyph) per tile.
+The VDP also fetches 1 byte from Color-RAM every tile.
+
+We can enable half-palette mode: top bit of each character selects the low/high half of
+the palette: 8 x 2-color palettes per line.
+
+We can switch to lo-res mode and use 4 colors per tile at half-res.
+
+We can change palettes on each line, or even during the line.
+
+We can switch to 16-color mode that stores 512 x 16-color nibbles in Color-RAM,
+a single color per character over 16 lines. Software must upload new colors every line,
+at a rate of 32 nibbles per line. Color 1. Palette 0 is used for remaining colors.
+
+APA modes:
+lo  160 x 100 x 1bpp = 2000 bytes, half-rate (4000) line-doubled
+lo  160 x 200 x 1bpp = 4000 bytes, half-rate (4000)
+lo  160 x 100 x 2bpp = 4000 bytes, full-rate (8000) line-doubled
+lo  160 x 200 x 2bpp = 8000 bytes, full-rate (8000)
+hi  320 x 100 x 1bpp = 4000 bytes, full-rate (8000) line-doubled
+hi  320 x 200 x 1bpp = 8000 bytes, full-rate (8000)
+
+APA modes also use Color-RAM to select the active palette in each tile,
+although there's no 'top-bit' to select half-palettes in 1bpp modes.
+
+Needs a 256x8 SRAM (or 2 x 256x4 SRAMs)
+
+VIC-20 has 1 of 8 colors per tile in color-RAM
+We have 4 of 16 colors per tile in color-RAM, a different trade-off
+(and it's possible to get 1 of 16 colors per tile)
+
+
+NTSC 63.56µs line, 52.56µs active, 4.7µs hsync, 2.5µs colorburst (9 cycles of 3.57954; 9*4=27 dots at 14.31818 [2 off, 2 on])
+
+NTSC Colorburst = 3.579545454545454 (315/88) MHz  x4 = 14.3181818181818 / 15,734 = 910.015 dots/line   (use 912/4 = 228) 560 act (140)
+PAL Colorburst = 4.43361875 MHz                   x4 = 17.734475        / 15,625 = 1135.0064 dots/line (use 1136/4 = 284)
+
+NTSC 1000 / 3.579545454545454 = 279.36507936507934 ns color cycle
+PAL  1000 / 4.43361875        = 225.54938897260843 ns color cycle
+
+NTSC: 227.5 color cycles per line (160+67.5) [approx. 328 x 224 visible] (262 lines, 192 active)
+Double: 455 px clocks per line (320 + 135) in 63.56µs (15,734 Hz dotclock) HBlank = 10.7-10.9µs
+
+PAL: 283.75 color cycles per line (160+123.75) in 64µs
+320: 567.5 px clocks per line (320 + 247.5) in 64µs  (64 / 567.5 * 1000 = 112ns)
+
+5.3693181825 pixel clk = 186.24ns per pixel, 2*186 = 372ns cycle (200ns DRAM is 375ns cycle)
+so 1 DRAM accesses per 2 pixels (4 per tile: name, gfx, gfx, sprite)
+
+https://www.youtube.com/watch?v=0EzTAo47Fxg VGA EPROM
+https://www.youtube.com/@DrMattRegan/videos and more
+
+
+
+
+
+
+What if I started with 256 x 192 ?
+
+• 1 MHz 6502            (bus sharing on low cycle)
+• 16K RAM @ 450ns cycle (best price-per-bit in 1980)
+• 2K character ROM      (256 glyphs) (merge with BASIC ROMs?)
+• 8K BASIC ROM          (maybe 2 x 4K)
+• 32 x 24 text mode
+• 256 x 192 graphics
+• 16 colors
+• palette per cell (1 of 4 palettes; 2 bits per cell) [32*24/2 = 384 nibble Color-RAM; 512x4 SRAM]
+• 4 palettes [4*4 = 16 bytes in VDP]
+• 128/256 custom characters [uses 1KB/2KB] (switchable)
+• 32-byte line buffer [share the 512x4 SRAM @ 250ns cycle]
+• steal 6 CPU cycles in the right border (see timing below)
+
+Every 8 pixels can perform 2 DRAM accesses @ 500ns:
+The CPU gets 1 access per tile (read/write)
+The VDP gets 1 access per tile (RAM/ROM glyph read)
+The VDP gets 3 accesses to Color-RAM per tile (char low, char high, attribute) @ 250ns
+The CPU gets 1 access to Color-RAM per tile (the last 250ns slot)
+
+We can enable half-palette mode: top bit of each character selects the low/high half of
+the palette: 8 x 2-color palettes per line.
+
+We can switch to lo-res mode and use 4 colors per tile at half-res.
+
+We can change palettes on each line, or even during the line.
+
+We can switch to 16-color mode that stores 256 x 16-color nibbles in Color-RAM,
+a single color per character over 8 lines. Software must upload new colors every line,
+at a rate of 32 nibbles per line. Color 1. Palette 0 is used for remaining colors.
+
+We can enable an interrupt on every 8th line at the end of the character row,
+to enable this 16-color upload.
+
+We can emulate 40-column mode using 6-column characters in APA 256 x 192 mode.
+We can switch to 6-column color mode, reading colors from Color-RAM every 6 columns,
+which means 320 x 16-color nibbles over 8 lines; upload 40 nibbles per line.
+Palettes also fit: 40*24/2 = 480 palettes in 512 nibbles.
+We have extra SRAM space and bandwidth since there's no line buffering in APA modes.
+
+We can support 64-column 16-color mode: read colors every 4 columns;
+448/64 = 8 lines; upload 64 nibbles/line.
+Palettes won't fit: 64*24/2 = 768 palettes in 512 nibbles.
+
+
+Text modes:
+0  32 x 24 x 1bpp (256 x 192) 16-color             = 768 bytes
+1  32 x 24 x 1bpp (256 x 192) 8 x 2-color palettes = 768 bytes
+2  32 x 24 x 2bpp (128 x 192) 4 x 4-color palettes = 768 bytes
+3  32 x 12 x 2bpp (128 x 96)  4 x 4-color palettes = 384 bytes
+
+APA modes:
+4  128 x 96  x 1bpp = 1.5K, half-rate (3K)
+5  128 x 96  x 2bpp = 3K, full-rate (6K)
+6  256 x 96  x 1bpp = 3K, full-rate (6K)
+7  256 x 96  x 2bpp = 6K, full-rate (6K)
+8  128 x 192 x 1bpp = 3K, half-rate (3K)
+9  128 x 192 x 2bpp = 6K, full-rate (6K)
+10 256 x 192 x 1bpp = 6K, full-rate (6K)
+11 256 x 192 x 2bpp = 12K, double-rate (12K)  [motivates +16K expansion!]
+
+APA modes also use Color-RAM to select the active palette in each tile.
+
+In BASIC 16K - 768 - 1024 bytes      -> "14592 bytes free"   +16K -> "30976 bytes free"
+Enable custom characters (1K)        -> "13568 bytes free"   +16K -> "29952 bytes free"
+Enable custom characters (2K)        -> "12544 bytes free"   +16K -> "28928 bytes free"
+
+APA in BASIC 16K - 1.5K - 1024 bytes -> "13824 bytes free"   +16K -> "30208 bytes free"
+APA in BASIC 16K - 3K - 1024 bytes   -> "12288 bytes free"   +16K -> "28672 bytes free"
+APA in BASIC 16K - 6K - 1024 bytes   -> "9216 bytes free"    +16K -> "25600 bytes free"
+APA in BASIC 16K - 12K - 1024 bytes  -> "3072 bytes free"    +16K -> "19456 bytes free"
+
+Expansion RAM needs 1000ns or faster cycle time; the cheapest and nastiest DRAM.
+
+
+
+What if I design for 1 color per cell:
+
+Design for 1024x4 SRAM part, ubiquitous volume part going forward in 1980.
+Color RAM uses 32x24=768 nibbles, one 4-bit color per character
+Line Buffer: 64 nibbles x 2 (double-buffered: upload 32/8 = 4 bytes [8 nibbles] per hblank)
+
+Text Modes:
+0  Hi-res 32x24:     1bpp, 1 x 16-color per tile                                         (BG, C1) •
+1  Hi-res 32x24 HB:  1bpp, 1 x 16-color per tile, top bit of name sets half-bright       (BG, C1|C1d)
+2  Hi-res 32x24 Aux: 1bpp, 1 x 16-color per tile, top bit of name selects AUX            (BG, C1|AUX)
+3  Lo-res 16x24:     2bpp, 2 x 16-color per tile. 3rd color is half-bright 2nd color     (BG, C1,     C2, C2d) •
+4  Lo-res 16x24 HB:  2bpp, 2 x 16-color per tile. 3rd color auxilary color               (BG, C1,     C2, AUX) •
+5  Lo-res 16x24 HB2: 2bpp, 2 x 16-color per tile. top bit of name sets half-bright       (BG, C1|C1d, C2, C2d)
+6  Lo-res 16x24 Aux: 2bpp, 2 x 16-color per tile. top bit of name sets half-bright       (BG, C1|C1d, C2, AUX)
+7  Lo-res 16x24 Aux: 2bpp, 2 x 16-color per tile. top bit of name sets half-bright       (BG, C1|AUX, C2, C2d)
+8  Lo-res 16x24 4W:  2bpp, 1 x 16-color per 4x8 tile                                     (BG, C1,    C1d, AUX) •
+9  Lo-res 16x24 4HB: 2bpp, 1 x 16-color per 4x8 tile. top bit of name sets half-bright   (BG, C1|C1d, AXd, AX)
+
+APA modes:
+10  128 x 96  x 1bpp = 1.5K, half-rate (3K)      128 x 192
+11  128 x 96  x 2bpp = 3K, full-rate (6K)        256 x 192
+12  256 x 96  x 1bpp = 3K, full-rate (6K)        256 x 192
+13  256 x 96  x 2bpp = 6K, full-rate (6K)        512 x 192 ?
+14  128 x 192 x 1bpp = 3K, half-rate (3K)        128 x 192
+15  128 x 192 x 2bpp = 6K, full-rate (6K) •      256 x 192
+16  256 x 192 x 1bpp = 6K, full-rate (6K) •      256 x 192
+17  256 x 192 x 2bpp = 12K, double-rate (12K)    512 x 192 ?  [motivates +16K expansion]
+18  512 x 192 x 1bpp = 12K, double-rate (12K)    512 x 192 ?  [motivates +16K expansion]
+
+A double-rate path would support 64-column text modes,
+but the gate array would have to work at 14 MHz..
+
+
+Visible pixels = 42µs / 256 * 1000 = 164.0625ns
+In an 8-pixel tile, we need 4 timeslots: 2 CPU, 2 VPU.
+So 164.0625 * 2 = 328.125ns per timeslot (minimum DRAM cycle time: 330ns)
+
+Line Buffer:
+We need 32 VDP cycles to buffer the 32 name-table bytes.
+non-visible time (border + blanking) ≈63.5 − 42 = 21.5μs
+21.5μs / 375ns ​≈ 57 cycles
+57 / 2 ≈ 28 cycles (every 2nd cycle for VDP)
+if we steal 4 CPU cycles at the end of visible display,
+28 + 4 = 32 cycles
+if we steal 6 CPU cycles at the end of visible display,
+28 + 6 = 32 cycles + 2 cycles line setup time
+
+"The 512x4 SRAM chips used in early 1980s systems like the ZX80 and TRS-80 Model 100
+typically had access times of 150ns to 200ns."
+
+The CPU runs at 1 MHz, i.e. 500ns CPU cycle + 500ns VDP cycle.
+Assuming 200ns async access / cycle time, we have have time for 2 x 250ns write cycles
+for the 2 x 4-bit line buffer byte, plus a single 250ns CPU read/write.
+
+"By 1980, larger volumes and higher densities reduced per-bit cost significantly:
+4Kx8 (32 kilobit) and 8Kx8 (64 kilobit) masked ROMs likely ranged from $5 to $10 per unit
+in high-volume production (tens of thousands)"
+
+In 100K lots:
+2Kx8 (16 kilobit): ~$3–$5 per unit
+4Kx8 (32 kilobit): ~$5–$8
+8Kx8 (64 kilobit): ~$8–$12 
+
+Masked ROMs are essentially ASICs, and as such the cost is going to track roughly with that of
+chip fab and NRE. Smaller roms net a higher per-wafer yield. Actual numbers will be difficult
+to find. (All but one of the films would be stock, hence "mask ROM")
+
+1970 buscom: $10k for ROM fixed; $2k tooling per ROM; 50k @ $13 ea; additional $12 ea
+"masked ROMs are 3 to 5 times cheaper than EPROM" (look in byte magazine)
+
+
+NTSC 63.56µs line, 52.56µs active, 4.7µs hsync, 2.5µs colorburst (9 cycles of 3.57954; 9*4=27 dots at 14.31818 [2 off, 2 on])
+
+63.56 - 52.56 = 11 hblank
+
+63.56 line - 44 visible - 11 hblank = 8.56 / 2 = 4.28 borders
+
+NTSC line 63.556µs, 52.56µs active, ~44µs visible, 44000/256 = 171.875ns (42000/256 = 164.0625ns)
+1000 / (14.31818 / 1.5) = 104.76ns
+1000 / (14.31818 / 2) = 139.683ns * 256 = 35.758µs •• 52.56 - 35.758 = 16.802 / 2 = 8.401µs borders
+1000 / (14.31818 / 2.5) = 174.6ns * 256 = 44.697µs
+1000 / (14.31818 / 3) = 209.52ns * 256 = 53.637µs
+
+Pixel Clock (CLK) = 7.15909 MHz
+
+
+OLD:
+
+256 / 44 = 5.818 * 63.56 = 369.8 pixels - 256 = 113
+44 * X = 256; 256 / 44 = X = 5.818181818181818
+44µs * 5.818181818181818 = 256px  visible    (64)
+4.28µs * 5.818181818181818 = 24px border R        (24.901818181818182)
+11µs * 5.818181818181818 = 64px   hblank     (16)
+4.7µs * 5.818181818181818 = 28px  hsync      (7)  (27.345454545454547)
+2.5µs * 5.818181818181818 = 16px  colorburst (4)  (14.545454545454547)
+4.28µs * 5.818181818181818 = 24px border L        (24.901818181818182)
+63.56 * 5.818181818181818 = 368px line            (369.8036363636364)
+
+NTSC 256 + 24 + 64 + 24 = 368   23*16 = 368 (9-bit counter) reset -1 at %1 0110 1111
+PAL  372.3636363636364 line (+4)
+
+Horizontal:
+End of scan  = 256                                   1 0000 0000
+HBlank on    = 256 + 24 = 280                        1 0001 1000
+HBlank off   = 256 + 24 + 64 = 344                   1 0101 1000
+HScan on     = 256 + 24 + 64 + 24 = 368              1 0111 0000 -1   1 0110 1111
+
+HBlank = d8•d4•((~d6•d3)+(d6•~d3))
+HBlank from 1 0001 1000 (280) -> 1 0101 1000 (344)
+
+HBlank:
+1 0000 1000 OFF
+
+1 0001 0000 OFF
+1 0001 0111 OFF
+
+1 0001 1000 ON     d8    ~d6 ~d5 d4 d3   (1 x001 1xxx)
+1 0001 1111 ON
+
+1 0010 0000 ON     d8    ~d6 d5          (1 x01x xxxx)
+1 0010 0111 ON
+1 0010 1000 ON
+1 0010 1111 ON
+1 0011 0000 ON
+1 0011 0111 ON
+1 0011 1000 ON
+1 0011 1111 ON
+
+1 0100 0000 ON     d8    d6 ~d5 ~d4      (1 x100 xxxx)
+1 0100 0111 ON
+1 0100 1000 ON
+1 0100 1111 ON
+
+1 0101 0000 ON     d8    d6 ~d5 d4 ~d3  (1 x101 0xxx)
+1 0101 0111 ON
+1 0101 1000 OFF
+
+1 0110 0111 OFF
+1 0110 1000 OFF
+1 0110 1111 Limit
+
+d8 • ( ( d6 • ~d5 • ( ~d4 + ( d4 • ~d3 ))) + ( ~d6 • ( d5 + ( ~d5 • d4 • d3 ))) )
+
+A * ( ( B * !C * ( !D + ( D * !E ))) + ( !B * ( C + ( !C * D * E ))) )
+(~B • C) + (B • ~C • ~(D • E))
+
+HBlank = (~d6 • d5) + (d6 • ~d5 • ~(d4 • d3))   [via Karnaugh map]
+
+
+OLD 2:
+
+NTSC 262 lines 192 visible 70 blank 18 back 3 vsync 20 front (9-bit counter) reset at 262 %1 0000 0110
+PAL  312 lines 192 visible 120 blank (9-bit counter) reset at 312 %1 0011 1000
+
+NTSC vblank: 18 back 3 vsync 20 front = 41; 262.5 - 41 = 221.5 - 192 = 29.5 / 2 = 14.75
+
+Simplified: 312 lines for PAL, 262 for NTSC.
+NTSC simplified: 16 + 4 + 20 + 14 + 192 + 16 = 262  BAD
+End of scan  = 192                                     1100 0000  nc  BAD
+VBlank on    = 192 + 16 = 208                          1101 0000  nc
+VSync on     = 192 + 16 + 16 = 224                     1110 0000  nc
+Vsync off    = 192 + 16 + 16 + 4 = 228                 1110 0100  nc
+VBlank off   = 192 + 16 + 16 + 4 + 20 = 248            1111 1000  nc
+Visible on   = 192 + 16 + 16 + 4 + 20 + 14 = 262     1 0000 0110  nc
+
+VBlank = d7•d6•(d5+d4)•~(d5•d4•d3)  BAD
+VScan = ~(d8+(d7•d6))  BAD
+
+VSync = d7•d6•d5•~(d4+d3)  BAD
+
+NTSC ~15.734 kHz = 63556ns / 15ns = 4237 gate delays  (5ns for 1980 Gate Array; PALs 15ns-90ns)
+Logic   15ns max
+Invert  10ns max
+D-FF    25ns max
+Up to 25 MHz
+
+Clock Skew Budget: In 1980, a safe design rule was to assume a 10–20% timing margin to account for
+the gate array's internal interconnect resistance.
+
+Fan-out Sensitivity: 74LS has a typical fan-out of 20, but internal gate array cells often had much
+weaker drive strengths. If your minterm logic has high-fan-out nodes, you must prototype them with
+buffers (74LS244) to simulate the "loading" the gate array will face.
+
+Setup/Hold Times: For flip-flops (e.g., 74LS74), the typical setup time (ts) is 20 ns.
+When designing for a 1980 release, targeting a 10 MHz to 25 MHz system clock is the "safe"
+envelope for volume-produced gate arrays.
+
+1980-era LSI Logic LSI5000 Gate Array
+
+74LS54 (AOI) $1.57 https://www.wiltronics.com.au/product/422/74ls54-4-wide-2-and-3-input-andor-invert-gate/
+https://www.rockby.com.au/catresultsSql_12.cfm?select=93&subcode=371&stock_no=16354
+https://www.jameco.com/z/74LS54-Signetics-High-Technology-4-Wide-2-Input-AND-OR-INVERT-AOI-Gate-DIP-14_2298599.html
+74LS51 (AOI) $2.84 https://www.digikey.com.au/en/products/base-product/texas-instruments/296/74LS51/275 (417)
+
+An AOI22 (74LS51) was often a single "macro" that counted as maybe 4–6 gates but only cost one propagation delay.
+Jellybean parts: 74LS00 (NAND), 74LS02 (NOR), 74LS04 (Inv), 74LS08 (AND), 74LS32 (OR).
+
+The NAND-NAND Trick: any Sum-of-Products (minterm) logic can be built entirely out of 74LS00s or 74LS10s
+(Triple 3-input NAND). This was the gold standard for 1980 designs because NAND gates were the cheapest
+and fastest TTL components.
+
+When you lay out the 74LS version for enthusiasts, try to group your Address Decoders (74LS138/139) close to the CPU and the Data Transceivers (74LS245) close to the DRAM. This mimics the physical layout constraints of 1980 motherboards where long traces added "hidden" propagation delays (approx 1.5ns to 2ns per foot of PCB trace).
+
+The 6502 is an NMOS chip with high input capacitance. If your 74LS161 output is too "lazy" (slow rise time),
+the 6502 can glitch. In 1980, designers often used a 74LS04 with a pull-up resistor to "sharpen" the clock edges.
+
+Divide-by-14 counter: use bit 'D' as the 6502 clock.
+Align the counter values so bit D has 7/7 duty cycle (load 1, reload on 14)
+
+If your Φ2 is 489ns, and your 74LS address decoders take ~40ns to settle, the DRAM has ~449ns to get data to the CPU.
+Even the slowest 4116-25 (250ns) DRAMs will work perfectly here. You have nearly 200ns of "safety margin,"
+which is very generous for 1980. (I need a 100ns setup time. 6502 latches the data on falling Φ2.)
+489 - 40 - 250 - 100 = 99ns margin. Tads = 225ns after falling Φ1; very stable by rise of Φ2, RAS immediately.
+
+14.318 MHz clock, each "tick" is ~70 ns (for DRAM timing, max gate delays, etc)
+
+Use 74S244 for ~6–9ns propagation -> SRAM fetches.
+
+
+Sync VDP vs CPU
+CLK: 1000 / (14.31818 / 2) = 139.683ns * 256 = 35.758µs visible
+NTSC: 52.56µs - 35.758µs = 16.802µs / 2 = 8.401µs border; 63.556 - 52.56 = 10.996µs
+CPU runs at 14.318 MHz / 14 = 1.0227 MHz
+VDP runs at 14.318 MHz / 2  = 7.159 MHz         (2*69.842 = 139.684ns per pixel)
+Every 8 pixels we need another graphics byte    (8*139.68 = 1117.44ns per tile)       7*1117.44 = 7822.08 (7 tiles)
+But we can only access DRAM on a CPU cycle      (14*69.842 = 977.79ns per CPU cycle)  8*977.79  = 7822.32 (8 CPU cycles)
+OK we are ahead by 1 byte every 7 tiles,
+which we can use to fetch 4 name table bytes into the row double-buffer on each line.
+We MUST re-synchronize the CPU clock at HSync to make this stable.
+So 4*7=28 VDP tiles plus 4 more.
+So 4*8=32 CPU cycles loads the 4 name table bytes.
+We need the first CPU cycle complete before the first pixel is shifted out,
+so these are slightly offset:
+VDP 7*16 = 112 CLK  (7 x 8px)
+CPU 8*14 = 112 CLK  (8 x CPU)  (starts 2*14+4=32 CLK earlier, to preload 2 graphics bytes)
+
+
+HORIZONTAL TIMING
+
+Pixel Clock (CLK) = 7.15909 MHz
+
+Check: 8.401 + 35.758 + 8.401 + 10.996 = 63.556µs
+L Border = 8401 / 139.683 = 60.1433   (60)
+Visible  = 35758 / 139.683 = 255.9939 (256)
+R Border = 8401 / 139.683 = 60.1433   (60)
+HBlank   = 10996 / 139.683 = 78.7211  (=76:)
+Font.P   = 1500 / 139.683 = 10.7386   (12)
+HSync    = 4700 / 139.683 = 33.6476   (32)
+Breezewy = 558.732 (4 CLK) before colorburst
+Burst    = 2500 / 139.683 = 17.89766  (20 is 2.79366µs)
+Back.P   = 4500 / 139.683 = 32.2158   (32)
+Total    = 63556 / 139.683 = 455.001
+60 + 256 + 60 + 12 + 32 + 32 = 452    [goal: 227.5015 color cycles * 2 = 455.003]
+256 + 60 + 12 + 32 + 32 + 63 = 455 •     455 * 139.683 = 63.555
+256 + 59 + 16 + 32 + 32 + 60 = 455    (Simplified, modulo 8)
+256 + 60 + 12 + 32 + 32 + 63 = 455    (Exact)
+
+End scan   256                        1 0000 0000   255 clocked in -> "ended" at 256 (exact, pixels need +1 delay)
+HBlank on  256+60=316                 1 0011 1100   316 clocked in -> "blanked" at 317 (+1 delay)
+HSync on   256+60+16=328              1 0100 1000   328 clocked in -> "syncing" at 329 (+1 delay)
+HSync off  256+60+16+32=360           1 0110 1000   360 clocked in -> "sync off" at 361 (+1 delay)
+HBlank off 256+60+16+32+32=392        1 1000 1000   392 clocked in -> "blank off" at 393 (+1 delay)
+Reset      256+60+16+32+32+59=455     1 1100 0110   454 clocked in -> 000 instead of 455 (exact)
+
+Blank 80 * 139.683 = 11.17464µs
+Front 16 * 139.683 = 2.235µs
+Sync  32 * 139.683 = 4.469µs
+Back  32 * 139.683 = 4.469µs
+Total 455 * 139.683 = 63.555765µs
+
+State Machine:
+• trigger decodes advance the state machine counter
+• counter resets; each trigger counts from 1 to subtract 1 for clocking.
+
+0 = front porch       12    11xx
+1 = hsync             32    1xxxxx
+2 = breezeway         4     1xx
+3 = colorburst        20    1x1xx
+4 = back porch        8     1xxxxx
+5 = left border       60    1111xx        or 1xxxxxx  (+4 width)
+6 = visible A         256   1xxxxxxxx     or 11111xxx (-8 width)
+7 = right border      63    111111        or 1000011  (+4 width)
+
+3-bit fsm
+9-bit counter
+3-to-8 decoder
+2-input AND x 4
+3-input AND x 2
+5-input AND        or 6-input + 3-input (+4 width control)
+7-input AND        or 8-input + 5-input (+4 width control)
+
+
+Scan
+0 0000 0000  Start
+1 0000 0000  End
+
+Reset
+1 1100 0110   d8 d7 d6 d2 d1
+
+HBlank       (delayed 1 CLK)
+1 0011 1011  315
+1 0011 1100  316   A~BDEFG      1 0011 11xx
+1 01xx xxxx        A~BC         1 01xx xxxx
+1 1000 0000
+1 1000 0110           
+1 1000 0111        AB~C~D~E~F   1 1000 0xxx
+1 1000 1000  392 (OFF)                        (A*B*F) = OFF edge
+1 1001 0000
+1 1100 0110 RESET
+
+d8 ~d7 d5 d4 d3 d2 + d8 ~d7 d6 + d8 d7 ~d6 ~d5 ~d4 ~d3
+
+HSync        (delayed 1 CLK)
+1 0100 0111  327
+1 0100 1000  328 (ON)       A~BC~D~EF -> A~BC~DF
+1 0101 xxxx                 A~BC~DE   -> A~BC~DE
+1 0110 0111  359            A~BCD~E~F -> A~BCD~E~F
+1 0110 1000  360 (OFF)
+
+ABCDEFG
+8765432
+
+d8 ~d7 d6 ~d5 d3 + d8 ~d7 d6 ~d5 d4 + d8 ~d7 d6 d5 ~d4 ~d3
+
+Ughh vertical timing is messed up..
+
+Many 80s home computers (e.g., NES) used 240p (262 total lines), with ~3 lines for Vsync
+and ~20 lines for blanking.
+
+The timings above need div by 2.
+
+NTSC 240p: 9 + 3 + 10 + 24 + 192 + 24 = 262
+NTSC CRTC: 9 + 3 + 8 = 20 + 24 + 192 + 24 = 260
+
+End scan   192                  0 1100 0000
+VBlank on  192+24 = 216         0 1101 1000
+VSync on   192+24+9 = 225       0 1110 0001
+VSync off  192+24+9+3 = 228     0 1110 0100
+VBlank off 192+24+9+3+10 = 238  0 1110 1100
+Start Scan 192+24+20+26 = 262   1 0000 0110
+
+VScan = ~(d8+(d7•d6))
+
+VBlank
+0 1100 0000   Scan Off
+0 1101 0111   OFF
+0 1101 1000   ON  216    d7 d6  ~d5 d4 d3           011
+0 1101 1111   ON
+0 1110 0000   ON         d7 d6  d5 ~d4 ~d3          100
+0 1110 1000   ON
+0 1110 1011   ON  235    d7 d6  d5 ~d4 d3 ~d2       111
+0 1110 1100   OFF 236
+1 0000 0110   Limit
+
+C'DE + CD'E' + CD'EF' == 765'43 + 7654'3' + 7654'2'
+
+VBlank = 76~543 + 765~4~3 + 765~4~2
+
+VSync
+0 1101 1000  VBlank ON
+0 1110 0000  OFF
+0 1110 0001  ON
+0 1110 0010  ON       VBL ~d4 ~d3 ~d2 (d1 + d0)
+0 1110 0011  ON
+0 1110 0100  OFF
+0 1110 1011  VBlank Last
+
+VSync = VBL ~d4 ~d3 ~d2 (d1 + d0)
+
+~A ~B ~C (D + E)
+
