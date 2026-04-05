@@ -6,12 +6,33 @@
 
 // NTSC Vert: 192 + 25 + 9 + 3 + 8 + 25 = 262
 // NTSC Horz: 128 + 31 + 6 + 16 + 2 + 10 + 4 + 31 = 228
-const int fb_hbord = 31; // border width in FB
-const int fb_vbord = 25; // border height in FB
-const int fb_width = 256+(fb_hbord*2);
-const int fb_height = 192+(fb_vbord*2);
-const int width = fb_width*2;  // MUST be twice as wide
-const int height = fb_height*2; // MUST be twice as high
+// NTSC Pixel: 256 + 62 + 12 + 32 + 4 + 20 + 8 + 62 = 456
+// NTSC Final: 9 + 256 + 48 + 11 + 32 + 4 + 20 + 8 + 68 = 456
+enum vtiming {
+    fb_syncwidth = 12 + 32 + 4 + 20 + 8,
+    fb_hdelay = 8+1,    // 1 character (prefetch) + 1 pixel (output delays)
+    fb_viswidth = 256,
+    fb_visheight = 192,
+    fb_hleftbord = 61-fb_hdelay,  // left border in FB
+    fb_hrightbord = 62, // right border in FB
+    fb_vbord = 25,      // border height in FB
+    fb_width = fb_viswidth+(fb_hleftbord+fb_hrightbord),
+    fb_height = fb_visheight+(fb_vbord+fb_vbord),
+    width = fb_width*2,  // MUST be twice as wide
+    height = fb_height*2, // MUST be twice as high
+};
+
+//                         3:8
+// 9                     = 000 001001    1001          (2A 2A)   2-AND        6 x 2-AND (2 ICs)
+// 9+256                 = 100 001001    1001    +1    (2A)      2-AND        5 x 3-AND (2 ICs)
+// 9+256+48              = 100 111001    1001+1  +2    (3+2A)    3-AND
+// 9+256+48+11           = 101 000100    101     +1    (2A)      2-AND 2-AND
+// 9+256+48+11+32        = 101 100100    101     +2    (3A)      3-AND                     (1 3:8)
+// 9+256+48+11+32+4      = 101 101000    101     +2    (3A)      3-AND            (7 x 2A) (2 ICs)
+// 9+256+48+11+32+4+20   = 101 111100    101+2   +2    (3A)      3-AND            (4 x 3A) (2 ICs)
+// 9+256+48+11+32+4+20+8 = 110 000100    11      +1    (2A)      2-AND 2-AND
+// 456                   = 111 001000    11      +2    (2A)      3-AND
+
 
 static SDL_Window* window = 0;
 static SDL_Renderer* renderer = 0;
@@ -30,8 +51,6 @@ uint8_t vdp_vblank = 0;  // 1-bit latch (visible to ula.c)
 // pixel pipeline
 static uint8_t vdp_latch = 0x12; // 8-bit character latch
 static uint8_t vdp_shift = 0xF3; // 8-bit pixel shift register
-static uint8_t vdp_semigr = 0x03; // 4-bit semigraphics color latch
-//static uint16_t vdp_vaddr = 0x03; // 12-bit video address register (0-4096)
 
 // colors.py
 static uint32_t hw_pal[8] = { // RGB
@@ -42,7 +61,7 @@ static uint32_t hw_pal[8] = { // RGB
     0xffff21,
     0x68ff9f,
     0x200ff,
-    0xcccccc,
+    0xffffff,
 };
 
 // [00000000][00000000][00000000] -- fetch tile         (load low)
@@ -70,10 +89,16 @@ static uint32_t hw_pal[8] = { // RGB
 // MSB -> { alpha, red, green, blue } <- LSB
 static uint32_t FB[fb_width*fb_height]; // 300K!
 //static uint32_t* FBspan = &FB[0];
-static uint16_t FBcol = 0;
+static uint16_t FBcol = 455 - (fb_viswidth+fb_hdelay+fb_hrightbord+fb_syncwidth);
 static uint16_t FBrow = 0;
 
 int init_render() {
+    // check horizontal timing
+    int htime = fb_viswidth+fb_hdelay+fb_hrightbord+fb_syncwidth+fb_hleftbord;
+    if (htime != 455) {
+        printf("wrong horizontal timing: %d\n", htime);
+        return 0;
+    }
     SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS);
     window = SDL_CreateWindow(
         "ECS-604",
@@ -160,19 +185,15 @@ void advance_vdp() {
         if (--vdp_nextbus < 1) {
             // VRAM memory access on each BUS cycle (1.022727 MHz) (every 14/2=7 pixels)
             vdp_nextbus = 7;
-            // TODO: resolve bus timing: 1.02 MHz VDP Latch (7 CLK) -> 0.895 MHz Char Latch (8 CLK)
-            // if (vdp_vbusy && vdp_hbusy) {
-            //     // HAddress: low 5 bits (0-31); VAddress: 5 bits above that (0-23)
-            //     // Base: $0200 (awkward)
-            //     uint16_t addr = 0x400 + ((((vdp_vcount>>3)&31)<<5)|((vdp_hcount>>3)&31)); // [0,768)
-            //     vdp_latch = MainRAM[addr]; // Char
-            // }
+            // FIXME: we double up some columns: we're getting ahead at a rate
+            // of 1px per char; when we overtake, we load a char early but
+            // using the current VDP (HCounter) address...
+            // HAddress: low 5 bits (0-31); VAddress: 5 bits above that (0-23)
             uint16_t addr = 0x000 + ((((vdp_vcount>>3)&31)<<5)|((vdp_hcount>>3)&31)); // [0,1024)
             vdp_latch = MainRAM[addr]; // Char
         }
         uint16_t vdp_hsub = vdp_hcount & 7; // 0-7 (low 3 bits of hcount)
         // load next character every bus cycle
-        // (FIXME: on the rising edge of PHI2 [every 7 pixels])
         // if (vdp_hsub == 4) {
             // HAddress: low 5 bits (0-31); VAddress: 5 bits above that (0-23)
             // Base: $0200 (this will access up to 1KB, only 768 displayed)
@@ -181,13 +202,15 @@ void advance_vdp() {
         // }
         // load the shift register every 8th CLK
         uint8_t prev_shift_out = (vdp_shift>>7); // pixel latch has 1px delay
-        uint8_t prev_semigr = vdp_semigr;        // also delay color by 1px
+        uint8_t prev_vidpal = VidPal;
         if (vdp_hsub == 0) {
             // load the latched character (via CharROM) into the shift register
             // on the first pixel of the next tile
             int address = (vdp_latch << 3) + (vdp_vcount & 7);
             vdp_shift = CharROM[address];
-            vdp_semigr = (vdp_latch>>4); // MCCCxxxx
+            // Load the palette latch from $8x/$9x (C1) color codes.
+            if ((vdp_latch & 0xF0) == 0x80) VidPal = (VidPal & 0xF0) | (vdp_latch & 0x0F); // FG
+            if ((vdp_latch & 0xF0) == 0x90) VidPal = (VidPal & 0x0F) | ((vdp_latch & 0x0F) << 4); // BG
         }
         // shift the register every CLK (suppressed when loading)
         if (vdp_hsub != 0) {
@@ -196,42 +219,41 @@ void advance_vdp() {
         if (vdp_vborder == 0 && vdp_hborder == 0) { // vdp_hborder == 0
             // display area
             // latch the pixel on the next CLK (prev_shift_out)
-            int vdp_pixel = prev_shift_out ? (VidPal & 15) : (VidPal >> 4); // palette select MUX
-            int hw_color = ((prev_semigr & 8) && prev_shift_out) ? (prev_semigr&7) : (vdp_pixel&7); // Semigraphics or Text
-            uint32_t output = 0xFF000000 | hw_pal[hw_color]; // HW palette (phase select MUX)
-            FBcol = vdp_hcount;
+            int vdp_pixel = prev_shift_out ? (prev_vidpal & 15) : (prev_vidpal >> 4); // palette select MUX
+            uint32_t output = 0xFF000000 | hw_pal[vdp_pixel&7]; // HW palette (phase select MUX)
             if (FBrow < fb_height && FBcol < fb_width) { // safety check
-                int coord = ((fb_vbord+FBrow) * fb_width) + fb_hbord + FBcol; // FBSpan+FBcol
+                int coord = ((fb_vbord+FBrow) * fb_width) + FBcol; // FBSpan+FBcol
                 FB[coord] = output;
-                FBcol++;
             }
         }
 
         // Clock in the new HCount, VCount, and decodes.
         vdp_clk++;
         vdp_hcount++;
+        FBcol++;
         // NTSC Horz: 128 + 31 + 6 + 16 + 2 + 10 + 4 + 31 = 228 (x2 for pixels)
         // [0][1][2][3][4][5][6][7][8][-]
         // [/][0][1][2][3][4][5][6][7][8]
-        if (vdp_hcount == 8+1) {
+        if (vdp_hcount == fb_hdelay) {
             vdp_hborder = 0;     // turn off border (after 1 character + 1 pixel)
         }
-        if (vdp_hcount == 256+8+1) {
+        if (vdp_hcount == fb_viswidth+fb_hdelay) {
             vdp_hborder = 1;     // turn on border (after 33 characters + 1 pixel)
         }
-        if (vdp_hcount == 256+62) { // 318
+        if (vdp_hcount == fb_viswidth+fb_hdelay+fb_hrightbord) {
             vdp_hblank = 1;      // turn on HBLANK
         }
-        if (vdp_hcount == 256+62+76) { // 394
+        if (vdp_hcount == fb_viswidth+fb_hdelay+fb_hrightbord+fb_syncwidth) {
             vdp_hblank = 0;      // turn off HBLANK
+            FBcol = 0;           // reset output column
         }
-        if (vdp_hcount == 455) { // NTSC 455 -> 456/7 = 65.14; 65*7=455
+        if (vdp_hcount == fb_viswidth+fb_hdelay+fb_hrightbord+fb_syncwidth+fb_hleftbord) { // NTSC 455/7 = 65
             // NTSC: 227.5 color-burst cycles per line at 3.57954 MHz
             // NTSC: 455 pixels per line at 7.15909 MHz
             // CPU: 455/7 = 65 cycles at 1.02272 MHz exactly
             vdp_hcount = 0;      // end of line
-            //FBcol = 0;           // reset output column
             FBrow++;             // next output row
+            VidPal = 0x0F;       // reset VidPal latch for each line (Black BG, White FG)
 
             // NTSC Vert: 192 + 25 + 9 + 3 + 8 + 25 = 262
             vdp_vcount++;
@@ -254,7 +276,7 @@ void advance_vdp() {
             }
 
             // calculate output row address
-            // int coord = (((fb_vbord+FBrow) * fb_width) + fb_hbord);
+            // int coord = (fb_vbord+FBrow) * fb_width;
             // FBspan = &FB[coord];
         }
     }

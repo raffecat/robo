@@ -18,7 +18,7 @@ int main(int argc, char *argv[]) {
     printf("dir %s\n", cwd);
 
     // load the ROM image.
-    memset(SysROM, 0x16, sizeof(SysROM)); // FF! 16 17  01 02 03-0D! 1E F1
+    memset(SysROM, 0xFF, sizeof(SysROM)); // FF! 17  01 02 03-0D! 1E F1 >16<
     size_t rom_size = 4096;
     //size_t rom_size = read_binary_file("rom.bin", (char*)SysROM, 4096);
     memcpy(SysROM+4096, SysROM, 4096); // mirror it
