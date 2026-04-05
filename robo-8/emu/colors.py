@@ -23,27 +23,53 @@ def DelayToAng(ns):
     ang = 180 + 33 + (360 * 315/88 * ns * 10**-3)
     return ang % 360
 
-HI = 0.8
-LO = 0.5
+LO = 0.65
+PHI = 1.0
+Sat = 0.8
+
+HI = 0.5
+SatHi = 0.2
+
+Tune = 3
 
 # Y, ns (0-279), sat
 colors = [
-    (0, 180, 0),
-    (HI, 45, 0.6),
-    (HI, 90, 0.6),
-    (HI, 135, 0.6),
-    (HI, 180, 1.0),
-    (HI, 225, 1.0),
-    (HI, 270, 1.0),
-    (HI, 315, 1.0),
-    (HI, 180, 0),
+    (0.0, 0, 0.0),    # black
+    (LO, 45, Sat),    # blue
+    (LO, 90, Sat),    # red
+    (LO, 135, Sat),   # orange
+    (LO, 180, Sat),   # green
+    (LO, 225, Sat),   # yellow
+    (LO, 270, Sat),   # cyan
+    (PHI, 315, Sat),  # purple
+    (0.5, 0, 0.0),    # grey
+    (HI, 45, SatHi),  # light purple
+    (HI, 90, SatHi),  # pink
+    (HI, 135, SatHi), # pastel green
+    (HI, 180, SatHi), # pastel yellow
+    (HI, 225, SatHi), # mint
+    (HI, 270, Sat),   # pastel blue
+    (1.0, 0, 0.0),    # white
 ]
 
+    # HI = 0.95
+    # LO = 0.65
+    # Sat = 0.8
+    # SatHi = 0.5
+    # Tune = 3
+    # (HI, 45, SatHi),  # light purple
+    # (HI, 90, SatHi),  # pink
+    # (HI, 135, SatHi), # pastel green
+    # (HI, 180, SatHi), # pastel yellow
+    # (HI, 225, SatHi), # mint
+    # (HI, 270, Sat),   # pastel blue
+
 for (Y,ns,sat) in colors:
-    ang = DelayToAng(ns)
+    ang = DelayToAng(ns + Tune)
     # print("ang",ang)
     I,Q = AngSatToIQ(ang,sat)
+    # print("ang",ang,"sat",sat,"I",I,"Q",Q)
     R,G,B = YIQtoRGB(Y,I,Q)
     color = (R<<16)|(B<<8)|G
     # print("col",R,G,B,hex(color))
-    print(hex(color))
+    print(hex(color)+",")

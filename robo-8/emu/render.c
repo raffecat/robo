@@ -6,15 +6,14 @@
 
 // NTSC Vert: 192 + 25 + 9 + 3 + 8 + 25 = 262
 // NTSC Horz: 128 + 31 + 6 + 16 + 2 + 10 + 4 + 31 = 228
-// NTSC Pixel: 256 + 62 + 12 + 32 + 4 + 20 + 8 + 62 = 456
-// NTSC Final: 9 + 256 + 48 + 11 + 32 + 4 + 20 + 8 + 68 = 456
+// NTSC Final: 9 + 256 + 67 + 11 + 32 + 4 + 20 + 8 + 56 = 456 (x2)
 enum vtiming {
     fb_syncwidth = 12 + 32 + 4 + 20 + 8,
     fb_hdelay = 8+1,    // 1 character (prefetch) + 1 pixel (output delays)
     fb_viswidth = 256,
     fb_visheight = 192,
-    fb_hleftbord = 61-fb_hdelay,  // left border in FB
-    fb_hrightbord = 62, // right border in FB
+    fb_hleftbord = 56-fb_hdelay,  // left border in FB
+    fb_hrightbord = 67, // right border in FB
     fb_vbord = 25,      // border height in FB
     fb_width = fb_viswidth+(fb_hleftbord+fb_hrightbord),
     fb_height = fb_visheight+(fb_vbord+fb_vbord),
@@ -53,36 +52,24 @@ static uint8_t vdp_latch = 0x12; // 8-bit character latch
 static uint8_t vdp_shift = 0xF3; // 8-bit pixel shift register
 
 // colors.py
-static uint32_t hw_pal[8] = { // RGB
-    0x0,
-    0x6f00ff,
-    0xff00db,
-    0xffab7a,
-    0xffff21,
-    0x68ff9f,
-    0x200ff,
-    0xffffff,
+static uint32_t hw_pal[16] = { // RGB
+0x0,
+0x3800ff,
+0xff00b0,
+0xff9632,
+0xffff20,
+0x47ff8b,
+0xe0ff,
+0x6900ff,
+0x7f7f7f,
+0x64249f,
+0x9c2582,
+0xb97b62,
+0xa0d55e,
+0x67de79,
+0xbae9,
+0xffffff,
 };
-
-// [00000000][00000000][00000000] -- fetch tile         (load low)
-// [00000000][00000000][00000000]
-// [00000000][00000000][00000000] -- fetch attrib       (nop)
-// [00000000][00000000][00000000]
-// [00000000][00000000][00000000] -- fetch gfx low      (load high)
-// [00000000][00000000][00000000]
-// [00000000][00000000][00000000] -- fetch gfx high     (nop)
-// [00000000][00000000][00000000]
-// [LLLLLLLL][00000000][00000000] -- load low
-// [HHLLLLLL][LL000000][00000000]
-// [HHHHLLLL][LLLL0000][00000000] -- nop
-// [HHHHHHLL][LLLLLL00][00000000]
-// [HHHHHHHH][LLLLLLLL][00000000] -- load high
-// [00HHHHHH][HHLLLLLL][LL000000]
-// [0000HHHH][HHHHLLLL][LLLL0000] -- nop
-// [000000HH][HHHHHHLL][LLLLLL00]
-// [NNNNNNNN][HHHHHHHH][LLLLLLLL] -- 16 cycle lag
-//           [------------------]
-//                ^ VidFinH (0,2,4,6,8,10,12,14)
 
 // framebuffer
 // SDL_PIXELFORMAT_ARGB8888 uses 32-bit integers; byte-order depends on the platform's endianness.
@@ -118,9 +105,10 @@ int init_render() {
     );
     if (!texture) return 0;
     // fill DRAM with random bytes
+    srand(time(NULL));
     for (int i=0; i<8192; i++) {
-        MainRAM[i] = i;
-        CartRAM[i] = i;
+        MainRAM[i] = rand();
+        CartRAM[i] = rand();
     }
     return 1;
 }
@@ -220,7 +208,7 @@ void advance_vdp() {
             // display area
             // latch the pixel on the next CLK (prev_shift_out)
             int vdp_pixel = prev_shift_out ? (prev_vidpal & 15) : (prev_vidpal >> 4); // palette select MUX
-            uint32_t output = 0xFF000000 | hw_pal[vdp_pixel&7]; // HW palette (phase select MUX)
+            uint32_t output = 0xFF000000 | hw_pal[vdp_pixel]; // HW palette (phase select MUX)
             if (FBrow < fb_height && FBcol < fb_width) { // safety check
                 int coord = ((fb_vbord+FBrow) * fb_width) + FBcol; // FBSpan+FBcol
                 FB[coord] = output;
