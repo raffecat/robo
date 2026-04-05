@@ -3,64 +3,46 @@ Robo-4K
 Designed in 1977 for release in early 1978.
 To gain experience building the most basic computer.
 
-The computer has 8-color semigraphics, low-res and hi-res APA modes with 2 programmable
-colors per line; normal text has the same 2-color capability. It has a 1-channel square
-wave PSG. It also has lowercase letters for word processing, but only a 32 x 24 text
-screen (to allow the use of a home TV.)
+The computer has text and semigraphics in 16 colors.
+It can support low-res and hi-res APA modes with 2 colors per line.
+It has a 1-channel square-wave PSG.
+It has lowercase letters for word processing (only 32-columns)
 
 • 1 MHz NMOS/Synertek 6502                                  $7 at volume
 • 4K DRAM MK4096/2104A (best price-per-bit)                 ~$8 for 4KB set at 100K+ volume (~$3–$5 per 4K×1 chip retail / ~4)
-• 4K BASIC ROM (Integer BASIC)  [single highest BOM cost!]  ~$10 per set (4K+2K or 3x2K) at 100K volume
+• 4K BASIC ROM and MOS                                      ~$10 per set (4K+2K or 3x2K) at 100K volume
 • 2K Character ROM (256 x 8x8 glyphs) on VDP Bus            ---
-• 32-column text (32 x 24) i.e. 256 x 192                   $25 total for these components
-• 64x48 Semigraphics in 8 colors (high 128 characters)
-• 256x192 High-res Graphics; 128x96 Low-res
-• 2816 bytes free in BASIC (used: 512 system; 768 display)
+• 32 x 24 Text mode i.e. 256 x 192                          $25 total for these components
+• 64 x 48 Semigraphics in text mode (2x2 cells)
+• 16 colors in text mode (using C1 control codes)
+• 128 x 96 Low-res Graphics (2 colors per line)             (Last slot in the master Address MUX)
+• 2 colors per line in Graphics modes
+• 2816 bytes free in BASIC (512 + 768 display used)
 • 8-bit PSG, one channel square wave                        (74LS161 x2 8-bit Counter + 74LS374 Latch + D-FF)
 
-Point of Difference: color + sound; hi-res graphics; lower-case (vs TRS-80, Apple II)
-Target market: Home market, Word Processing, Education, Small Business
+Point of Difference: color + sound, hi-res graphics; lower-case (vs TRS-80, Apple II)
+Target market: Home market, Education, Word Processing, Small Business?
 
-Small Business - Reliability (business wanted all-in-one designs and lowercase)
+Home/Hobbby - Growth Market (TV-compatible 32x24, low cost, color + sound)
 Education - Color graphics for engagement + volume discounts
-Home/Hobbby - Growth Market (TV-compatible 32x24, low cost, tech specs)
 Position: Best of both worlds, more affordable alternative to Apple II.
 
 Text modes:                                Base 4K:           Base 5K:           Base 8K:           Base 16K:
-0  32 x 24  2-color  Extended ASCII        2816 bytes free    3840 bytes free    6912 bytes free    15104 bytes free
-1  32 x 24  8-color  Semigraphics + ASCII  2816 bytes free    3840 bytes free    6912 bytes free    15104 bytes free
-                                                                                                                               
-APA modes:                                 Base 4K:           Base 5K:           Base 8K:                                      
-2  128 x 96   2-color Low-Res     1.5 KB   2048 bytes free    3072 bytes free    6144 bytes free    14336 bytes free
-3  128 x 192  2-color Medium-Res  3 KB     512 bytes free     1536 bytes free    4608 bytes Free    12800 bytes free
-4  256 x 96   2-color Medium-Res  3 KB     512 bytes free     1536 bytes free    4608 bytes Free    12800 bytes free
-5  256 x 192  2-color High-Res    6 KB     not available      not available      2048 bytes free    9728 bytes free
+0  32 x 24  16-color  Text + Semigraphics  2816 bytes free    3840 bytes free    6912 bytes free    15104 bytes free
 
-00000000 00000000 Bank 0 (Base 8K)
+APA modes:                                 Base 4K:           4K + 1K SRAM:      With 8K:           With 16K:
+1  128 x 96   2-color Low-Res     1.5 KB   2048 bytes free    3072 bytes free    6144 bytes free    14336 bytes free
+2  128 x 192  2-color Medium-Res  3 KB     not available      1536 bytes free    4608 bytes Free    12800 bytes free
+3  256 x 96   2-color Medium-Res  3 KB     not available      1536 bytes free    4608 bytes Free    12800 bytes free
+4  256 x 192  2-color High-Res    6 KB     not available      not available      2048 bytes free    9728 bytes free
+
+00000000 00000000 Bank 0 (Base 4K)
 00100000 00000000 Bank 1 (16K Cart Bank 1)
 01000000 00000000 Bank 2 (16K Cart Bank 2)
 01100000 00000000 Bank 3
 10000000 00000000 Bank 4
 
-$0000 4K RAM  512-byte system area, then APA mode buffer (1.5/3/6K)
-$1000 1K RAM  last 768 bytes for text mode (always ends at end of RAM)
-Expansion Cart goes at the bottom, moving other RAM up (so 16K -> 4K/16K -> 1K is contiguous)
-But on the 16K model, Expansion Cart goes in the middle (it might be <16K)
-
-4096 - 1536 - 512 = "2048 Bytes Free"  (2K)
-4096 - 3072 - 512 = "512 Bytes Free"   (!)
-8192 - 768 - 512  = "6912 Bytes Free"  (6.75K) [+4K RAM Cart]
-8192 - 1536 - 512 = "6144 Bytes Free"  (6K)    [+4K RAM Cart]
-8192 - 3072 - 512 = "4608 Bytes Free"  (4.5K)  [+4K RAM Cart]
-
-All APA modes support four HW palettes; 1bpp modes use the first two colors.
-Can we fit a 4-color HW palette (2+2+2+2 = 8 bits)
-Black|DkBlue|DkGreen|DkBrown
-Red|Orange|Yellow|Cream
-Green|Blue|Cyan|Magenta
-Yellow|Orange|Blue|Cyan
-
-In 100K volume, 74LS series chips are commodities costing under $0.20 each.
+$0000 4K RAM  512-byte system area, then Text/APA buffer (512+768 or 512+1536)
 
 4Kx1 DRAM
 "By 1977, the industry was transitioning to 16K chips, driving down the price of 4K"
@@ -98,14 +80,13 @@ Use 4 x 74LS157 to select the 14-bit Address Source.
 Use 2 x 74LS157 to multiplex the low and high address halves.
 CPU Path: Use a 74LS245 Octal Bus Transceiver, enable during CPU cycles, set direction from R/W.
 
-Always: fetch a byte at 1.02 MHz bus-rate: 36 bytes per 256 px (use 4 cycles for refresh.)
+Always: fetch a byte at 1.02 MHz bus-rate: 36 bytes per 256 px (use 4 extra cycles for refresh.)
 APA modes: bypass the character ROM, load from latch to latch (cost: 2 x 74LS157 2:1 MUX)
 
 Half-width mode:
 • very useful for a 4K machine (1.5K VRAM -> 2K free for BASIC)
-• clock VDP at half-rate while scanout is active?! (breaks Refresh, EndScan/EOL decodes..)
-• fiddle address (MUX >>1 ??) to load the same byte twice; suppress loading into shifter; halve shifter clock.
-• ^ needs to use half the RAM, i.e. slower advance
+• remap address (MUX) to load the same byte twice; suppress loading into shifter; halve shifter clock.
+• scan each vertical line twice; ignore bottom bit
 
 74LS propagation delays ~15ns:
 T=0ns:  Address Mux selects Row Address.
@@ -116,8 +97,11 @@ T=275ns: Data becomes valid (based on tRAC=250ns).
 T=350ns: Data is latched by the CPU or VDP. RAS/CAS both return High.
 T=500ns: Slot ends. This leaves 150ns for RAS Precharge (tRP), exceeding the required 100ns.
 
+In 100K volume, 74LS series chips are commodities costing under $0.20 each.
 
-0    ↑↓←→                               Symbols
+Old set:
+
+0    ↑↓←→ symbols... symbols...
 32    !"#$%&'()*+,-./0123456789:;<=>?
 64   @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_   
 96   `abcdefghijklmnopqrstuvwxyz{|}~ 
@@ -127,11 +111,20 @@ T=500ns: Slot ends. This leaves 150ns for RAS Precharge (tRP), exceeding the req
 224   ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█ ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█   Color 6,7
      çćḉĉÇĆḈĈČèéêėëēęěȩ                 Extended
 
-4-char circle. 1-char circle. solid circle. hollow bullet. solid bullet.
+New C1 set:
+
+0    ↑↓←→ symbols... symbols...
+32    !"#$%&'()*+,-./0123456789:;<=>?
+64   @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_   
+96   `abcdefghijklmnopqrstuvwxyz{|}~ 
+128   <foreground C1> <background C1>
+160   ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█ semigraphics...
+192   semigraphics... semigraphics...
+224   semigraphics... semigraphics...
 
 
 Inverse mode: uses the first half of the ROM twice; second copy is inverse.
-Graphics characters: could generate these in the VDP (if we use one!)
+Graphics characters: could generate these in the VDP?
 
 
 Aug 1977 TRS-80 had 64 x 16 character matrix (512 x 128). Sixels (6-bit) 2x3 pseudo-graphics.
@@ -152,7 +145,7 @@ ROMs:
 2716 EPROMs ($30.00) are pin-compatible with 2316 ROM, for development.
 
 4K BASIC was standard in 1977: 2 x 2316 (2Kx8) ~$20 for 20K (~$14 for 50K)
-MS 4K BASIC stripped out "luxury" features like string manipulation (mostly),
+MS 4K BASIC stripped out "luxury" features like most string manipulation,
 transcendental functions (SIN, COS, ATN), and formatted printing.
 
 $2,000 per mask / 10K units = $0.20
@@ -191,45 +184,49 @@ Signetics 2513 -
 GI Y-3-8900 - $10-15 in volume, part of a chipset bundle
 2K ROM + 74LS166 shifter - $10 ROM + $2 IC = $12
 
-If your system already used two 16K ROMs for your BASIC, ordering a third
-16K ROM for characters often got you a better "total volume" discount.
+If your system already used two 16Kbit ROMs for your BASIC, ordering a third
+16Kbit ROM for characters often got you a better "total volume" discount.
 
 OK use a 2KB character ROM:
-First 32 characters - line graphics
+First 32 characters - symbols
 Next 96 characters - standard ASCII
-Next 16 characters - 2 x 2 pseudo-graphics (mirrored in Gfx mode)
-Next 48 characters - international characters
-Last 64 characters - 2 x 3 pseudo-graphics
+Next 32 characters - C1 control codes (color select)
+Next 96 characters - semigraphics and symbols
 
-BASIC ROM
- |
-Decoder ---- IO Registers
- |
- |
+Option: include 32 international characters in the C1 locations;
+offer an additional text mode that enables these characters in place of
+color support.
+
+
+Address:
+              BASIC ROM
+               |
+              Decoder ---- IO Registers
+               |
+               |
 6502 -----MUX---- DRAM
-           |
-        VDP Counters -> MUX
-DBUS -> Pixel Shifter
-        Resistor DAC
-           |
-      Character ROM
+          |||
+      VCount+HCount
+(Text Mode, APA Mode, Refresh)
 
 74LS157 DRAM MUX select line is connected to Φ2.
 
+
+Data Path (Old):
                                                              1bbp/2bpp Select -- Pixel Clock
                                                                     |               |
                                                                   2 x DFF           |            2x 74LS04
           VCount+HCount                                 /-------- 74LS74            |            Delay Line
                 |                                       |          |   |            |                |
     DRAM -- Bus MUX -- VDP latch -- Character ROM -- Shifter    4:1 Select --- 3-bit Latch ---- 1 of 8 74LS151
-          2 x 74LS157   74LS373      2316 2Kx8       74LS166   2 x 74LS153       74LS373      Tap the Delay Line
+          4 x 74LS153   74LS373      2316 2Kx8       74LS166   2 x 74LS153       74LS373      Tap the Delay Line
                                                                      |                               |
                                                                   Palette                     2N3904 Transistor
                                                                   74LS373              Total "Color Engine" Cost: ~$1.05
                                                                 (IO Register)
 
 
-New version:
+Combined (New):
 
         DRAM Address
              |            (1.02 MHz)
@@ -244,7 +241,7 @@ New version:
                          |    \__________________________/           |               |                         1-bit Intensity
                        1 MHz                                      Every           Palette                            |    
                        Clock                                       8th            74LS373                     2N3904 Transistor
-                                                                  Pixel         (IO Register)          Total "Color Engine" Cost: ~$1.05
+                                                                  Pixel         (IO Register)          Total "Color Engine" Cost: ~$1.
 
 
 Pixel Pipeline:                                       APAMode
@@ -253,13 +250,10 @@ Pixel Pipeline:                                       APAMode
                             |                        2 x 74LS157       |           Quad             |                |
     DRAM -- Data Bus -- VDP latch -- Character ROM -- 2:1 Select -- Shifter -- 2:1 Select --- 4-bit DLatch ---- 1 of 8 74LS151
                          74LS373      2316 2Kx8           |         74LS166      74LS157        74LS373      Tap the Delay Line
-                              \__________________________/                        1/   \0                            |
-                                                         \                        /     \BG                          |    
-                                                          \____________1_ 2:1 Select    VIDPAL                2N3904 Transistor
-                                                             top 3 bits    74LS157     74LS373
-                                                                             /   0\______/
-                             semigraphics              misaligned           /          FG
-                            addr clamping                 color..       SemiColor
+                              \__________________________/                           |                               |
+                                                                                   VIDPAL                            |    
+                                                                                  74LS373                    2N3904 Transistor
+
 
 2 x 4:1 MUX? (!Semi:BG, !Semi:FG, Semi:BG, Semi:top3)
 Another Octal Latch to stabilise top 3 bits?!
@@ -817,18 +811,32 @@ CoCo Frogger uses a 3x5 font along the top in 128x192 mode, 4 colors (1980, $399
 
 Tape - Kansas City Standard (KCS) at 300 baud using FSK, or CUTS.
 https://hackaday.com/2022/10/11/a-cassette-interface-for-a-6502-breadboard-computer-kansas-city-style/
-BYTE issue 6, Feb 1976, pp 72,73 – Hal Chamberlin?
+BYTE issue 6, Feb 1976, pp 72,73 – Settled on Don Lancaster's design.
+March issue features two hardware examples by Don Lancaster and Harold Mauch.
+Hal Chamberlin?
 "triangle wave -> tape -> sine wave back"
 FSK 3:2 ratio should work better (harmonics)
 zero-crossing (1) or lack thereof (0) within a fixed time window
 start bit (1 x zero-crossing) before each byte
 sync tone 01010100000101010000.. repeated (6:4 ratio; won't match start-bits)
 blank space between blocks: no zero-crossings
-Block header: Sync(8) Name(12) Block#(1) Total#(1) Len(1) Sync(2) Data CRC(2) Blank(4)
+Block header: Sync(4) Name(12) Block#(1.5) Total#(1.5) Type(1) Len(1) Data(256) CRC(2)  23:256 (9%)
 • two zero-crossings is a 1
 • one zero-crossing, one non-crossing is an 0
 • two or more non-crossings is a sync mark (start bit)
 • block sync is 16 x 1-bit followed by 4 x 0-bit
+Manchester code / Phase encoding:
+low then high = 1; high then low = 0
+self-clocking, no DC component
+line coding: 1 start bit (0); 8 data bits; 1 stop bit (1); 1200 baud
+media has a minimum spacing between flux reversals
+if tape is OK with 2400 Hz we can write 1200 Manchester bits/sec (1200/10 = 120 bytes/sec)
+=> 10 sec per KB; 6 KB per minute; a 12K program in 2 minutes.
+=> title screen is 768 bytes: 3 * (256+24) = 840 / 120 = 7 seconds
+Set mode + set palette (gfx) + set text window (text)
+Queue music notes? (but it uses the same HW)
+Type=RUN block, JMP block, BAS block, TXT block, SCR block, PRINT block.
+How does the load address work? Set by first block of file?
 
    __      ___    ___    __      __
 __|  |____|   |__|   |__|  |____|  |   2 vs 3 timing
@@ -1097,3 +1105,31 @@ Blue        347.1   269 ns
 
 Each inverter "adds" 180° (by inverting the signal)
 Red looks better with an additional 33° shift (25 ns)
+
+
+Thiking about replacing the PSG (counter/divider) with a simple shift register
+at 60 * 262 = 15720 Hz with max frequency 7860 Hz. An interrupt every 8 lines
+to refill the shifter. Can still bit-bang by writing 0x00 and 0xFF, or refill
+at 1965 Hz; frequencies below 
+
+11111111 11111111 11111111 00000000 00000000 -> 393 Hz
+11111111 11111111 00000000 00000000 -> 491.25 Hz
+11111111 11111111 00000000 -> 655 Hz (6:3)
+11111100 00001111 11000000 -> 655 Hz
+11111111 00000000 -> 982.5 Hz
+11110000          -> 1965 Hz
+11001100          -> 3930 Hz
+10101010          -> 7860 Hz
+
+What about just a 1-bit D-FF port somewhere?
+Shared with Casette interface, but with a speaker mute control.
+Interrupt every 2/4/8/16 lines.
+65 cycles per line: 7+6=13 IRQ+RTI -> STA/LDA 6 -> LDA# STA 5 -> total 13+6+5 = 24 cycles
+1 line: 24/65 = 36% CPU use, max freq 15720/2 = 7860 (~8B)
+2 line: 24/130 = 18% CPU use, max freq = 15720/4 = 3930 (~7B)
+4 line: 24/260 = 9% CPU use, max freq = 15720/8 = 1965 (~6B)
+8 line: 24/520 = 4.5% CPU use, max freq = 15720/16 = 982 (~5B)
+16 line: 24/1040 = 2.3% CPU use, max freq = 15720/32 = 491 (~4B)
+This is during normal BASIC execution; bit-bang loops can go much higher.
+With the 8-line interrupt, commercial games can play samples.
+The 8-line interrupt can also be used for color zones (24 bytes in BASIC)

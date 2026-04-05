@@ -56,3 +56,41 @@ DOTCLOCK:
 Apple II, CoCo used 7.16 MHz for 280/256px; C64/ST use 8 MHz for 320px (wider border)
 Early consoles (NES/SNES) used 5.37 MHz for 256 pixels.
 Sega Genesis used 6.7 MHz for 320 mode.
+
+
+
+PET Games:
+https://www.youtube.com/watch?v=YKC8ARAWfhY
+https://www.youtube.com/watch?v=AxAnK0HmP3k (modern)
+Solid/Inverse Circle
+Thin outline graphics (edges, slopes)
+Inverse characters are used a lot as part of solid shapes
+Solid slopes (e.g. river)
+Fire! draws 3D buildings out of edges/slopes
+
+TRS-80 Games:
+https://www.youtube.com/watch?v=EqIPiINaHtA
+Mixed 128x48 semigraphics and text
+
+Teletext:
+40 x 25 characters; spacing attributes
+80 x 75 semigraphics
+
+
+
+Simple color schemes:
+• 2 Colors per line (1 x Latch)
+• Control codes change colors (same latch)   80-8F Foreground; 90-9F Background (C1 codes)
+• Reset to White on Black at the start of each scanline
+
+32 x 24 Text
+
+ 16 chars       16 chars          128 x 96
+(64 x 48)      (128 x 24)         graphics
+ _______        _______            _ _ _ _ 
+[___|___]      [ | | | ]          |_|_|_|_|
+[___|___]      [_|_|_|_]          |_|_|_|_|
+                                  |_|_|_|_|
+  2 x 2        thin walls
+  plus                            2 colors
+diagonals!                        per line
