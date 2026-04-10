@@ -15,10 +15,10 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "ECS-604",
-            "program": "${workspaceFolder}/robo-8/emu/ecs_604",
+            "name": "CBC-4",
+            "program": "${workspaceFolder}/robo-8/emu/cbc",
             "args": [],
-            "preLaunchTask": "build_ecs_604"
+            "preLaunchTask": "build_cbc"
         }
     ]
 }

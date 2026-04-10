@@ -30,30 +30,9 @@
 		},
 		{
 			"type": "process",
-			"label": "build_ecs_604",
-			"command": "clang",
-			"args": [
-				"-Wall",
-				"-Werror",
-                "-Wextra",
-                "-pedantic",
-				"-std=gnu17",
-				"-I",
-				"/opt/homebrew/Cellar/sdl2/2.32.0/include",
-				"-L",
-				"/opt/homebrew/Cellar/sdl2/2.32.0/lib",
-				"-l",
-				"SDL2",
-				"-g",
-				"${workspaceFolder}/robo-8/emu/sdl_main.c",
-				"${workspaceFolder}/robo-8/emu/fake6502.c",
-				"${workspaceFolder}/robo-8/emu/charrom.c",
-				"${workspaceFolder}/robo-8/emu/ula.c",
-				"${workspaceFolder}/robo-8/emu/render.c",
-				"${workspaceFolder}/robo-8/emu/debugger.c",
-				"-o",
-				"${workspaceFolder}/robo-8/emu/ecs_604"
-            ],
+			"label": "build_cbc",
+			"command": "./make_emu4",
+			"args": [],
 			"group": "build",
 			"problemMatcher": [], // Keep this if you don't want problem matching
 		}		
