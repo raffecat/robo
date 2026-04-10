@@ -1,27 +1,31 @@
-Robo-4K
+Frontier CBC-4
+Color BASIC Computer
 
-Designed in 1977 for release in early 1978.
-To gain experience building the most basic computer.
+Designed in 1977 for release early 1978.
+Point of Difference: color, sound, APA graphics, lower-case (vs TRS-80, PET, Apple II)
+Target market: Home market, Education, Word Processing, Small Business?
 
-The computer has text and semigraphics in 16 colors.
-It can support low-res and hi-res APA modes with 2 colors per line.
-It has a 1-channel square-wave PSG.
-It has lowercase letters for word processing (only 32-columns)
+Features:
+• 32 x 24 text mode                               (768 bytes; 256 x 192 resolution)
+• 64 x 48 Semigraphics in text mode               (2x2 per character)
+• 16 colors in text mode                          (spacing attributes, using C1 control codes)
+• 128 x 96 APA Graphics, 2 colors per line        (1.5 KB; 4th slot in Address MUX)
+• 8-bit PSG, square wave
+• Line counter for raster effects
+• 2816 bytes free for BASIC programs              (512 system + 768 display matrix used)
+• 2 x Joystick ports
+• 1 x Tape port
+• 1 x Serial port (e.g. modem, printer)
+• 1 x Parallel port / User GPIO port
+• 1 x Expansion slot (e.g. disk interface)
+• 1 x Cartridge slot (primarily for RAM expansion)
 
+Components:
 • 1 MHz NMOS/Synertek 6502                                  $7 at volume
 • 4K DRAM MK4096/2104A (best price-per-bit)                 ~$8 for 4KB set at 100K+ volume (~$3–$5 per 4K×1 chip retail / ~4)
 • 4K BASIC ROM and MOS                                      ~$10 per set (4K+2K or 3x2K) at 100K volume
-• 2K Character ROM (256 x 8x8 glyphs) on VDP Bus            ---
-• 32 x 24 Text mode i.e. 256 x 192                          $25 total for these components
-• 64 x 48 Semigraphics in text mode (2x2 cells)
-• 16 colors in text mode (using C1 control codes)
-• 128 x 96 Low-res Graphics (2 colors per line)             (Last slot in the master Address MUX)
-• 2 colors per line in Graphics modes
-• 2816 bytes free in BASIC (512 + 768 display used)
-• 8-bit PSG, one channel square wave                        (74LS161 x2 8-bit Counter + 74LS374 Latch + D-FF)
-
-Point of Difference: color + sound, hi-res graphics; lower-case (vs TRS-80, Apple II)
-Target market: Home market, Education, Word Processing, Small Business?
+• 2K Character ROM (256 x 8x8 glyphs) on VDP Bus            ---- $25 total for these components
+• PSG: 74LS161 x2 8-bit Counter + 74LS374 Latch + D-FF
 
 Home/Hobbby - Growth Market (TV-compatible 32x24, low cost, color + sound)
 Education - Color graphics for engagement + volume discounts
@@ -113,14 +117,14 @@ Old set:
 
 New C1 set:
 
-0    ↑↓←→ symbols... symbols...
-32    !"#$%&'()*+,-./0123456789:;<=>?
-64   @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_   
-96   `abcdefghijklmnopqrstuvwxyz{|}~ 
-128   <foreground C1> <background C1>
-160   ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█ semigraphics...
-192   semigraphics... semigraphics...
-224   semigraphics... semigraphics...
+0    ↑↓←→ symbols... symbols...          (shift+ctrl-letters)
+32    !"#$%&'()*+,-./0123456789:;<=>?    (numbers/shift-numbers)
+64   @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_    (shift-letters)
+96   `abcdefghijklmnopqrstuvwxyz{|}~     (letters)
+128   <foreground C1> <background C1>    (ctrl-c + hex; ctrl-b + hex)
+160   ▖▗▘▝▚▞▙▟▛▜▐▌▀▄█ semigraphics...    [Gr](numbers/shift-numbers)  (tab -> switch set)
+192   semigraphics... semigraphics...    [Gr](shift-letters)          (tab -> switch set)
+224   semigraphics... semigraphics...    [Gr](letters)                (tab -> switch set)
 
 
 Inverse mode: uses the first half of the ROM twice; second copy is inverse.
@@ -219,10 +223,10 @@ Data Path (Old):
           VCount+HCount                                 /-------- 74LS74            |            Delay Line
                 |                                       |          |   |            |                |
     DRAM -- Bus MUX -- VDP latch -- Character ROM -- Shifter    4:1 Select --- 3-bit Latch ---- 1 of 8 74LS151
-          4 x 74LS153   74LS373      2316 2Kx8       74LS166   2 x 74LS153       74LS373      Tap the Delay Line
+          4 x 74LS153   74LS273      2316 2Kx8       74LS166   2 x 74LS153       74LS175      Tap the Delay Line
                                                                      |                               |
                                                                   Palette                     2N3904 Transistor
-                                                                  74LS373              Total "Color Engine" Cost: ~$1.05
+                                                                  74LS273              Total "Color Engine" Cost: ~$1.05
                                                                 (IO Register)
 
 
@@ -237,10 +241,10 @@ Combined (New):
         VCount+HCount ______ | ______________/           |             |                            |            Delay Line
                              |                       2 x 74LS157       |           Quad             |                |
     DRAM -- Data Bus -- VDP latch -- Character ROM -- 2:1 Select -- Shifter -- 2:1 Select --- 4-bit Latch ---- 1 of 8 74LS151
-                         74LS373      2316 2Kx8           |         74LS166      74LS157        74LS373      Tap the Delay Line
+                         74LS273      2316 2Kx8           |         74LS166      74LS157        74LS175      Tap the Delay Line
                          |    \__________________________/           |               |                         1-bit Intensity
                        1 MHz                                      Every           Palette                            |    
-                       Clock                                       8th            74LS373                     2N3904 Transistor
+                       Clock                                       8th            74LS273                     2N3904 Transistor
                                                                   Pixel         (IO Register)          Total "Color Engine" Cost: ~$1.
 
 
@@ -248,11 +252,11 @@ Pixel Pipeline:                                       APAMode
                           PHI2                           |          HCount%8                   Pixel Clock       2x 74LS04
                             |                            |             |                            |            Delay Line
                             |                        2 x 74LS157       |           Quad             |                |
-    DRAM -- Data Bus -- VDP latch -- Character ROM -- 2:1 Select -- Shifter -- 2:1 Select --- 4-bit DLatch ---- 1 of 8 74LS151
-                         74LS373      2316 2Kx8           |         74LS166      74LS157        74LS373      Tap the Delay Line
+    DRAM -- Data Bus -- VDP latch -- Character ROM -- 2:1 Select -- Shifter -- 2:1 Select --- 4-bit Latch ---- 1 of 8 74LS151
+                         74LS273      2316 2Kx8           |         74LS166      74LS157        74LS175      Tap the Delay Line
                               \__________________________/                           |                               |
                                                                                    VIDPAL                            |    
-                                                                                  74LS373                    2N3904 Transistor
+                                                                                  74LS273                    2N3904 Transistor
 
 
 2 x 4:1 MUX? (!Semi:BG, !Semi:FG, Semi:BG, Semi:top3)
@@ -265,19 +269,25 @@ Text Mode <---\ either-or
 APA Mode  <---/ Bytes 1-7 (visible display)
 Refresh   <--- Every 8th byte (visible display: 4 times per row)
 
-
-2 x 74LS157  Bus MUX (16-bit)
-3 x 74LS373  VDP Latch, Color Latch, Programmable Palette (3 colors)
-2 x 74LS153  Dual 1 of 4 (Palette lookup)
-1 x 74LS166  Pixel shifter
-1 x 74LS74   Dual D latch for 2bpp decode
-2 x 74LS04   Delay line
-1 x 74LS151  Delay Tap Select
-1 x 2N3904   Transistor Amp
-4 x 74LS161  H Counter, V Counter
-1 x 74LS30   8-input NAND (Reset)
+1 x 74LS151 • 8:1 MUX, Delay Tap Select
+2 x 74LS153 • Dual 4:1 MUX (Palette lookup) 
+2 x 74LS157 • Quad 2:1 MUX (Bus MUX)
+4 x 74LS161 • 4-bit Sync Counter (H,V Counters)
+1 x 74LS166 • 8-bit Shift Reg (Pixel shifter)
+1 x 74LS112 • Dual J-K FlipFlop (Decodes) [old part, lower supply]
+3 x 74LS273 + VDP Latch, Color Latch, Palette?
+2 x 74LS175 • Programmable Palette (2 x 4-bit)
 1 x 74LS138  3-to-8 Decoder (HBlank, HSync, Colorburst) ??
+1 x 74LS74   Dual D latch for 2bpp decode [prefer over 74LS112] [good for dividers]
+2 x 74LS04   Delay line
+1 x 2N3904   Transistor Amp
+1 x 74LS30   8-input NAND (Reset)
 1 x 74LS10   Triple 3-input NAND (262 reset, VSync) ??
+
+74LS244 Octal Buffer (for CPU data shunt)
+74LS273 Octal D-FF is new, but available in volume (late '77) if it saves board cost (or 2 x 74LS175)
+74LS373 Octal Latch is a premium part in 1977
+74LS374 Octal Edge D-FF is a premium part 1977, use 2 x 74LS173
 
 TOTAL Character Gen     13 Chips ~$6.95 USD
 Timing Chain (H + V)	7 Chips	 ~$3.70
@@ -289,14 +299,23 @@ For a 1977 product, that allows for a $199–$249 retail price.
 
 
 8 ICs VDP with register DAC.
+weighted resistor summer DAC (470, 1K, 2.2K)
 
 Motorola MC1372 Color TV Modulator ~$2.50 – $4.00 in volume.
 Chroma (color) and Luma (brightness) -> NTSC/PAL composite signal.
 Low cost: discrete transistor mixer to create the Composite signal for the "Home TV" user.
 
 Composite color generator:
-Chain of 74LS04 Inverters to delay the 3.579 MHz color clock.
+Chain of 74LS14 (Schmitt) Inverters to delay the 3.579 MHz color clock,
+use ~33pF cap to ground between gate pairs to dial in timing.
+Already have +35ns and +70ns from 14.318 MHz clock.
+NP0/C0G ceramic capacitors (stable)
 
+Audio path:
+Class A amp: 10K resistor, ~0.1µF cap to ground, 2N3904 driver to GND, through speaker to 5V.
+10µF electrolytic decoupling in series for line out.
+1K pot emitter resistor to GND - cheap volume control.
+Add 100µF decoupling capacitor at take-off point to speaker to avoid droop.
 
 REGISTERS
 
@@ -446,11 +465,74 @@ HCount increments every 4 pixels (7.15909 / 4 = 1.7897725 MHz)
 #7 = unused (16px)                    (at count = 100, clear Display Latch)  3-in NAND [01100100]
                                       (at count = 136 AND X, reset)          3-in NAND [10001000] (PCLK.0 AND PCLK.1)
 
+Simplified: 16 + 16 + 32 + 128 + 32 + 4 = 228
+Pixels: 32 + 4+20 + 8 + 56 + 256 + 64 + 16 = 456
+
+2 x 82S23 (32×8) PROM is low-cost; 64 x 8 = 512 ticks (at 0.8948 MHz; 456/8 = 57 bus cycles)
+#0 = HSync (8)
+#1 = HSync (16)
+#2 = HSync (24)
+#3 = HSync (32)
+#4 = Colorburst (4 - second half only)
+#5 = Colorburst (12)
+#6 = Colorburst (20)
+#7 = HBlank (8)
+#8 = Border (8)
+#9 = Border (16)
+#10 = Border (24)
+#11 = Border (32)
+#12 = Border (40)
+#13 = Border (48)
+#14 = Border (56)     Char(0)
+#15 = Visible (8)     Char(1)
+#16 = Visible (16)    Char(2)
+#17 = Visible (24)    Char(3)
+#18 = Visible (32)    Char(4)
+#19 = Visible (40)    Char(5)
+#20 = Visible (48)    Char(6)
+#21 = Visible (56)    Char(7)
+#22 = Visible (64)    Char(8)
+#23 = Visible (72)    Char(9)
+#24 = Visible (80)    Char(10)
+#25 = Visible (88)    Char(11)
+#26 = Visible (96)    Char(12)
+#27 = Visible (104)   Char(13)
+#28 = Visible (112)   Char(14)
+#29 = Visible (120)   Char(15)
+#30 = Visible (128)   Char(16)
+#31 = Visible (136)   Char(17)
+#32 = Visible (144)   Char(18)
+#33 = Visible (152)   Char(19)
+#34 = Visible (160)   Char(20)
+#35 = Visible (168)   Char(21)
+#36 = Visible (176)   Char(22)
+#37 = Visible (184)   Char(23)
+#38 = Visible (192)   Char(24)
+#39 = Visible (200)   Char(25)
+#40 = Visible (208)   Char(26)
+#41 = Visible (216)   Char(27)
+#42 = Visible (224)   Char(28)
+#43 = Visible (232)   Char(29)
+#44 = Visible (240)   Char(30)
+#45 = Visible (248)   Char(31)
+#46 = Visible (256)
+#47 = Border (8)
+#48 = Border (16)     Refresh(0)
+#49 = Border (24)     Refresh(1)
+#50 = Border (32)     Refresh(2)
+#51 = Border (40)     Refresh(3)
+#52 = Border (48)
+#53 = Border (56)
+#54 = Border (64)
+#55 = HBlank (8)
+#56 = HBlank (16)  (assert reset on 7th CLK)
+
+
 2 x 74LS161 Sync 4-bit Counter
 1 x 74LS138 3-to-8 Decode
 1 x 74LS51  Colorburst Gate AOI
 1 x 74LS20  Triple 3-input NAND
-1 x 74LS74  Dual D latch (Border Latch, Display Latch)
+1 x 74LS74  Dual D latch (Border Latch, Display Latch, Divider)
 1 x 74LS00  Quad 2-input NAND [1/4]
 1 x         Dual 3-input OR
 ----
@@ -459,25 +541,62 @@ HCount increments every 4 pixels (7.15909 / 4 = 1.7897725 MHz)
 
 MMI PAL chips were officially introduced in March 1978 by Monolithic Memories, Inc.
 
+1488/1489 RS232 $1.50 retail  (RS-232 expansion module, dedicated slot)
+
 Bipolar PROMs: Many designers used small PROMs (like a 256x8 bit bipolar PROM)
 as makeshift address decoders. They were cheap, available in 1977, and could
-replace several logic gates. Signetics 82S129 or MMI 6301. 16-pin chip.
+replace several logic gates. Signetics 82S129 (1K) or MMI 6301. 16-pin chip.
 MCM2708 or MCM2716 PROMS
 ~50ns access time. video timing decodes.
 1977	$2.50 – $3.50  10K volume
 1978	$1.85 – $2.25  10K volume
+3608 → 1K × 8 (8K-bit) bipolar PROM (tens of ns)
+2704 → 512 × 8 (4K-bit)
+82S123 → 32 x 8 (256-bit) ~50 ns [lowest-cost]
+82S114 (and similar) → 256 × 8 (2K-bit, tri-state) "256×8 bipolar PROM" [~5–8 × cost of 82S123] ~50–70 ns
+82S130 / 82S131 → 512 × 8 (4K-bit)
+••• PROM outputs can glitch! ••• (Register the outputs)
+
+32×8 PROM $4–6
+256×4 very common (e.g. 82S129 / 82S129A class; ~$8–15 low vol; $4-7 at 100K)
+256×8 PROM $20–30 (e.g. 82S114 ~$10–15 in 10K–20K lots, ~$5-8 at 100K) (2 x 82S129 in one package) ••
+512×8 PROM $30–50
+74LS161 / 163 $2–3
+Random gates ~$0.50–1
+
+At 100K+ volume:
+Small TTL (74LS): drops to ~$0.20–0.50
+Medium TTL: ~$0.50–1.00
+Bipolar PROM (256×8): ~$5–8
+
+Check:
+1977 Signetics Databook, full 82S family
+TI TTL databooks
+Intel component catalogs
+Electronic Design
+Electronics Magazine
+EDN
+Hamilton/Avnet
+Arrow
 
 "The Signetics 8223 is a 256-bit PROM. It is readily available from a number of
 surplus suppliers for about $3.00." [1978]
 "National Semiconductor 2048-bit MM5203 erasable PROM, available, surplus, for
 about $9.00. 256x8 or 512x4" [1978]
+"S.D. Sales Co PROMs 1702A 1K 10/$40; 82S129 1K $2.50" (retail)
 
-1488/1489 RS232 $1.50 
+• HSYNC
+• HBLANK
+• COLORBURST
+• DISPLAY ENABLE
+• CHAR FETCH
+• DRAM REFRESH
+• DRAM RAS
+• DRAM CAS
 
-One PROM can generate 4 output signals from 8 inputs.
-
-8-bit HCount -> PROM -> (HBlank, HSync, Colorburst, Visible) ~3.5 MHz
-Reset: 227 decode -> delay 1 -> reset
+8-bit HCount (~3.5 MHz) -> PROM -> (HBlank, HSync, Colorburst, etc) 
+Reset: 227 decode -> Latch -> Reset
+56-cycle base timing map (for 7×8 interaction)
 
 74LS51: Dual 2-wide 2-input AOI
 74LS54: 4-wide 2-input AOI (four 2-input ANDs)
@@ -905,11 +1024,11 @@ pixel pipe
 2    74LS157  2:1 CharROM Bypass (APA Modes)
 1    74LS157  2:1 Palette MUX
 1    74LS166  Pixel shifter
-2    74LS04   Delay line
+2    74LS04   Delay line (10-47pF to ground to adjust slew-rate)
 1    74LS151  Delay Tap Select        [9]
 ----------
 psg
-1    74LS374  PSG Latch
+1    74LS273  PSG Latch
 2    74LS161  PSG Counter
 1    74LS112  PSG T-FF Output (1/2)   [4]
 ----------
@@ -959,24 +1078,34 @@ PET-2001; 40 x 25 text PETSCII
 TRS-80: 64 x 16 text with 128 x 48 semigraphics (2 x 3 cells, 64 chars)
 
 
-Robo-4K: 32 x 24 text with 64 x 48 semigraphics 8-color (2 x 2 cells, 16 chars)
-                      and 128 x 24 semigraphics 2-color (4 x 1 cells, 16 chars)
-                      and 128 x 96 graphics (1.5K)
-
-
-Pixel Pipeline:                                       APAMode
-                          PHI2                           |          HCount%8                   Pixel Clock       2x 74LS04
-                            |                            |             |                            |            Delay Line
-                            |                        2 x 74LS157       |           Quad             |                |
+                                                                   Pixel Clock
+                                                    Load on             |
+                                                  %0000 decode ____     |                       (2px delay)
+Pixel Pipeline:          (%1000)                                   \    |
+                          ↑PHI2                       APAMode       \   |                        Pixel Clock      2x 74LS04
+                            |                            |           |  |                            |            Delay Line
+                            |                        2 x 74LS157     |  |           Quad             |                |
     DRAM -- Data Bus -- VDP latch -- Character ROM -- 2:1 Select -- Shifter -- 2:1 Select --- 4-bit DLatch ---- 1 of 8 74LS151
-                         74LS373      2316 2Kx8           |         74LS166      74LS157        74LS373      Tap the Delay Line
-                              \__________________________/                        1/   \0                            |
-                                                         \                        /     \BG                          |    
-                                                          \____________1_ 2:1 Select    VIDPAL                2N3904 Transistor
-                                                             top 3 bits    74LS157     74LS373
-                                                                             /   0\______/
-                             semigraphics              misaligned           /          FG
-                            addr clamping                 color..       SemiColor
+                         74LS273      2316 2Kx8           |         74LS166      74LS157        74LS175      Tap the Delay Line
+                            | \__________________________/           |               |                               |
+                            |                                        |         ___ VIDPAL ___                        |    
+                            |                                        |        /   74LS273    \                2N3904 Transistor
+                            |                                 clk in |       |     |    |    |
+                            |                                         \     2:1 Select  |    |
+                     %1001xxxx ---------------------------------------------- 74LS157   |    |
+                            |                                                    |      |    /
+                            |                                                    |  2:1 Select
+                     %1000xxxx ------------------------------------------------------ 74LS157
+                                                                                 |      |
+                                                                                 Data Bus
+How do I align HCount with the bus cycle?
+-> HCounter (1/8ths) is clocked by the bus clock,
+   which is 1/8 the pixel clock.
+
+5 x 74LS157  2:1 MUX
+1 x 74LS166  Shift Register Parallel Load
+2 x 74LS273  Octal Edge-Triggered FlipFlop 18-27ns (20ns setup, 5ns hold)
+1 x 74LS175  Quad D-FF
 
 
 Address Bus:
@@ -991,11 +1120,13 @@ Address Bus:
 
 
 Data Bus:
-                                           ↓PHI2
+                                           ↑PHI2 (early?)
                                              |
-                   DRAM -- Data Bus -- VDP latch
-                                 |
-                          74LS245 Transciever -- ↑PHI2
+         Data In -- DRAM -- Data Out -- VDP latch ----- Character ROM
+            |                    |
+            |                 74LS373 -------- _PHI2 to load
+            |                 Trans Latch
+            \__________wr________|
                                  |
                             6502 Data Bus
 
@@ -1133,3 +1264,26 @@ Interrupt every 2/4/8/16 lines.
 This is during normal BASIC execution; bit-bang loops can go much higher.
 With the 8-line interrupt, commercial games can play samples.
 The 8-line interrupt can also be used for color zones (24 bytes in BASIC)
+
+
+Memory Map
+0000-3FFF  4K/8K/16K base DRAM (mirrored) [IO at $00Fx]
+4000-7FFF  16K cartridge port - RAM or ROM (mirrored, typically 4K/8K/16K RAM)
+8000-BFFF  16K expansion port - RAM or ROM (mirrored, typically 4K Disk ROM [maybe RAM + ROM combo])
+E000-FFFF  16K ROM - 2 x 8K banks (high bank contains 4K BASIC, mirrored)
+
+BASIC needs contiguous memory:
+4K base - LOMEM = $3500 (4th mirror) + up to 16K Cart + Expansion RAM (if Cart is 16K)
+8K base - LOMEM = $2500 (2nd mirror) + up to 16K Cart + Expansion RAM (if Cart is 16K)
+16K base - LOMEM = $0500 (no mirror) + up to 16K Cart + Expansion RAM (if Cart is 16K)
+HIMEM is always $4000 + $1000 per 4K in RAM Cart
+
+Graphics mode:
+4K base - LOMEM = $3800 (4th mirror) + up to 16K Cart + Expansion RAM (if Cart is 16K)
+8K base - LOMEM = $2800 (2nd mirror) + up to 16K Cart + Expansion RAM (if Cart is 16K)
+16K base - LOMEM = $0800 (no mirror) + up to 16K Cart + Expansion RAM (if Cart is 16K)
+HIMEM is always $4000 + $1000 per 4K in RAM Cart
+
+Video/Audio 5-pin DIN
+
+Basic speed test https://www.youtube.com/watch?v=m88rTOiI314
