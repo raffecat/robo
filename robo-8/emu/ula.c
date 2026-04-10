@@ -2,11 +2,11 @@
 #include <stdio.h>
 
 enum io_reg {
-    IO_VCTL    = 0xF8,   // video control          (4:Width 3:Height 2:Grey 1:APA 0:Color)
-    IO_VPAL    = 0xF9,   // palette register       (7-6:Border 5-3:BG 2-0:FG)
-    IO_VLIN    = 0xFA,   // current video line     (read: V-counter)
-    IO_KEYB    = 0xFB,   // Keyboard scan          (write: set row; read: scan column)
-    IO_PSGF    = 0xFC,   // PSG Frequency          (write: set PSG divider)
+    IO_VCTL    = 0xFF,   // video control          (4:Width 3:Height 2:Grey 1:APA 0:Color)
+    IO_VPAL    = 0xFE,   // palette register       (7-6:Border 5-3:BG 2-0:FG)
+    IO_VLIN    = 0xFD,   // current video line     (read: V-counter)
+    IO_KEYB    = 0xFC,   // Keyboard scan          (write: set row; read: scan column)
+    IO_PSGF    = 0xFB,   // PSG Frequency          (write: set PSG divider)
 };
 
 uint8_t OpenBus[8*1024] = { 0xEE };

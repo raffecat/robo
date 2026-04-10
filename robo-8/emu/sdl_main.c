@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
     // load the ROM image.
     memset(SysROM, 0xFF, sizeof(SysROM)); // FF! 17  01 02 03-0D! 1E F1 >16<
     //size_t rom_size = 4096;
-    size_t rom_size = read_binary_file("rom.bin", (char*)SysROM, 4096);
+    size_t rom_size = read_binary_file("rom4K.bin", (char*)SysROM, 4096);
     memcpy(SysROM+4096, SysROM, 4096); // mirror it
     printf("not loaded ROM %zu\n", rom_size);
 
@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
 
     // DEBUGGER
     dbg_enable = 0;
-    dbg_break = 0x0C41C;
+    dbg_break = 0x0F121;
     Uint32 held_time = 0;
 
     // run the simulator.

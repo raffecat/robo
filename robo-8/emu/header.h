@@ -10,7 +10,7 @@ enum vdp_const {
     frames_per_sec = 60,
     lines_per_frame = 262,
     lines_per_sec = frames_per_sec * lines_per_frame,  // 15720 Hz
-    cpu_clk_per_line = 455/7,   // exactly 65 CPU cycles per line
+    cpu_clk_per_line = 456/8,   // exactly 57 CPU cycles per line
 };
 
 // Memory
