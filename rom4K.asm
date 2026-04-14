@@ -75,11 +75,10 @@ WinL     = $C4    ; text window left
 WinT     = $C5    ; text window top
 WinW     = $C6    ; text window width
 WinH     = $C7    ; text window height
-CurX     = $C8    ; text cursor X
-CurY     = $C9    ; text cursor Y
-WinRem   = $CA    ; remaining horizontal space in text window
-TXTP     = $CB    ; text write address
-TXTPH    = $CC    ; text write address high
+CurY     = $C8    ; text cursor Y
+WinRem   = $C9    ; remaining horizontal space in text window (WinW-CurX)
+TXTP     = $CA    ; text write address
+TXTPH    = $CB    ; text write address high
 
 ; -- $Dx line: Keyboard buffer
 
@@ -133,9 +132,9 @@ ORG ROM
   JMP writechar       ; $E009  print char in A                                 (JSR preserves Y)
   JMP newline         ; $E00C  print a newline, scroll if necessary            (JSR preserves Y)
   JMP readline        ; $E00F  read a line into LineBuf (zero-terminated)      (JSR uses A,X,Y)
-  JMP mode            ; $E00C  set screen mode, clear the screen               (JSR uses A,X,Y)
-  JMP cls             ; $E012  clear the screen                                (JSR uses A,X,Y)
-  JMP tab             ; $E015  move text cursor to X,Y                         (JSR uses A,X,Y)
+  JMP vid_mode        ; $E00C  set screen mode, clear the screen               (JSR uses A,X,Y)
+  JMP vid_cls         ; $E012  clear the screen                                (JSR uses A,X,Y)
+  JMP txt_tab         ; $E015  move text cursor to X,Y                         (JSR uses A,X,Y)
 
 messages:    ; must be within one page for Y indexing
 welcome_1:   ; blue red orange yellow green cyan purple
@@ -163,7 +162,7 @@ msg_loading:
 msg_bad:
   DB 4,"Bad "
 msg_prog:
-  DB 4,"Prog"
+  DB 7,"Program"
 msg_block:
   DB 5,"Block"
 msg_var:
@@ -180,7 +179,7 @@ reset:
   LDX #$FF       ; reset stack [to align it?]
   TXS            ; stack init
   LDX #0         ; screen mode 0 (32x24 text, 16 color)
-  JSR mode       ; set mode, clear screen
+  JSR vid_mode   ; set mode, clear screen
   LDY #<welcome_1
   JSR printmsgln
   ; detect memory installed
@@ -223,11 +222,13 @@ basic_e1:        ; <- entry point after Escape
   LDX #$FF       ; reset stack on entry (e.g. from Escape) [for overflow detect]
   TXS            ; stack init
   JSR readline   ; -> Y=length
-  JSR newline    ; preserves X,Y
+  JSR newline    ; uses A,X
 
   ; parse the command
   LDX #0           ; [2]
   JSR skip_spc     ; [24+] X=ln-ofs -> X (uses A,X) leading spaces
+  LDA LineBuf,X    ; [3] peek ahead
+  BEQ repl         ; [2] -> empty line, go back to repl [+1]
   JSR tok_n16      ; [6] parse number at X -> X,Acc,CS=found (uses A,Y,B)
   BCS @haveline    ; [2] -> found line number [+1]
 
@@ -277,6 +278,13 @@ report_err:       ; Y = low byte (in messages page)
   JSR printmsgln  ; Y=low
   JMP repl
 
+report_bad:       ; Y = low byte (in messages page)
+  STY C
+  LDY #<msg_bad
+  JSR printmsg    ; Y=low (uses Src,A,B,X,Y)
+  LDY C
+  JSR printmsgln  ; Y=low (uses Src,A,B,X,Y)
+  JMP repl
 
 ; @@ repl_esc
 ; Escape from readline or the interpreter
@@ -635,7 +643,7 @@ tok_expect:       ; A = expected character (uses X,Y,B,Src)
   JSR printmsg    ; Y=low (uses Src,A,B,X,Y)
   LDA C           ; restore char
   JSR writechar   ; uses A,X
-  JSR newline
+  JSR newline     ; uses A,X
   JMP repl
 
 ; @@ tok_n16
@@ -931,6 +939,18 @@ cmd_list:
   JMP repl
 
 cmd_run:
+  LDA LOMEM         ; copy LOMEM into CODE
+  STA CODE
+  EOR TOP           ; 0 if LOMEM == TOP
+  STA C
+  LDA LOMEMH
+  STA CODEH
+  EOR TOPH          ; 0 if LOMEMH == TOPH
+  EOR C
+  BEQ @noprog       ; if 0 -> no program
+  LDY #0            ; set CODE offset
+  JMP do_ln_ex      ; -> expect first line
+@noprog:
   JMP repl
 
 cmd_auto:
@@ -997,12 +1017,14 @@ cmd_save:
   JMP repl
 
 cmd_new:
-  LDA #0           ; invalid BASIC program marker
-  TAY              ; offset 0
-  STA (LOMEM),Y    ; write first byte of program
+  LDA LOMEM        ; bottom of BASIC memory
+  STA TOP          ; end of BASIC program
+  LDA LOMEMH       ; bottom of BASIC memory high
+  STA TOPH         ; end of BASIC program high
   JMP repl
 
 cmd_old:
+  ; XX walk old program and verify valid lines
   JMP repl
 
 
@@ -1011,12 +1033,33 @@ cmd_old:
 ; BASIC Interpreter
 ; Y = code offset (persistent)
 
-do_ln0:
-  INY            ; [2] 0x00 marker
-do_ln:           ; advance past line header; add Y to CODE
-  INY            ; [2] Line low
-  INY            ; [2] Line high
-  INY            ; [2] length
+; control frame tags
+TOK_FOR    = $F0
+TOK_FOR_S  = $F1
+TAG_GOSUB  = $F2
+
+; variable tags
+VT_NUM = 1
+VT_STR = 2
+VT_NUM_ARR = 3
+VT_STR_ARR = 4
+VT_FN = 5
+VT_PROC = 6
+
+; expect start of next line
+do_ln_ex:
+  LDA (CODE),Y   ; [5] load token
+  CMP #OP_LN     ; [2]
+  BNE do_syn0    ; [2] -> syntax error
+  ; +++ fall through to @@ do_ln0 +++
+
+; start a new line: fold Y into CODE.
+; assumes (CODE),Y points at OP_LN.
+do_ln0:          ; advance past OP_LN and line header; add Y to CODE
+  INY            ; [2] skip OP_LN
+do_ln1:          ; advance past line header; add Y to CODE
+  TYA            ; [2] get accumulated Y
+  LDY #4         ; [2] skip (LineLo,LineHi,LenBk,LenFw)
   CLC            ; [2]
   ADC CODE       ; [3] add Y to CODE
   STA CODE       ; [3] update CODE
@@ -1037,7 +1080,7 @@ do_stmt:
   STA Src        ; [3]
   LDA stmt_h,X   ; [4]
   STA SrcH       ; [3]
-  JMP (Src)      ; [5]  /30 total  (XXX write $80+ token into JMP in RAM /18)
+  JMP (Src)      ; [5]  /30 total  (XXX write $C0+ token into JMP in RAM /18)
 
 do_let:
   ; check for VAR (implied LET)
@@ -1045,7 +1088,7 @@ do_let:
   SEC            ; [2] for subtract
   SBC #65        ; [2] make 'A' be 0
   CMP #26        ; [2] 26 letters (CS if >= 26)
-  BCS do_syn     ; [2] -> syntax error
+  BCS do_syn0    ; [2] -> syntax error
   ; get ptr to var-list at TOP for this letter
   STY B          ; [3] save Y=code-ofs
   ASL A          ; [2] letter * 2
@@ -1058,18 +1101,18 @@ do_let:
   ; scan the list for a matching VAR
   ; XXX
 
-do_syn:
+do_syn0:
   LDY #<msg_syntax
   JMP report_err
 
 stmt_l:
-  DB <do_ln      ; zero marker
   DB <do_call
   DB <do_cls
   DB <do_close
   DB <do_data
   DB <do_dim
-  DB <do_def
+  DB <do_deffn
+  DB <do_defproc
   DB <do_else
   DB <do_end
   DB <do_for
@@ -1101,14 +1144,17 @@ stmt_l:
   DB <do_wait
   DB <do_window
   DB <do_fnret
+  DB <do_thenln
+  DB <do_elseln
+  DB <do_ln1
 stmt_h:
-  DB >do_ln
   DB >do_call
   DB >do_cls
   DB >do_close
   DB >do_data
   DB >do_dim
-  DB >do_def
+  DB >do_deffn
+  DB <do_defproc
   DB >do_else
   DB >do_end
   DB >do_for
@@ -1140,134 +1186,180 @@ stmt_h:
   DB >do_wait
   DB >do_window
   DB >do_fnret
+  DB >do_thenln
+  DB >do_elseln
+  DB >do_ln1
+
 
 ; CALL: call into machine code
 do_call:
-  JMP do_stmt
+  JSR do_expr_u16 ; address expr (uses A,X,Y,???) -> Acc0,1
+  LDA Acc0        ; address low
+  STA Src         ;
+  LDA Acc1        ; address high
+  STA SrcH        ;
+  LDX #2          ; param counter    [could bake param count]
+@param:
+  LDA (CODE),Y    ; [5] peek next byte
+  CMP #OP_COMMA   ; is it ','?
+  BNE @done       ; -> no comma
+  INY             ; advance
+  JSR do_expr_u16 ; register expr (uses A,X,Y,???)
+  LDA Acc0        ; modulo 255
+  STA B,X         ; set D/C/B
+  DEX
+  BPL @param      ; -> loop until -1 (up to 3 times)
+@done:
+  STY E           ; save CODE offset
+  JSR @call       ; push return address
+  LDY E           ; restore CODE offset
+  JMP do_stmt     ; -> next stmt
+@call:
+  LDA B
+  LDX C
+  LDY D
+  JMP (Src)       ; -> jump to machine code routine
 
-; CLS: clear the screen
-do_cls:
-  JSR cls
-  JMP do_stmt
 
 ; CLOSE: expect '#' expr
 ;        verify channel is open;
 ;        flush any queued data;
 ;        mark channel closed
 do_close:
-  JMP do_stmt
+  JMP do_stmt     ; -> next stmt
 
-; DATA: skip Len bytes
-do_data:
-  JMP do_stmt
 
-; DIM: expect VAR '(' DIM-list ')'
+; DIM: expect VAR '(' DIM-expr ')'
 ;      add var to var-list;
 ;      allocate array memory at TOP or HEAP?
 do_dim:
-  JMP do_stmt
+  LDA #VT_NUM_ARR ; variable tag
+  JSR bind_var    ; -> bind a new variable
+  JSR do_expr_i   ; -> evaluate integer expression (dimension)
+  ; XX allocate array
+  ; XX attach to var?
+  JMP do_stmt     ; -> next stmt
 
-; DEF: keyword 'FN' or 'PROC'
-do_def:
-  JMP do_stmt
-
-; ELSE: scan rest of line for EOL token
-;       jump to EOL routine
-do_else:
-  JMP do_stmt
 
 ; END: end the program (return to REPL)
 do_end:
   JMP repl
 
+
 ; FOR: expect VAR; '='; expr 'TO' expr ['STEP' expr]
 ;      push FOR loop on control stack; save address;
 ;           jump to STMT loop
 do_for:
-  JMP do_stmt
+  LDA #VT_NUM     ; variable tag
+  JSR bind_var    ; [12+] -> evaluate variable (onto stack) [2]
+  JSR do_expr_n   ; [12+] -> evaluate numeric "FROM" expression (onto stack) [5]
+  JSR do_expr_n   ; [12+] -> evaluate numeric "TO" expression (onto stack) [5]
+  LDA (CODE),Y    ; [5] peek next byte
+  BNE @step       ; -> handle "STEP"
+  LDA #TOK_FOR    ;
+@cont:
+  STA B           ; save tag
+  JSR push_code   ; save return CODE
+  LDA B           ; restore tag
+  PHA             ; push "FOR" control tag
+  JMP do_stmt     ; [3] -> next stmt
+@step:
+  JSR do_expr_n   ; [12+] -> evaluate numeric "STEP" expression (onto stack) [5]
+  LDA #TOK_FOR_S  ;
+  BNE @cont       ; -> continue with FOR
+
+
+; @@ push_code (helper)
+; fold Y into CODE and push it on the stack
+; advance to the next statement or line
+push_code:
+  LDA (CODE),Y    ; [5] peek next byte
+  CMP #OP_LN      ; [2] is it EOL?
+  BEQ @newln      ; [2] -> start of next line
+  TYA             ; [2] get accumulated Y
+  LDY #0          ; [2] reset CODE offset
+@push:
+  CLC             ; [2]
+  ADC CODE        ; [3] add Y to CODE
+  PHA             ; [3] push CODE
+  LDA CODEH       ; [3]
+  ADC #0          ; [2] add carry
+  PHA             ; [3] push CODEH
+  RTS
+@newln:
+  TYA             ; [2] get accumulated Y
+  LDY #5          ; [2] skip (OpLn,LineLo,LineHi,LenBk,LenFw)
+  BNE @push       ; [3] -> now push it
+
 
 ; GOSUB: do_expr_n;
 ;       scan either dir for matching line;
 ;       push GOSUB frame on control stack, with return Code address;
 ;       set Code and jump to LINE start
 do_gosub:
-  JMP do_stmt
+  JSR do_expr_u16 ; [12+] -> evaluate u16 expression (to Acc0,1) [2]
+  JSR push_code   ; [12+] -> save return CODE
+  LDA #TAG_GOSUB  ; [2]
+  PHA             ; [3]
+  JMP go_line     ; [12+] -> find matching line and jump to it
 
-
-; @@ to_else
-; find the "ELSE" on the current line (if any)  [could do this when tokenising]
-to_else:
-  INY            ; advance
-  LDA (CODE),Y   ; peek next byte
-  BEQ @eol       ; -> zero byte, reached end of line
-  CMP #OP_ELSE   ; is it else?  [must be <32 to avoid false matches in strings]
-  BNE to_else    ; -> no, loop
-  ; found it
-  INY            ; advance
-  LDA (CODE),Y   ; peek next byte
-  BPL do_goln    ; -> must be a line number    [not safe, what about implied LET?]
-  JMP do_stmt    ; -> a statement
-@eol:
-  JMP do_ln0     ; -> start next line (on zero-byte)
 
 ; IF: parse BOOL-EXPR,
 ;     optional THEN kw,
 ;     if expr is true:
-;        if line-no token -> jump to GOTO routine
-;        jump to STMT loop
+;        skip length-byte
+;        jump to STMT loop  (THEN<ln> is a STMT)
 ;     if expr is false:
-;        scan rest of line for ELSE token or EOL;
-;        if ELSE found:
-;           if next token is line-no -> jump to GOTO routine
-;           jump to STMT loop
-;        otherwise, jump to EOL routine
+;        advance CODE by length-byte
+;        jump to STMT loop  (ELSE<ln> is a STMT)
 do_if:
-  JSR do_expr    ; condition expr (uses A,X,Y,???)
-  JSR to_bool    ; value to bool -> CS=true, CC=false
-  BCC to_else    ; -> cond is false, go to ELSE
-  LDA (CODE),Y   ; peek next byte
-  CMP #OP_THEN   ; is it "THEN" token?
-  BNE @stmt      ; -> no, expect a statement
-  INY            ; consume "THEN"
-  LDA (CODE),Y   ; peek next byte
-@stmt:
-  JMP do_stmt    ; -> is a statement    [not safe, what about implied LET?]
-  ; +++ fall through to @@ do_goln @@ +++
+  JSR do_expr_b  ; [12+] boolean expr (uses A,X,Y,???)
+  BCC do_else    ; [2] -> cond is false, advance to ELSE (re-uses do_else code) [+1]
+  INY            ; [2] skip length-byte (for ELSE)
+  JMP do_stmt    ; [3] -> next stmt
 
-; @@ do_goln
-; perform GOTO, require the expression to be a number literal
-do_goln:
-  LDA (CODE),Y   ; peek next byte
-  AND #$F0       ; get token class
-  CMP #OPS_NUM   ; is it numeric type?
-  BNE do_syn1    ; -> syntax error (non-number)
-  ; +++ fall through to @@ do_goto @@ +++
 
-; GOTO: do_expr_n;
+; DATA: skip Len bytes to reach EOL
+do_data:
+  ; +++ fall through to @@ do_else +++
+
+
+; ELSE: skip Len bytes to reach EOL
+; (also used to skip DATA and to skip THEN code/ELSE code)
+do_else:
+  LDA (CODE),Y    ; [5] get Length
+  STY B           ; [3] save Y
+  SEC             ; [2] +1 (advance)
+  ADC B           ; [3] Y += Len + 1
+  TAY             ; [2]
+  JMP do_stmt     ; [6] -> next stmt
+
+
+; THEN-ln (variant of GOTO, for LIST command)
+do_thenln:
+  ; +++ fall through to @@ do_goto +++
+
+; ELSE-ln (variant of GOTO, for LIST command)
+do_elseln:
+  ; +++ fall through to @@ do_goto +++
+
+; GOTO: do_expr_u16;
 ;       scan either dir for matching line;
 ;       set CODE and jump to do_ln
-do_goto:         ; A=next-tok
-  JSR do_expr    ; -> evaluate expression
-  JSR to_n16     ; convert to u16 (report if invlid)
-  JSR rt_findln  ; -> find matching line number (Acc0,1)
-  JMP do_ln      ; -> execute the line
+do_goto:          ; A=next-tok
+  JSR do_expr_u16 ; [12+] -> evaluate integer expression (Acc01)
+  JMP go_line     ; [12+] -> find matching line and jump to it (Acc01)
+
 
 do_syn1:
   LDY #<msg_syntax
   JMP report_err
 
-; @@ rt_findln
-; find a line in the basic program; set CODE
-rt_findln:       ; Acc0,1 -> CODE,CS|CC
-  RTS
 
+; INPUT:
 do_input:
   JMP do_stmt
 
-; LINE: do_expr_n ',' do_expr_n
-;       draw bresenham line (JSR plot)
-do_line:
-  JMP do_stmt
 
 ; LOCAL: expect VAR
 ;        verify inside a PROC (control stack)
@@ -1275,13 +1367,6 @@ do_line:
 do_local:
   JMP do_stmt
 
-; MODE do_expr_n
-do_mode:
-  JSR do_expr_n   ; result on stack?
-  ; XXX check it's an int
-  LDA Acc0        ; low byte of integer
-  JSR mode        ; set mode
-  JMP do_stmt
 
 ; NEXT: optional VAR (array indices)
 ;       scan control stack for matching FOR 'VAR' (same name, address);
@@ -1292,30 +1377,32 @@ do_mode:
 do_next:
   JMP do_stmt
 
+
+; ON expr_i GOTO|GOSUB <lines> [ELSE <line>]      (could drop this, use computed GOTO/GOSUB)
 do_on:
   JMP do_stmt
 
+
+; OPT: set option
 do_opt:
   JMP do_stmt
 
+
+; OPEN: open a file
 do_open:
   JMP do_stmt
 
-; PLOT expr_n ',' expr_n
-;      set semigraphics pixel at x, y
-do_plot:
-  JMP do_stmt
 
 ; POKE expr_n ',' expr_n
 ;      write byte to memory
 do_poke:
   JMP do_stmt
 
+
 do_print:
   JMP do_stmt
 
-do_proc:
-  JMP do_stmt
+
 
 ; READ VARs[$]
 ;      if data-ptr is FFFF, scan for first DATA-line
@@ -1324,20 +1411,18 @@ do_proc:
 do_read:
   JMP do_stmt
 
+
 ; REPEAT push a control frame
 do_repeat:
   JMP do_stmt
 
-; RECT x0, y0, x1, y1
-;      draw rect in semigraphics
-do_rect:
-  JMP do_stmt
 
 ; RESTORE [expr_n]
 ;         scan from line N (or first) for first DATA statement
 ;         set the data-ptr
 do_restore:
   JMP do_stmt
+
 
 ; RETURN:
 ;       scan control stack for matching GOSUB frame;
@@ -1346,73 +1431,234 @@ do_restore:
 do_return:
   JMP do_stmt
 
+
 ; REM skip Len bytes
 do_rem:
   JMP do_stmt
 
-do_scroll:
-  JMP do_stmt
 
 do_sound:
   JMP do_stmt
 
+
 do_until:
   JMP do_stmt
+
 
 do_wait:
   JMP do_stmt
 
-do_window:
+
+
+; --- PROC and FN ---
+
+; DEFFN: define function
+do_deffn:
+  JMP do_stmt     ; -> next stmt
+
+; DEFPROC: define procedure
+do_defproc:
+  JMP do_stmt     ; -> next stmt
+
+; PROC: call PROC <name>
+do_proc:
+  LDA #VT_PROC    ; variable tag
+  JSR find_var    ; PROCs are indexed as vars (report not found)
+  ;
   JMP do_stmt
 
 do_fnret:
   ; return from function
-  ; 1. check control stack for FN [$]
-  JSR do_expr   ; do_expr_s or do_expr_n
+  ; 1. find FN on control stack [num/$]
+  JSR do_expr   ; do_expr_s or do_expr_n (depends on [num/$] flag)
   ; 2. pop FN frame and Code Address
   JMP do_stmt
+
+
+; --- TEXT ---
+
+; MODE do_expr_n
+do_mode:
+  STX E            ; save CODE offset
+  JSR do_expr_x8s  ; result on stack
+  PLA              ; get mode number
+  JSR vid_mode     ; set mode (A=mode, uses A,X,Y,B)
+  LDX E            ; restore CODE offset
+  JMP do_stmt      ; -> next stmt
+
+; CLS: clear the screen
+do_cls:
+  STX E            ; save CODE offset
+  JSR vid_cls      ; (uses A,X,Y)
+  LDX E            ; restore CODE offset
+  JMP do_stmt      ; -> next stmt
+
+; WINDOW: set a text window
+do_window:
+  STX E            ; save CODE offset
+  JSR do_expr_x8s  ; X coordinate (on stack)  3
+  JSR do_expr_x8s  ; Y coordinate (on stack)  2
+  JSR do_expr_x8s  ; W coordinate (on stack)  1
+  JSR do_expr_x8s  ; H coordinate (on stack)  0
+  TSX
+  ; left
+  LDA $103,X       ; X coordinate low byte
+  AND #31          ; modulo 32
+  STA WinL         ; set window left
+  ; top
+  LDA $102,X       ; Y coordinate low byte
+  CMP #23          ; clamp if >23
+  BCC @y_ok        ; CC < 23
+  LDA #23          ; maximum 23
+@y_ok
+  STA WinT         ; set window top
+  ; width
+  SEC
+  LDA #32
+  SBC WinL         ; 32 - WinL (minimum 1)
+  CMP $101,X       ; is (32-WinL) < W
+  BCC @w_ok        ; CS < W (not enough space for W, use (32-WinL))
+  LDA $101,X       ; use W
+@w_ok:
+  STA WinW         ; set window width
+  ; height
+  SEC
+  LDA #24
+  SBC WinT         ; 24 - WinT (minimum 1)
+  CMP $100,X       ; is (24-WinT) < H
+  BCC @h_ok        ; CS < H (not enough space for H, use (24-WinT))
+  LDA $100,X       ; use H
+@h_ok:
+  STA WinH         ; set window height
+  ; clean up
+  PLA              ; pop X
+  PLA              ; pop Y
+  PLA              ; pop W
+  PLA              ; pop H
+  ; move cursor
+  JSR txt_home     ; move cursor to (0,0) in the window (uses A,X,Y,B)
+  LDX E            ; restore CODE offset
+  JMP do_stmt
+
+; @@ do_scroll
+; scroll the text screen by (X,Y)
+do_scroll:
+  STX E            ; save CODE offset
+  JSR do_expr_x8s  ; delta X (on stack)
+  JSR do_expr_x8s  ; delta Y (on stack)
+  PLA              ; get mode number
+  TAY              ; set delta Y
+  PLA              ; get mode number
+  TAX              ; set delta X
+;;  JSR txt_scroll   ; text plane scroll by (X,Y)
+;; XXX WIP
+  LDX E            ; restore CODE offset
+  JMP do_stmt
+
+
+; --- GRAPHICS ---
+
+; PLOT: plot a point (x,y)
+do_plot:
+  JSR do_expr_u16  ; X coordinate (push to stack)
+  JSR do_expr_u16  ; Y coordinate (push to stack)
+  JSR gfx_plot     ; -> draw a point (X,Y)
+  JMP do_stmt      ; -> next stmt
+
+; LINE: draw bresenham line (x,y)
+do_line:
+  JSR do_expr_u16  ; X0 coordinate (push to stack)
+  JSR do_expr_u16  ; Y0 coordinate (push to stack)
+  JSR do_expr_u16  ; X1 coordinate (push to stack)
+  JSR do_expr_u16  ; Y1 coordinate (push to stack)
+  JSR gfx_line     ; -> draw bresenham line (X0,Y0)-(X1,Y1)
+  JMP do_stmt      ; -> next stmt
+
+; RECT x0, y0, x1, y1
+;      draw rect in semigraphics
+do_rect:
+  JSR do_expr_u16  ; X0 coordinate (push to stack)
+  JSR do_expr_u16  ; Y0 coordinate (push to stack)
+  JSR do_expr_u16  ; X1 coordinate (push to stack)
+  JSR do_expr_u16  ; Y1 coordinate (push to stack)
+  JSR gfx_rect     ; -> draw rectangle (X0,Y0)-(X1,Y1)
+  JMP do_stmt      ; -> next stmt
+
+
+
+; @@ go_line
+; find a matching line and jump to it, or report not found
+; starts from current CODE line and searches towards target
+go_line:           ; Acc01 -> CODE (uses A,X,Y)
+   RTS
+
 
 ; @@ do_expr
 ; evaluate an expression (XXX should be do_expr_n, do_expr_s, do_expr_b)
 ; XXX "PRINT" is the outlier, accepting all types...
 do_expr:
 do_expr_n:
-do_expr_s:
+do_expr_i:
+do_expr_s::
+  RTS
+
+
+; @@ do_expr_b
+; evaluate a boolean expression -> CC|CS
 do_expr_b:
+  ; XX detect string expr
+  JSR do_expr_i   ; -> evaluate integer expression
+  ; XX cast to bool
   RTS
 
-; @@ to_bool
-; convert expression result to bool -> CC|CS
-to_bool:
-  CLC
+
+; @@ do_expr_u16
+; evaluate integer expression, range-check u16, return Acc01
+do_expr_u16:
+  JSR do_expr_i   ; -> evaluate integer expression
+  LDA Acc3
+  ORA Acc2
+  BNE do_range    ; -> out of range
   RTS
 
-; @@ to_n16
-; check result is numeric
-; check result >= 0 and <= 65535
-to_n16:          ; 
-  ; TODO check type is integer (convert float to int)
-  LDA Acc3       ; top byte
-  BMI @range     ; -> number is negative (out of range)
-  ORA Acc2       ; next highest byte
-  BNE @range     ; -> number is out of range
+; @@ do_expr_x8s
+; evaluate integer expression, modulo 256, on stack
+do_expr_x8s:
+  JSR do_expr_i   ; -> evaluate integer expression
+  LDA Acc0        ; get low byte (modulo 256)
+  PHA             ; push on stack
   RTS
-@range:
+
+
+; @@ do_range
+; report "out of range" error
+do_range:
   LDY #<msg_range
   JMP report_err
 
 
-; ------------------------------------------------------------------------------
-; PAGE 8 - Statement Tokens
+; @@ bind_var
+; find or insert named variable for assignment
+bind_var:
+  RTS
 
-OP_LN      = $00
+
+; @@ find_var
+; find named variable for reading
+find_var:
+  RTS
+
+
+; ------------------------------------------------------------------------------
+; PAGE 7 - Statement Tokens
+
 OP_CALL    = $C1   ; 0x01 when top bits masked off
 OP_CLS     = $C2
 OP_CLOSE   = $C3
 OP_DATA    = $C4
 OP_DIM     = $C5
 OP_DEFFN   = $C6   ; must be even
-OP_DEFPR   = $C7   ; must be odd
+OP_DEFPROC = $C7   ; must be odd
 OP_ELSE    = $C8   ; ELSE with <length>     (OP_ELSE,$xx vs source "EL.")
 OP_END     = $C9
 OP_FOR     = $CA
@@ -1445,11 +1691,9 @@ OP_WAIT    = $E4
 OP_WINDOW  = $E5
 OP_STEP    = $E6
 OP_THEN    = $E7
-OP_THENN1  = $E8 ; must be even
-OP_THENN2  = $E9 ; must be odd
-OP_ELSEN1  = $EA ; must be even
-OP_ELSEN2  = $EB ; must be odd
-OP_IFELSE  = $EC ; IF with ELSE offset
+OP_THENLN  = $E8
+OP_ELSELN  = $E9
+OP_LN      = $EA ; start-of-line
 
 
 ALIGN $100
@@ -1559,7 +1803,7 @@ stmt_rev:                     ; [50] indices MUST match OPCODEs
   DB (kw_wind - stmt_page)    ; "WINDOW",$F1   {39}
 
 ; ------------------------------------------------------------------------------
-; PAGE 9 - Expression Tokens
+; PAGE 8 - Expression Tokens
 
 ALIGN $100
 expr_page:
@@ -1809,6 +2053,29 @@ stmt_idx:
   DB (kws_z - stmt_page) ; Z
 
 
+
+; ------------------------------------------------------------------------------
+; PAGE C - GRAPHICS ROUTINES
+
+; @@ gfx_plot
+; draw a point at (X,Y)
+; all params are s16 on the stack
+gfx_plot:          ; uses (A,X,Y)
+  RTS
+
+; @@ gfx_line
+; draw a Bresenham line (X0,Y0) to (X1,Y1)
+; all params are s16 on the stack
+gfx_line:          ; uses (A,X,Y)
+  RTS
+
+; @@ gfx_rect
+; draw a rectangle (X0,Y0) to (X1,Y1)
+; all params are s16 on the stack
+gfx_rect:          ; uses (A,X,Y)
+  RTS
+
+
 ; ------------------------------------------------------------------------------
 ; PAGE 10 - SYSTEM
 
@@ -1936,9 +2203,9 @@ readchar:        ; uses A,X,Y returns ASCII or zero
 ; @@ writechar
 ; write a single character to the screen
 ; assumes we're in text mode with TXTP set up
-writechar:       ; A=char; preserves Y -> X = #0 [25]
+writechar:       ; A=char; uses A,X, preserves Y [25]
   CMP #32        ; [2] is it a control character?
-  BCC wrctrl     ; [2] if <32 -> execute control code and return [+1]
+  BCC wrctrl     ; [2] -> ch < 32, do control code [+1]  (uses A,X preserves Y)
   LDX #0         ; [2] const for (TXTP,X) ie (TXTP)
   STA (TXTP,X)   ; [6] write character to video memory
   INC TXTP       ; [5] advance text position
@@ -1950,21 +2217,78 @@ writechar:       ; A=char; preserves Y -> X = #0 [25]
 ; advance to the next line inside the text window
 ; scroll the text window if we're at the bottom
 ; assumes we're in text mode with TXTP set up
-newline:         ; uses A, preserves X,Y
+newline:          ; uses A,X preserves Y
+   LDX CurY       ; [3] get Cursor Y
+   INX            ; [2] advance Cursor Y
+   CPX WinH       ; [3] off the bottom of the window?
+   BEQ @scroll    ; [2] -> scroll down [+1]
+   STX CurY       ; [3] update Cursor Y
+; advance TXTP to start of next line (already CC because CPX CurY < WinH)
   LDA WinRem     ; [3]
-  CLC            ; [2]
-  ADC #32        ; [2] advance = 32 - (WinW - WinRem) = WinRem + 32 - WinW
-  SEC            ; [2]
+  CLC
+  ADC #32        ; [2] advance = 32 - (WinW - WinRem) = WinRem + 32 - WinW (31 for SEC)
+  SEC
   SBC WinW       ; [3]
-  CLC            ; [2]
-  ADC TXTP       ; [3] add destination low (may set CF=1)
-  STA TXTP       ; [3] set destination low
-  BCC @nohi      ; [2] CF=0, did not cross a page boundary [+1]
-  INC TXTPH      ; [5] CF=1, increment destination high
+  CLC
+  ADC TXTP       ; [3] add TXTP low (may set CF=1)
+  STA TXTP       ; [3] set TXTP low
+  BCC @nohi      ; [2] -> no carry [+1]
+  INC TXTPH      ; [5] TXTPH += 1
 @nohi:           ; 
   LDA WinW       ; [3] reset remaining window width
   STA WinRem     ; [3] must be ready to write in steady-state
   RTS            ; [6]
+; scroll the text window up one line
+@scroll:
+  TYA
+  PHA              ; save Y for caller
+  LDA WinH
+  CMP #1
+  BEQ @noscr       ; -> height is one line, no scroll
+; set up Src
+  LDX WinL
+  LDY WinT
+  INY              ; source starts down one line
+  JSR txt_addr_xy  ; uses A,X,Y
+  LDA TXTP
+  STA Src
+  LDA TXTPH
+  STA SrcH
+; set up Dst
+  LDX WinL
+  LDY WinT
+  JSR txt_addr_xy  ; uses A,X,Y
+  LDA TXTP
+  STA Dst
+  LDA TXTPH
+  STA DstH
+; scroll up one line
+  LDX WinW         ; cols = WinW
+  LDY WinH
+  DEY              ; rows = WinH - 1
+  JSR txt_copy_td  ; copy top-down from Src to Dst; uses (A,X,Y,B,C)
+@noscr:
+; clear the bottom line
+  LDX WinL         ; left of window
+  LDA WinT
+  CLC
+  ADC WinH         ; bottom of window (too far)
+  TAY
+  DEY              ; minus 1 row (inside window)
+  JSR txt_addr_xy  ; uses A,X,Y sets TXTP
+  LDA #32          ; fill with spaces
+  LDY WinW         ; window width
+  STY WinRem       ; reset WinRem
+  DEY              ; minus 1
+@clear:
+  STA (TXTP),Y     ; write a space
+  DEY              ; decrement column
+  BPL @clear       ; -> until Y=-1
+; return
+  PLA              ; restore Y for caller
+  TAY               
+  RTS              ; [6]
+
 
 ; @@ wrctrl
 ; write a single control code
@@ -2022,25 +2346,26 @@ print:           ; X=high Y=low (uses Src,A,B,X,Y)
   INY            ; advance to first char
   LDX #0         ; const for (TXTP,X) ie (TXTP)
 @loop:
-  LDA (Src),Y    ; [5] load char from string
+  LDA (Src),Y    ; [5] load char from string             5
   ; begin writechar inline
-  CMP #32        ; [2] is it a control character?
-  BCC @ctrl      ; [2] if <32 -> @ctrl
-  STA (TXTP,X)   ; [3] write character to video memory
-  INC TXTP       ; [5] advance text position
-  DEC WinRem     ; [5] at right edge of window?
-  BEQ @nl        ; [2] if so -> @nl
+  CMP #32        ; [2] is it a control character?        7
+  BCC @ctrl      ; [2] if <32 -> @ctrl [+1]              9
+  STA (TXTP,X)   ; [6] write character to video memory   15
+  INC TXTP       ; [5] advance text position             20
+  DEC WinRem     ; [5] at right edge of window?          25
+  BEQ @nl        ; [2] if so -> @nl [+1]                 27
   ; end writechar inline
 @incr:
-  INY            ; [2] advance string offset
-  DEC B          ; [5] decrement length
-  BNE @loop      ; [3] not at end -> @loop
+  INY            ; [2] advance string offset             29
+  DEC B          ; [5] decrement length                  34
+  BNE @loop      ; [2] not at end -> @loop [+1]          37 per char!
 @ret
   RTS            ; [6] done
 @nl:             ; wrap onto the next line and keep printing
   LDA #13        ; [2] newline control code
 @ctrl:
-  JSR wrctrl     ; [6] execute control code (uses A, preserves Y, X = #0)
+  JSR wrctrl     ; [6] execute control code (uses A,X preserves Y)
+  LDX #0         ; [2] restore constant X=0
   JMP @incr
 
 
@@ -2079,7 +2404,7 @@ readline:        ; uses A,X,Y,B returns Y=length (Z=1 if zero)
   STA LineBuf,Y  ; append to line buffer
   INY            ; advance line offset
   STY B          ; save line offset [3] not [4]
-  JSR writechar  ; output char to screen (A=char, preserves Y, X = #0)
+  JSR writechar  ; output char to screen (A=char, uses A,X, preserves Y)
   JMP @more      ; keep reading chars
 @done:
   LDA #0         ; terminator
@@ -2091,7 +2416,7 @@ readline:        ; uses A,X,Y,B returns Y=length (Z=1 if zero)
   BEQ @beep      ; buffer empty -> beep
   DEY            ; go back one place
   STY B          ; save line offset [3] not [4]
-  JSR wrctrl     ; backspace the display
+  JSR wrctrl     ; backspace the display (A=8) uses A,X preserves Y
     ; XXX if text is selected -> from=end_of_sel; to=start_of_sel
     ; XXX else from=cursor; to=cursor-1
     ; XXX Copy len = buf_length - from
@@ -2117,11 +2442,11 @@ mode_ret:
 ; ------------------------------------------------------------------------------
 ; MODE, CLS, TAB, text_addr_xy
 
-; @@ mode, set screen mode in X
+; @@ vid_mode
 ; mode 0 is text mode 32 x 24
 ; mode 1 is APA mode 128 x 96
-mode:            ; set screen mode, A=mode (uses A,X,Y,B)
-  AND #3         ; modes 0-3
+vid_mode:        ; set screen mode, A=mode (uses A,X,Y,B)
+  AND #1         ; modes 0-1
   STA IO_VCTL    ; set video mode; reset border color
   LDA #$0F       ; BG=black FG=white (for APA mode)
   STA IO_VPAL    ; set palette
@@ -2132,14 +2457,14 @@ mode:            ; set screen mode, A=mode (uses A,X,Y,B)
   STA WinW       ; reset text window width
   LDA #24
   STA WinH       ; reset text window height
-  ; +++ fall through to @@ cls +++
+  ; +++ fall through to @@ vid_cls +++
 
-; @@ cls, in "text mode"
-; clear the text window
-cls:                     ; (uses A,X,Y) [~6680]
+; @@ vid_cls
+; clear the screen or text window
+vid_cls:                 ; (uses A,X,Y) [~6680]
   LDX WinL               ; [3] text window left
   LDY WinT               ; [3] text window top
-  JSR text_addr_xy       ; [6] calculate TXTP at X,Y (uses A,X,Y) [40]
+  JSR txt_addr_xy        ; [6] calculate TXTP at X,Y (uses A,X,Y) [40]
   LDX WinH               ; [3] number of rows
 @row:
   LDA #32                ; [2] space character
@@ -2159,39 +2484,39 @@ cls:                     ; (uses A,X,Y) [~6680]
 @noc:
   DEX                    ; [2] decrement row count
   BNE @row               ; [3] until row=0
-  ; +++ fall through to @@ home +++
+  ; +++ fall through to @@ txt_home +++
 
 ; @@ home
 ; move the cursor to the top-left of the window
 ; update DMA address (DSTL,DSTH) for "text mode"
-; home:          ; (uses A,X,Y,B)
+txt_home:        ; (uses A,X,Y)
   LDX #0         ; top-left corner of text window
   LDY #0         ; 
   BEQ tab_e2     ; skip range checks
-  ; +++ fall through to @@ tab +++
+  ; +++ fall through to @@ txt_tab +++
 
 ; @@ tab
 ; move the cursor to X,Y in index registers (unsigned)
 ; relative to the top-left corner of the text window, zero-based.
 ; update DMA address (DSTL,DSTH) for "text mode"
-tab:             ; (uses A,X,Y)
+txt_tab:         ; (uses A,X,Y)
   CPX WinW       ; clamp X if out of range (WinW)
-  BCC @x_ok      ; CC < WinW
+  BCC @x_ok      ; -> X < WinW (OK)
   LDX WinW       ; (CS)
   DEX            ; (CS) clamp to last column (XXX reduce WinW by -1?)
 @x_ok:
   CPY WinH       ; clamp Y if out of range (WinH)
-  BCC @y_ok      ; CC < WinH
+  BCC @y_ok      ; -> Y < WinH (OK)
   LDY WinH
   DEY            ; clamp to last row  (XXX reduce WinH by -1?)
 @y_ok:
 tab_e2:
-  STX CurX       ; cursor X
-  STY CurY       ; cursor Y
+  STX CurY       ; temp save CurX into CurY
   LDA WinW       ; WinRem = WinW - CurX
   SEC
-  SBC CurX
+  SBC CurY
   STA WinRem     ; accelerates PRINT
+  STY CurY       ; save actual cursor Y
 ; Map from text window X,Y to screen X,Y
 ; the text plane is 32x24 in text mode
   TXA            ; X column in text window
@@ -2202,12 +2527,12 @@ tab_e2:
   CLC
   ADC WinT       ; Y row in screen space (add window top)
   TAY            ; back to Y
-  ; +++ fall through to @@ text_addr_xy +++
+  ; +++ fall through to @@ txt_addr_xy +++
 
-; @@ text_addr_xy
+; @@ txt_addr_xy
 ; calculate VRAM address for an X,Y coordinate in text mode; set TXTP
 ; [000000YY][YYYXXXXX]  32x24 text matrix
-text_addr_xy:    ; (uses A,X,Y) [40]
+txt_addr_xy:     ; (uses A,X,Y) [40]
   STX TXTP       ; [3] save X [000XXXXX]
   TYA            ; [2] get Y [000YYYYY]
   ROR            ; [2] [0000YYYY][C=Y0]
@@ -2224,6 +2549,76 @@ text_addr_xy:    ; (uses A,X,Y) [40]
   ADC #$2        ; [2] add $200 base address (high byte only)
   STA TXTPH      ; [3] set TXTPH
   RTS            ; [6]
+
+
+; @@ txt_copy_td
+; copy a text rect top-down, left-to-right (move the rect up/left)
+; from (Src) to (Dest) both at top-left; X=width, Y=height (both non-zero)
+txt_copy_td:             ; uses (A,X,Y,B,C,Src,Dest)
+  STX C                  ; [3] number of columns
+  STY B                  ; [3] row count
+@td_row:
+  LDX C                  ; [3] number of columns
+  LDY #0                 ; [2] left-to-right column index
+@td_col:
+  LDA (Src),Y            ; [3] read character
+  STA (Dst),Y            ; [3] write character
+  INY                    ; [2] increment column index
+  DEX                    ; [2] decrement column count
+  BNE @td_col            ; [3] -> until X=0
+; advance to next line
+  CLC                    ; [2]
+  LDA #32                ; [2] advance to the next line
+  ADC Src                ; [3] Src += 32 (one line)
+  STA Src                ; [3]
+  BCC @td_no_sh          ; [2] -> no carry [+1]
+  INC SrcH               ; [5] SrcH += 1
+@td_no_sh:
+  CLC                    ; [2]
+  LDA #32                ; [2] advance to the next line
+  ADC Dst                ; [3] Dest += 32 (one line)
+  STA Dst                ; [3]
+  BCC @td_no_dh          ; [2] -> no carry [+1]
+  INC DstH               ; [5] SrcH += 1
+@td_no_dh:
+  DEC B                  ; [2] decrement row count
+  BNE @td_row            ; [3] until rows=0
+  RTS
+
+
+; @@ txt_copy_bu
+; copy a text rect bottom-up, right-to-left (move the rect down/right)
+; from (Src) to (Dest) both at BOTTOM-left; width=WinW height=WinH (both non-zero)
+txt_copy_bu:             ; uses (A,X,Y,B,C,Src,Dest)
+  LDA WinH               ; [3] number of rows
+  STA B                  ; [3] row count
+@bu_row:
+  LDY WinW               ; [3] number of columns
+  DEY                    ; [2] pre-decrement right-to-left column index
+@bu_col:
+  LDA (Src),Y            ; [3] read character
+  STA (Dst),Y            ; [3] write character
+  DEY                    ; [2] decrement column index
+  BPL @bu_col            ; [3] -> until Y=-1
+; advance to next line
+  SEC                    ; [2]
+  LDA Src                ; [3]
+  SBC #32                ; [2] Src -= 32 (go up one line)
+  STA Src                ; [3]
+  BCS @bu_no_sh          ; [2] -> no borrow [+1]
+  DEC SrcH               ; [5] SrcH -= 1
+@bu_no_sh:
+  SEC                    ; [2]
+  LDA Dst                ; [3]
+  SBC #32                ; [2] Dst -= 32 (go up one line)
+  STA Dst                ; [3]
+  BCC @bu_no_dh          ; [2] -> no carry [+1]
+  DEC DstH               ; [5] SrcH -= 1
+@bu_no_dh:
+  DEC B                  ; [2] decrement row count
+  BNE @bu_row            ; [3] until rows=0
+  RTS
+
 
 
 ; ------------------------------------------------------------------------------
