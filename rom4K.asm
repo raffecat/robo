@@ -79,6 +79,8 @@ CurY     = $C8    ; text cursor Y
 WinRem   = $C9    ; remaining horizontal space in text window (WinW-CurX)
 TXTP     = $CA    ; text write address
 TXTPH    = $CB    ; text write address high
+CurTime  = $CC    ; cursor flash timer
+CurChar  = $CD    ; character under cursor
 
 ; -- $Dx line: Keyboard buffer
 
@@ -126,15 +128,16 @@ ModUp    = $01    ; Up Arrow is down
 ORG ROM
 
 ; ROM entry table     ; public entry points
-  JMP reset           ; $E000  reset the computer                              (JMP)
-  JMP basic           ; $E003  enter BASIC                                     (JMP)
-  JMP print           ; $E006  print len-prefix X=page Y=offset                (JSR uses A,B,X,Y)
-  JMP writechar       ; $E009  print char in A                                 (JSR preserves Y)
-  JMP newline         ; $E00C  print a newline, scroll if necessary            (JSR preserves Y)
-  JMP readline        ; $E00F  read a line into LineBuf (zero-terminated)      (JSR uses A,X,Y)
-  JMP vid_mode        ; $E00C  set screen mode, clear the screen               (JSR uses A,X,Y)
-  JMP vid_cls         ; $E012  clear the screen                                (JSR uses A,X,Y)
-  JMP txt_tab         ; $E015  move text cursor to X,Y                         (JSR uses A,X,Y)
+  JMP reset           ; $E000  reset the computer                           (JMP)
+  JMP basic           ; $E003  enter BASIC                                  (JMP)
+  JMP print           ; $E006  print string, len-prefix, X=page Y=offset    (JSR uses A,B,X,Y)
+  JMP wrchr           ; $E009  print char or control code in A              (JSR preserves Y)
+  JMP newline         ; $E00C  print a newline, scroll if necessary         (JSR preserves Y)
+  JMP readline        ; $E00F  read a line into LineBuf (zero-terminated)   (JSR uses A,X,Y) -> Y=length
+  JMP readchar        ; $E00C  read a character from the keyboard           (JSR uses A,X,Y) -> A=char/zero
+  JMP vid_mode        ; $E012  set screen mode, clear the screen            (JSR uses A,X,Y)
+  JMP vid_cls         ; $E015  clear the screen                             (JSR uses A,X,Y)
+  JMP txt_tab         ; $E018  move text cursor to X,Y within text window   (JSR uses A,X,Y)
 
 messages:    ; must be within one page for Y indexing
 welcome_1:   ; blue red orange yellow green cyan purple
@@ -178,7 +181,9 @@ reset:
   CLD            ; disable BCD mode
   LDX #$FF       ; reset stack [to align it?]
   TXS            ; stack init
-  LDX #0         ; screen mode 0 (32x24 text, 16 color)
+  LDX #1         ; cursor reset
+  STX CurTime    ; show on the next frame
+  DEX            ; screen mode 0 (32x24 text, 16 color)
   JSR vid_mode   ; set mode, clear screen
   LDY #<welcome_1
   JSR printmsgln
@@ -216,8 +221,6 @@ basic:
   ;;LDA <<basjmp   ; BASIC opcode JMP table
   ;;STA ram_disp+1 ; use `ram_disp` as a POINTER for rom_disp
 repl:            ; <- entry point after parse error
-  LDA #$3E       ; ">"
-  JSR writechar  ; uses A,X
 basic_e1:        ; <- entry point after Escape
   LDX #$FF       ; reset stack on entry (e.g. from Escape) [for overflow detect]
   TXS            ; stack init
@@ -292,7 +295,7 @@ repl_esc:
   LDY #<msg_escape
   JSR printmsgln
   LDA #$3E       ; ">"
-  JSR writechar  ; uses A,X
+  JSR wrchr      ; uses A,X
 @wait:           ; wait for Escape to be released
   LDA ModKeys    ; check key state
   BMI @wait      ; -> Escape still down
@@ -318,7 +321,7 @@ n16_print:       ; from {Acc0,1} (uses A,X,Y)
 @print:
   PLA
   BEQ @done
-  JSR writechar  ; print it (A=char, uses A,X)
+  JSR wrchr      ; print it (A=char, uses A,X)
   JMP @print
 @done
   RTS
@@ -352,7 +355,7 @@ n16_div10:
 printkw:          ; 13 bytes
   LDA kwtab,Y     ; [4] first char
 @loop:
-  JSR writechar   ; [6] print char (A=char, uses A,X)
+  JSR wrchr       ; [6] print char (A=char, uses A,X)
   INY             ; [2] advance
   LDA kwtab,Y     ; [4] load next char
   BPL @loop       ; [3] until top-bit is set
@@ -397,7 +400,7 @@ tok_emit:            ; uses Y; preserves A,X  [21]
 
 ; @@ tokenize
 ; tokenize BASIC statements (in-place in LineBuf)
-tokenize:          ; X=ln-ofs
+tokenize:            ; X=ln-ofs
 @loop:
   JSR @stmt          ; expect a statement keyword
   JSR skip_spc       ; skip any spaces
@@ -642,7 +645,7 @@ tok_expect:       ; A = expected character (uses X,Y,B,Src)
   LDY #<msg_expecting
   JSR printmsg    ; Y=low (uses Src,A,B,X,Y)
   LDA C           ; restore char
-  JSR writechar   ; uses A,X
+  JSR wrchr       ; uses A,X
   JSR newline     ; uses A,X
   JMP repl
 
@@ -985,7 +988,7 @@ cmd_auto:
   STA Acc1
   JSR n16_print
   LDA #32
-  JSR writechar      ; uses A,X
+  JSR wrchr          ; uses A,X
   ; read an input line
   JSR readline
   JSR newline
@@ -2162,19 +2165,30 @@ scantab:
   DB  $09, $71, $77, $65, $72, $74, $79, $75     ;   Tab q w e r t y u
   DB  $0E, $61, $73, $64, $66, $67, $68, $6A     ;  Caps a s d f g h j
   DB  $00, $7A, $78, $63, $76, $62, $6E, $6D     ;       z x c v b n m
-  DB  $38, $39, $30, $2D, $3D, $60, $08, $8B     ;     8 9 0 - = ` Del Up
-  DB  $69, $6F, $70, $5B, $5D, $5C, $00, $8A     ;     i o p [ ] \     Down
-  DB  $6B, $6C, $3B, $27, $00, $00, $0D, $88     ;     k l ; '     Ret Left
-  DB  $2C, $2E, $2F, $00, $00, $00, $20, $89     ;     , . /       Spc Right
+  DB  $38, $39, $30, $2D, $3D, $60, $08, $01     ;     8 9 0 - = ` Del Up
+  DB  $69, $6F, $70, $5B, $5D, $5C, $00, $02     ;     i o p [ ] \     Down
+  DB  $6B, $6C, $3B, $27, $00, $00, $0D, $03     ;     k l ; '     Ret Left
+  DB  $2C, $2E, $2F, $00, $00, $00, $20, $04     ;     , . /       Spc Right
 scanshf:
   DB  $1B, $21, $40, $23, $24, $25, $5E, $26     ;   Esc ! @ # $ % ^ &
   DB  $09, $51, $57, $45, $52, $54, $59, $55     ;   Tab Q W E R T Y U
   DB  $0E, $41, $53, $44, $46, $47, $48, $4A     ;  Caps A S D F G H J
   DB  $00, $5A, $58, $43, $56, $42, $4E, $4D     ;       Z X C V B N M
-  DB  $2A, $28, $29, $5F, $2B, $7E, $08, $8B     ;     * ( ) _ + ~ Del Up
-  DB  $49, $4F, $50, $7B, $7D, $7C, $00, $8A     ;     I O P { } |     Down
-  DB  $4B, $4C, $3A, $22, $00, $00, $0D, $88     ;     K L : "     Ret Left
-  DB  $3C, $3E, $3F, $00, $00, $00, $20, $89     ;     < > ?       Spc Right
+  DB  $2A, $28, $29, $5F, $2B, $7E, $08, $01     ;     * ( ) _ + ~ Del Up
+  DB  $49, $4F, $50, $7B, $7D, $7C, $00, $02     ;     I O P { } |     Down
+  DB  $4B, $4C, $3A, $22, $00, $00, $0D, $03     ;     K L : "     Ret Left
+  DB  $3C, $3E, $3F, $00, $00, $00, $20, $04     ;     < > ?       Spc Right
+
+; $00 No key
+; $01 Up
+; $02 Down
+; $03 Left
+; $04 Right
+; $08 Backspace
+; $09 Tab
+; $0D Return
+; $0E CapsLock
+; $1B Escape
 
 ; @@ readchar
 ; read a single character from the keyboard buffer
@@ -2198,14 +2212,14 @@ readchar:        ; uses A,X,Y returns ASCII or zero
 
 
 ; ------------------------------------------------------------------------------
-; WRITECHAR, PRINT
+; PRINT, WRCHR, WRCTL, NEWLINE
 
-; @@ writechar
+; @@ wrchr
 ; write a single character to the screen
 ; assumes we're in text mode with TXTP set up
-writechar:       ; A=char; uses A,X, preserves Y [25]
+wrchr:           ; A=char; uses A,X, preserves Y [25]
   CMP #32        ; [2] is it a control character?
-  BCC wrctrl     ; [2] -> ch < 32, do control code [+1]  (uses A,X preserves Y)
+  BCC wrctl      ; [2] -> ch < 32, do control code [+1]  (uses A,X preserves Y)
   LDX #0         ; [2] const for (TXTP,X) ie (TXTP)
   STA (TXTP,X)   ; [6] write character to video memory
   INC TXTP       ; [5] advance text position
@@ -2289,11 +2303,10 @@ newline:          ; uses A,X preserves Y
   TAY               
   RTS              ; [6]
 
-
-; @@ wrctrl
+; @@ wrctl
 ; write a single control code
 ; assumes we're in text mode with TXTP set up
-wrctrl:          ; uses A, preserves Y -> X = #0
+wrctl:           ; uses A, preserves Y -> X = #0
   CMP #13        ; [2] is it RETURN?
   BEQ newline    ; [2] -> do newline and return [+1]
   CMP #8         ; [2] is it BACKSPACE?
@@ -2347,14 +2360,14 @@ print:           ; X=high Y=low (uses Src,A,B,X,Y)
   LDX #0         ; const for (TXTP,X) ie (TXTP)
 @loop:
   LDA (Src),Y    ; [5] load char from string             5
-  ; begin writechar inline
+  ; begin wrchr inline
   CMP #32        ; [2] is it a control character?        7
   BCC @ctrl      ; [2] if <32 -> @ctrl [+1]              9
   STA (TXTP,X)   ; [6] write character to video memory   15
   INC TXTP       ; [5] advance text position             20
   DEC WinRem     ; [5] at right edge of window?          25
   BEQ @nl        ; [2] if so -> @nl [+1]                 27
-  ; end writechar inline
+  ; end wrchr inline
 @incr:
   INY            ; [2] advance string offset             29
   DEC B          ; [5] decrement length                  34
@@ -2364,7 +2377,7 @@ print:           ; X=high Y=low (uses Src,A,B,X,Y)
 @nl:             ; wrap onto the next line and keep printing
   LDA #13        ; [2] newline control code
 @ctrl:
-  JSR wrctrl     ; [6] execute control code (uses A,X preserves Y)
+  JSR wrctl      ; [6] execute control code (uses A,X preserves Y)
   LDX #0         ; [2] restore constant X=0
   JMP @incr
 
@@ -2372,58 +2385,49 @@ print:           ; X=high Y=low (uses Src,A,B,X,Y)
 ; ------------------------------------------------------------------------------
 ; READLINE, LINE EDITOR
 
-; Arrows move within the line; insert or delete text anywhere
-; Shift+Select and COPY, MOVE, DEL; Ctrl+L/R goes to Start/End
-; insert logic:
-; get buffered key count (up to CTRL code or wraparound)
-; check if room in buffer
-; DMA copy backwards From=old_end To=new_end Len=(buf_len-cursor_pos)
-; copy in the buffered chars
-; ... do the same thing on the screen, line by line
-;     (maybe just re-print the rest of the line, with EOL clearing?)
+; Arrows move within the line; insert or delete text within the line
+; Up/Down goes to Start/End. TAB to complete a line.
 
 ; @@ readline
 ; read a single line of input into the line buffer (zero-terminated)
-; XXX this will become the line editor
 readline:        ; uses A,X,Y,B returns Y=length (Z=1 if zero)
   LDA #0
-  STA B          ; init line offset [3] not [4]
+  STA B          ; init line length
+  STA C          ; init line cursor (linear)
+@idle:
+  JSR show_cursor
 @wait:
   BIT ModKeys    ; check for Escape
   BMI @esc
-@more:
   JSR readchar   ; read char from keyboard -> A (ZF) uses X,Y
   BEQ @wait      ; if zero -> @wait
-  CMP #13        ; is it RETURN?
-  BEQ @done      ; if so -> exit
-  LDY B          ; load line offset [3] not [4]
-  CMP #8         ; is it BACKSPACE?
-  BEQ @backsp    ; if so -> @backsp
-  CPY #$7F       ; at final byte in buffer? XXX LineBufLast?
+  TAX
+  JSR hide_cursor ; uses A,Y
+  TXA
+@cont:
+  CMP #32        ; is it a control code?
+  BCC @ctrl      ; -> char < 32, control code
+  LDY B          ; current line length
+  CPY #$7F       ; at end of buffer?
   BEQ @beep      ; buffer full -> beep
-  STA LineBuf,Y  ; append to line buffer
-  INY            ; advance line offset
-  STY B          ; save line offset [3] not [4]
-  JSR writechar  ; output char to screen (A=char, uses A,X, preserves Y)
-  JMP @more      ; keep reading chars
-@done:
-  LDA #0         ; terminator
-  LDY B          ; get line offset (ZF)
-  STA LineBuf,Y  ; write to line buffer
-  RTS            ; returns Y=length (ZF=1 if zero)
-@backsp:
-  CPY #0         ; at the first byte?
-  BEQ @beep      ; buffer empty -> beep
-  DEY            ; go back one place
-  STY B          ; save line offset [3] not [4]
-  JSR wrctrl     ; backspace the display (A=8) uses A,X preserves Y
-    ; XXX if text is selected -> from=end_of_sel; to=start_of_sel
-    ; XXX else from=cursor; to=cursor-1
-    ; XXX Copy len = buf_length - from
-    ; XXX Copy dest = `to` (and save it)
-    ; XXX copy forwards
-    ; XXX Write N=(from-to) blank chars (wrap at WinW)
-  JMP @more
+  LDY C          ; load line cursor
+  STA LineBuf,Y  ; write at cursor
+  INC C          ; advance line cursor
+  INC B          ; increase line length
+  JSR wrchr      ; print char to screen (A=char, uses A,X, preserves Y)
+@more:           ; keep reading chars
+  JSR readchar   ; read char from keyboard -> A (ZF) uses X,Y
+  BNE @cont      ; -> continue typing
+  BEQ @idle      ; -> return to idle
+@ctrl:
+  CMP #13        ; is it RETURN?
+  BEQ @return    ; -> return
+  CMP #8         ; is it BACKSPACE?
+  BEQ @backsp    ; -> backspace
+  CMP #$03       ; Left Arrow
+  BEQ @left      ; -> move cursor left
+  CMP #$04       ; Right Arrow
+  BEQ @right     ; -> move cursor right
 @beep:
   JSR beep
   LDA KeyTl      ; clear keyboard buffer (only beep once)
@@ -2431,6 +2435,28 @@ readline:        ; uses A,X,Y,B returns Y=length (Z=1 if zero)
   JMP @more
 @esc:
   JMP repl_esc
+@left:
+  LDY C          ; load line cursor
+  BEQ @beep      ; -> buffer empty, beep
+  DEC C          ; move line cursor back
+  JMP @more
+@right:
+  LDY C          ; load line cursor
+  CPY B          ; at length of buffer
+  BEQ @beep      ; -> buffer empty, beep
+  INC C          ; move line cursor forwards
+  JMP @more
+@return:
+  LDA #0         ; terminator
+  LDY B          ; get line length
+  STA LineBuf,Y  ; write to line buffer
+  RTS            ; returns Y=length (ZF=1 if zero)
+@backsp:
+  LDY B          ; load line offset
+  BEQ @beep      ; -> buffer empty, beep
+  DEC B          ; go back one place
+  JSR wrctl      ; backspace the display (A=8) uses A,X preserves Y
+  JMP @more
 
 ; @@ beep
 ; play an error beep over the speaker
@@ -2535,8 +2561,8 @@ tab_e2:
 txt_addr_xy:     ; (uses A,X,Y) [40]
   STX TXTP       ; [3] save X [000XXXXX]
   TYA            ; [2] get Y [000YYYYY]
-  ROR            ; [2] [0000YYYY][C=Y0]
-  ROR            ; [2] [Y0000YYY][C=Y1]
+  ROR            ; [2] [0000YYYY][C=Y0]      (the only use of ROR.. and not necessary)
+  ROR            ; [2] [Y0000YYY][C=Y1]      (multiplies use ROL)
   ROR            ; [2] [YY0000YY][C=Y2]
   TAY            ; [2] save [YY0000YY]
   ROR            ; [2] [YYY0000Y][C=Y3]
@@ -2624,6 +2650,35 @@ txt_copy_bu:             ; uses (A,X,Y,B,C,Src,Dest)
 ; ------------------------------------------------------------------------------
 ; PAGE
 
+show_cursor:     ; uses A,Y
+  SEI            ; disable IRQ
+  LDY #0
+  LDA (TXTP),Y   ; get char under cursor
+  CMP #$EF       ; is the cursor shown?   (XX conflict with $EF char)
+  BEQ @done      ; -> already shown
+  STA CurChar    ; save char under cursor
+  LDA #$EF       ; cursor block
+  STA (TXTP),Y   ; write cursor block
+  LDA #30
+  STA CurTime    ; reset cursor timer
+@done:
+  CLI            ; enable IRQ
+  RTS
+
+hide_cursor:     ; uses A,Y
+  SEI            ; disable IRQ
+  LDY #0
+  LDA (TXTP),Y   ; get char under cursor
+  CMP #$EF       ; is the cursor shown?   (XX conflict with $EF char)
+  BNE @done      ; -> not shown
+; restore char
+  LDA CurChar    ; saved character
+  STA (TXTP),Y   ; restore the saved character
+@done:
+  CLI            ; enable IRQ
+  RTS
+
+
 ; @@ irq_init
 ; set up IRQ vector in zero page, init keyboard, enable interrupts
 irq_init:
@@ -2651,6 +2706,22 @@ irq_rom:
   PHA            ; save Y
   STA IO_VLIN    ; acknowledge interrupt
   JSR keyscan
+  DEC CurTime
+  BNE @done      ; -> no flash
+  LDA #30
+  STA CurTime    ; reset cursor timer
+  LDY #0
+  LDA (TXTP),Y   ; get char under cursor
+  CMP #$EF       ; is the cursor shown?   (XX conflict with $EF char)
+  BEQ @restore
+  STA CurChar    ; save char under cursor
+  LDA #$EF
+  STA (TXTP),Y   ; write cursor block
+  JMP @done
+@restore:
+  LDA CurChar    ; saved character
+  STA (TXTP),Y   ; restore the saved character
+@done:
   PLA            ; restore Y
   TAY
   PLA            ; restore X
