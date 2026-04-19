@@ -181,6 +181,9 @@ msg_type:
   DB 4,"Type"
 
 
+; ------------------------------------------------------------------------------
+; Startup
+
 reset:
   SEI            ; disable interrupts
   CLD            ; disable BCD mode
@@ -219,6 +222,9 @@ reset:
   LDY #<ready
   JSR printmsgln   ; (uses A,B,C,D,X,Y,Src,Dst)
   ; +++ fall through to @@ basic +++
+
+; ------------------------------------------------------------------------------
+; BASIC repl
 
 ; @@ basic
 ; enter the basic command-line interface
@@ -266,7 +272,7 @@ basic_e1:        ; <- entry point after Escape
   ; tokenize and evaluate direct BASIC statements
 @direct:
   LDX #0           ; [2]
-  JSR tokenize     ; [6] tokenize BASIC statements
+  JSR tokenize     ; [6] tokenize BASIC statements (X=ln-ofs)
                    ;     XXX execute the line immediately
   JMP repl         ; [6] return to repl
 
@@ -278,7 +284,7 @@ basic_e1:        ; <- entry point after Escape
   LDA Acc1         ; [3]
   STA LINEH        ; [3]
   BMI @bounds      ; [2]
-  JSR tokenize     ; [6] tokenize BASIC statements
+  JSR tokenize     ; [6] tokenize BASIC statements (X=ln-ofs)
                    ;     XXX insert the tokenized line into the BASIC program
   JMP repl         ; [6] return to repl
 
@@ -313,11 +319,39 @@ repl_esc:
   JMP basic_e1   ; -> re-enter repl
 
 
-
 ; ------------------------------------------------------------------------------
 ; BASIC Tokenizer
 ;
 ; X = current source offset in LineBuf (persistent)
+
+; NUDs:
+; number
+; string
+; var[$][(n)]
+; ABS[$](x[,y])
+; FN<name>[$](...)
+; '-' expr
+; 'NOT' expr
+; '(' expr
+
+; LEDs:
+; operators ^ * / + - = <> <= < >= >
+; AND,OR,EOR,DIV,MOD
+; ')'
+; "Missing operator"
+
+oper_tab_sz = 10
+oper_tab:
+  DB '^'  ; OP_POW
+  DB '*'  ; OP_MUL
+  DB '/'  ; OP_DIV
+  DB '+'  ; OP_ADD
+  DB '-'  ; OP_SUB
+  DB '='  ; OP_EQ
+  DB '<'  ; OP_NE, OP_LT, OP_LE
+  DB '<'  ; (for above)
+  DB '<'  ; (for above)
+  DB '>'  ; OP_GT, OP_GE
 
 ; @@ skip_spc
 ; skip spaces in the input buffer [NO TEXT-OUT]
@@ -365,23 +399,22 @@ tok_str:
   JSR tok_emit       ; opcode (uses Y) -> preserves A,X
   JSR tok_emit       ; length placeholder (uses Y) -> preserves A,X
   STY B              ; save offset of length byte (Y from tok_emit!)    [zero; each emit is +1]
-  INX
+  INX                ; consume open '"'
 @str_lp:
   LDA LineBuf,X      ; next input char
   BEQ miss_quo       ; -> end of line; missing quote
   CMP #$22           ; '"'
   BEQ @str_quo       ; -> maybe end of string
 @str_out:
-  INX                ; advance (consume input)
+  INX                ; consume input
   JSR tok_emit       ; emit the character (uses Y) -> preserves A,X
   BPL @str_lp        ; -> always (MI on overrun)
 @str_quo:
-  INX                ; advance (consume '"')
+  INX                ; consume closing '"'
   LDA LineBuf,X      ; next input char
   CMP #$22           ; is it also '"' (double-quote)
   BEQ @str_out       ; -> include this one in the string
 ; end of string
-  DEX                ; undo advance (not consumed)
   LDA EmitOfs        ; current emit offset
   CLC
   SBC B              ; subtract start offset -> string length
@@ -389,10 +422,35 @@ tok_str:
   STA LineBuf,Y      ; patch in string length
   JMP tok_exprs      ; -> expect more
 
+tok_oper:
+  TYA                ; operator index {27..} too much mem, do a tab_sym matcher?
+  CLC                ; 
+  ADC #$10           ; $10 - $1A
+  CMP #OP_GT         ; is it >= OP_GT
+  BCS @tok_gt        ; choose OP_GT, OP_GE
+  CMP #OP_NE         ; is it >= OP_LT
+  BCS @tok_lt        ; choose OP_NE, OP_LT, OP_LE
+  JMP tok_emit       ; -> emit token
+@tok_gt:
+@tok_lt:
+  LDA LineBuf,X      ; next input char
+  CMP #$3E           ; is it '>' for '<>' ?
+  BEQ @tok_ne
+  CMP #$3D           ; is it '=' for '<='?
+  BEQ @tok_le
+  ; TODO etc ..      ; NOT FINISHED
+@tok_ne:
+@tok_le:
+  LDY #<msg_syntax
+  JMP report_err
+
+
 ; @@ tokenize
 ; tokenize BASIC statements (in-place in LineBuf)
 tokenize:            ; X=ln-ofs
+  DEX                ; set up for pre-increment
 tok_stmts:
+  INX                ; pre-increment (for ':' BEQ)
   JSR skip_spc       ; X=ln-ofs (uses A) -> A=next-char
   JSR is_alpha       ; X=ln-ofs (uses A) -> A=AtoZ-index CC=alphabetic
   BCS tok_syn        ; -> no STMT or VAR
@@ -406,15 +464,24 @@ tok_stmts:
 ; parse remaining tokens up to EOL or ':'
 tok_exprs:
   JSR skip_spc       ; X=ln-ofs (uses A) -> A=next-char
+  CMP #0             ; end of input?
   BEQ tok_eol        ; -> end of input, done
   CMP #$22           ; open quote '"'
   BEQ tok_str        ; -> tokenize a string
   CMP #$3A           ; colon ':'
   BEQ tok_stmts      ; -> another stmt
-  ; tokenize function names and context-keywords
+; is it an operator?
+  LDY #0             ; oper_tab index {12+10=22}
+@oper_lp:
+  CMP oper_tab,Y     ; matches next operator?
+  BEQ tok_oper       ; -> emit operator ($10+Y)
+  INY                ; skip operator
+  CPY #oper_tab_sz   ; done?
+  BNE @oper_lp       ; -> next operator
+; is it a name?
   JSR is_alpha       ; X=ln-ofs (uses A) -> A=AtoZ-index CC=alphabetic
   BCC tok_fn_var     ; -> keyword/variable (A=AtoZ-index)
-  ; is it a number?
+; is it a number?
   LDA LineBuf,X      ; next input char
   SEC                ; for subtract
   SBC #48            ; make '0' be 0
@@ -474,12 +541,12 @@ tok_num_o:       ; CS=found
   LDA Acc1
   BNE @int2
 @int1:
-  LDA #OP_INT1
-  JSR tok_emit   ; write OP_INT1
-  BNE @wr0
-@int2:
   LDA #OP_INT2
   JSR tok_emit   ; write OP_INT2
+  BNE @wr0
+@int2:
+  LDA #OP_INT3
+  JSR tok_emit   ; write OP_INT3
   BNE @wr1
 @int4:
   LDA #OP_INT4
@@ -1033,6 +1100,20 @@ VT_PROC = 6
 
 ; --- DISPATCH ---
 
+; @@ code_add_y
+; add code offset Y to CODE (used for PRINT)
+code_add_y:
+  TYA            ; [2] get accumulated Y
+  LDY #0         ; [2] reset Y
+  CLC            ; [2]
+  ADC CODE       ; [3] add Y to CODE
+  STA CODE       ; [3] update CODE
+  BCC @done      ; [2] -> no overflow [+1]
+  INC CODEH      ; [5]
+@done:
+  RTS
+
+; @@ do_ln_ex
 ; expect start of next line
 do_ln_ex:
   LDA (CODE),Y   ; [5] load token
@@ -1040,6 +1121,7 @@ do_ln_ex:
   BNE do_syn0    ; [2] -> syntax error
   ; +++ fall through to @@ do_ln0 +++
 
+; @@ do_ln0
 ; start a new line: fold Y into CODE.
 ; assumes (CODE),Y points at OP_LN.
 do_ln0:          ; advance past OP_LN and line header; add Y to CODE
@@ -1054,6 +1136,7 @@ do_ln1:          ; advance past line header; add Y to CODE
   INC CODEH      ; [5]
   ; +++ fall through to @@ do_stmt +++
 
+; @@ do_stmt
 ; STMT: expect a statement token; jump to statement handler,
 ;       otherwise, if '=' jump to FN return statement,
 ;       otherwise jump to LET statement (VAR = ...)
@@ -1165,15 +1248,10 @@ do_if:
 
 
 ; REM skip Len bytes to reach EOL
-do_rem:
-  ; +++ fall through to @@ do_else +++
-
 ; DATA: skip Len bytes to reach EOL
-do_data:
-  ; +++ fall through to @@ do_else +++
-
 ; ELSE: skip Len bytes to reach EOL
-; (also used to skip DATA and to skip THEN code/ELSE code)
+do_rem:
+do_data:
 do_else:
   LDA (CODE),Y    ; [5] get Length
   STY B           ; [3] save Y
@@ -1266,18 +1344,96 @@ do_restore:
 ; --- PRINT, INPUT ---
 
 ; INPUT:
-do_input:         ; uses PRINT parser (mode)
-  JMP do_stmt
+do_input:
+@loop:
+  LDA (CODE),Y    ; [5] get tag byte
+  INY             ; advance (tag byte)
+  ASL             ; bit 7 to carry, bit 6 to sign
+  BCS @input      ; -> input var ($80)
+  BMI @strlit     ; -> string literal ($40)
+  ASL             ; bit 5 to sign
+  BMI @nl         ; -> newline ($20)
+  JSR newline     ; always newline
+  JMP do_stmt     ; end of input
+; print a string literal ($40)
+@strlit:
+  JSR code_add_y  ; advance CODE by Y so we can pass CODE [TODO meh]
+  LDX CODEH       ; string literal high
+  LDY CODE        ; string literal low
+  JSR print       ; print it, X=high Y=low -> Y = strlen (uses A,B,X,Y,Term,Src,Dst)
+  INY             ; +1 for length-byte -> new CODE-ofs
+  JMP @loop       ; -> continue
+; input to var
+@input:
+  BPL @readln     ; -> no question mark (no $40)
+  LDA #$3F        ; '?'
+  JSR wrchr       ; ; print '?' (uses A,X,Src,Dst,F) preserves Y
+@readln:
+  ; TODO bind VAR
+  ; TODO store str/num flag
+  JSR readline    ; read input (uses A,X,Y,B,C) -> Y=length (EQ if zero)
+  ; TODO parse number
+  ; TODO set var
+  JMP @loop       ; -> continue
+@nl
+  JSR newline     ; write newline (uses A,X,Src,Dst,F) preserves Y
+  JMP @loop       ; -> continue
 
 
 ; PRINT
+; (MS BASIC: always semi unless explicit comma [stateless])
 do_print:
-  ; loop:
-  ; if str -> JSR print (A,B,C,D,E,X,Y,Src,Dst)
-  ; find var
-  ; cvt -> linebuf -> print
-  ; etc
-  JMP do_stmt
+@loop:
+  LDA (CODE),Y    ; [5] get tag byte
+  BMI @comma      ; -> comma 'tab' ($80 flag)
+@resume:
+  INY             ; advance (tag byte)
+  ASL             ; discard bit 7
+  ASL             ; bit 6 to carry, bit 5 to sign
+  BCS @expr       ; -> num/str expr ($40/$60)
+  BMI @strlit     ; -> string literal ($20)
+  ASL             ; bit 4 to sign
+  BMI @nl         ; -> newline ($10)
+  ASL             ; bit 3 to sign
+  BMI @endsemi    ; -> end of print with semicolon ($08)
+  JSR newline     ; newline at end of print
+@endsemi:
+  JMP do_stmt     ; end of print (non-zero)
+; tab to next field
+@comma:
+  PHA             ; save A
+  LDA #9          ; tab char
+  JSR wrctl       ; print $09 tab (uses A,X,Src,Dst,F) preserves Y
+  PLA             ; restore A
+  BNE @resume     ; -> always (won't be zero)
+; numeric expression
+@expr:
+  BMI @strexp     ; -> string expr ($60)
+  JSR expr_n      ; evaluate numeric expression (to stack)
+  JSR num_print   ; print a number on the stack [TODO: currently Acc]
+  JMP @loop       ; -> continue
+; print a string literal ($20)
+@strlit:
+  JSR code_add_y  ; advance CODE by Y so we can pass CODE [TODO meh]
+  LDX CODEH       ; string literal high
+  LDY CODE        ; string literal low
+  JSR print       ; print it, X=high Y=low -> Y = strlen (uses A,B,X,Y,Term,Src,Dst)
+  INY             ; +1 for length-byte -> new CODE-ofs
+  JMP @loop       ; -> continue
+; string expression
+@strexp:
+  JSR expr_s      ; evaluate string expression (to stack)
+  PLA
+  TAY             ; string addr low
+  PLA
+  TAX             ; string addr high
+  ; TODO ^ if this points to the var, deref again!
+  JSR print       ; print it, X=high Y=low -> Y = strlen (uses A,B,X,Y,Term,Src,Dst)
+  ; TODO decrement REFs in string?
+  JMP @loop       ; -> continue
+@nl
+  JSR newline     ; write newline (uses A,X,Src,Dst,F) preserves Y
+  JMP @loop       ; -> continue
 
 
 ; --- OPEN, CLOSE ---
@@ -1350,7 +1506,7 @@ do_local:
 
 ; --- MODE, WAIT, CLS ---
 
-; MODE do_expr_n
+; MODE
 do_mode:
   STY E            ; save CODE offset
   JSR do_expr_i8   ; A = mode
@@ -1534,17 +1690,6 @@ find_line:
 
 ; --- EXPRESSIONS ---
 
-; @@ do_expr
-; evaluate an expression (XXX should be do_expr_n, do_expr_s, do_expr_b)   (TODO errors?)
-; XXX "PRINT" is the outlier, accepting all types...
-; XXX tracked state: expect a comma after each expr except the first?
-do_expr:
-do_expr_n:
-do_expr_i:
-do_expr_s::
-  RTS
-
-
 ; @@ do_expr_b
 ; evaluate a boolean expression -> CC|CS
 do_expr_b:
@@ -1552,7 +1697,6 @@ do_expr_b:
   JSR do_expr_i   ; -> evaluate integer expression  (TODO errors?)
   ; XX cast to bool
   RTS
-
 
 ; @@ do_expr_u16
 ; evaluate integer expression, range-check u16, return Acc01
@@ -1586,6 +1730,33 @@ args_i8:
 ; report "out of range" error
 do_range:
   JMP err_range
+
+; @@ do_expr
+; evaluate an expression (XXX should be do_expr_n, do_expr_s, do_expr_b)   (TODO errors?)
+; XXX "PRINT" is the outlier, accepting all types...
+; XXX tracked state: expect a comma after each expr except the first?
+do_expr:
+do_expr_n:
+do_expr_i:
+do_expr_s::
+  RTS
+
+
+; NUDs:
+; number
+; string
+; var[$][(n)]
+; ABS[$](x[,y])
+; FN<name>[$](...)
+; '-' expr
+; 'NOT' expr
+; '(' expr
+
+; LEDs:
+; operators ^ * / + - = <> <= < >= >
+; AND,OR,EOR,DIV,MOD
+; ')'
+; "Missing operator"
 
 
 ; ------------------------------------------------------------------------------
@@ -1733,13 +1904,13 @@ stmt_idx:
 stmt_rev:                     ; [34] indices MUST match OPCODEs
   DB (kw_cls - stmt_page)     ; "CLS",$C4
   DB (kw_close - stmt_page)   ; "CLOSE",$C6
-  DB (kw_copy - stmt_page)    ; "COPY",$E9
+  DB (kw_copy - stmt_page)    ; "COPY",$E9       -
   DB (kw_data - stmt_page)    ; "DATA",$C7
   DB (kw_dim - stmt_page)     ; "DIM",$C9
   DB (kw_def - stmt_page)     ; "DEF",$CA
   DB (kw_else - stmt_page)    ; "ELSE",$CB
   DB (kw_end - stmt_page)     ; "END",$CD
-  DB (kw_fill - stmt_page)    ; "FILL",$E2
+  DB (kw_fill - stmt_page)    ; "FILL",$E2       -
   DB (kw_for - stmt_page)     ; "FOR",$CE
   DB (kw_goto - stmt_page)    ; "GOTO",$CF
   DB (kw_gosub - stmt_page)   ; "GOSUB",$D0
@@ -1747,24 +1918,24 @@ stmt_rev:                     ; [34] indices MUST match OPCODEs
   DB (kw_input - stmt_page)   ; "INPUT",$D2
   DB (kw_let - stmt_page)     ; "LET",$D3
   DB (kw_line - stmt_page)    ; "LINE",$C8
-  DB (kw_local - stmt_page)   ; "LOCAL",$D4
+  DB (kw_local - stmt_page)   ; "LOCAL",$D4      -
   DB (kw_mode - stmt_page)    ; "MODE",$D6
   DB (kw_next - stmt_page)    ; "NEXT",$D7
-  DB (kw_opt - stmt_page)     ; "OPT",$D9
+  DB (kw_opt - stmt_page)     ; "OPT",$D9        ?
   DB (kw_open - stmt_page)    ; "OPEN",$DB
   DB (kw_plot - stmt_page)    ; "PLOT",$DD
   DB (kw_poke - stmt_page)    ; "POKE",$C1
   DB (kw_print - stmt_page)   ; "PRINT",$DC
-  DB (kw_proc - stmt_page)    ; "PROC",$DE
+  DB (kw_proc - stmt_page)    ; "PROC",$DE       -
   DB (kw_read - stmt_page)    ; "READ", $E0
-  DB (kw_rept - stmt_page)    ; "REPEAT",$E1
+  DB (kw_rept - stmt_page)    ; "REPEAT",$E1     ?
   DB (kw_rest - stmt_page)    ; "RESTORE",$E3
   DB (kw_retr - stmt_page)    ; "RETURN",$E4
   DB (kw_rem - stmt_page)     ; "REM",$E5
   DB (kw_soun - stmt_page)    ; "SOUND",$EA
-  DB (kw_until - stmt_page)   ; "UNTIL",$ED
+  DB (kw_until - stmt_page)   ; "UNTIL",$ED      ?
   DB (kw_wait - stmt_page)    ; "WAIT",$F0
-  DB (kw_wind - stmt_page)    ; "WINDOW",$F1   {39}
+  DB (kw_wind - stmt_page)    ; "WINDOW",$F1     -
 
 ; 19 bytes free
 
@@ -1774,14 +1945,6 @@ stmt_rev:                     ; [34] indices MUST match OPCODEs
 ALIGN $100
 expr_page:
 kwtab:
-
-OPS_NUM  = $B0       ; all of $Bx are number literals
-
-OP_I0    = $B0       ; 1-byte
-OP_I9    = $B9       ; 1-byte
-OP_INT1  = $BA       ; 2-byte
-OP_INT2  = $BB       ; 3-byte
-OP_INT4  = $BC       ; 5-byte
 
 ; use C0 codes for these (in precedence order)
 OP_POW   = $10
@@ -1799,19 +1962,16 @@ OP_GE    = $1A
 OP_UNEG  = $1B       ; unary
 OP_UPLUS = $1C       ; unary
 
-OP_STR   = $1D
-
 
 ; EXPRESSION TOKENS
 
 expr_a:
 expr_b:
 ex_abs  DB "ABS",     $80      ; fn (0,0)
-ex_at   DB "AT",      $81      ; fn (0,2)  read pixel at (x,y)
 ex_asc  DB "ASC",     $82      ; fn (0,1)  ascii code from string
 expr_c:
 ex_chr  DB "CHR",     $83      ; fn$ (1,1)
-ex_cos  DB "COS",     $84      ; fn (0,1)
+ex_cos  DB "COS",     $84      ; fn (0,1)                    -
 expr_d:
 expr_e:
 ex_eof  DB "EOF",     $85      ; # function (2,0)
@@ -1820,41 +1980,42 @@ ex_erl  DB "ERL",     $87      ; no-arg (0,0)
 expr_f:
 ex_fn   DB "FN",      $88      ; function-call (9)
 expr_g:
-ex_get  DB "GET",     $89      ; fn-or-fn$ (8,0)
+ex_get  DB "GET",     $89      ; fn-or-fn$ (8,0)   extended (x,y) screen read?
 expr_h:
+ex_hit  DB "HIT",     $81      ; fn (2)  read pixel at (x,y)
 expr_i:
-ex_ink  DB "INKEY",   $90      ; fn-or-fn$ (8,1) 1st is $
-ex_ins  DB "INSTR",   $91      ; fn$ (1,1) 1st is $
-ex_int  DB "INT",     $92      ; fn (0,1)
+ex_ink  DB "INKEY",   $8A      ; fn-or-fn$ (8,1) 1st is $
+ex_ins  DB "INSTR",   $8B      ; fn$ (1,1) 1st is $
+ex_int  DB "INT",     $8C      ; fn (0,1)
 expr_j:
 expr_k:
 expr_l:
-ex_len  DB "LEN",     $93      ; fn-or-fn# (B,1) 1st is $
-ex_lft  DB "LEFT",    $94      ; fn$ (1,2) 1st is $
+ex_len  DB "LEN",     $8D      ; fn-or-fn# (B,1) 1st is $
+ex_lft  DB "LEFT",    $8E      ; fn$ (1,2) 1st is $
 expr_m:
-ex_mid  DB "MID",     $95      ; fn$ (1,3) 1st is $
+ex_mid  DB "MID",     $8F      ; fn$ (1,3) 1st is $
 expr_n:
 expr_o:
 expr_p:
-ex_pos  DB "POS",     $96      ; fn-or-fn# (B,0)  cursor x
-ex_pi   DB "PI",      $97      ; no-arg (0,0)
+ex_pos  DB "POS",     $90      ; fn-or-fn# (B,0)  cursor x
+ex_pi   DB "PI",      $91      ; no-arg (0,0)
 expr_q:
 expr_r:
-ex_rgt  DB "RIGHT",   $98      ; fn$ (1,2) 1st is $
-ex_rnd  DB "RND",     $99      ; fn (0,1)
+ex_rgt  DB "RIGHT",   $92      ; fn$ (1,2) 1st is $
+ex_rnd  DB "RND",     $93      ; fn (0,1)
 expr_s:
-ex_str  DB "STR",     $9A      ; fn$ (1,1) 1st is $
-ex_sin  DB "SIN",     $9B      ; fn (0,1)
-ex_sqr  DB "SQR",     $9C      ; fn (0,1)
-ex_sgn  DB "SGN",     $9D      ; fn (0,1)
+ex_str  DB "STR",     $94      ; fn$ (1,1) 1st is $
+ex_sin  DB "SIN",     $95      ; fn (0,1)                     -
+ex_sqr  DB "SQR",     $96      ; fn (0,1)
+ex_sgn  DB "SGN",     $97      ; fn (0,1)
 expr_t:
-ex_tme  DB "TIME",    $9E      ; no-arg (0,0)
-ex_top  DB "TOP",     $9F      ; no-arg (0,0)
+ex_tme  DB "TIME",    $98      ; no-arg (0,0)
+ex_top  DB "TOP",     $99      ; no-arg (0,0)                 ?
 expr_u:
-ex_usr  DB "USR",     $A0      ; fn (0,1)
+ex_usr  DB "USR",     $9A      ; fn (0,1)
 expr_v:
-ex_val  DB "VAL",     $A1      ; fn (0,1)
-ex_vps  DB "VPOS",    $A2      ; no-arg (3,0)   cursor y
+ex_val  DB "VAL",     $9B      ; fn (0,1)
+ex_vps  DB "VPOS",    $9C      ; no-arg (3,0)   cursor y
 expr_w:
 expr_x:
 expr_y:
@@ -1862,13 +2023,25 @@ expr_z:
   DB 0
 
 kw_prefix:
-kw_not  DB "NOT",     $A3      ; operator
+kw_not  DB "NOT",     $9D      ; operator
 kw_infix:
-kw_and  DB "AND",     $A4      ; operator
-kw_div  DB "DIV",     $A5      ; operator
-kw_eor  DB "EOR",     $A6      ; operator
-kw_mod  DB "MOD",     $A7      ; operator
-kw_or   DB "OR",      $A8      ; operator
+kw_and  DB "AND",     $9E      ; operator
+kw_div  DB "DIV",     $9F      ; operator
+kw_eor  DB "EOR",     $A0      ; operator
+kw_mod  DB "MOD",     $A1      ; operator
+kw_or   DB "OR",      $A2      ; operator
+
+OP_STR   = $A8       ; string literal
+OPS_NUM  = $A9       ; $A9-BF are number literals
+OP_I0    = $B0       ; 1-byte
+OP_I9    = $B9       ; 1-byte
+OP_INT2  = $BA       ; 2-byte (opc|int8)
+OP_INT3  = $BB       ; 3-byte (opc|int16)
+OP_INT4  = $BC       ; 4-byte (opc|int24)
+OP_FLT2  = $BD       ; 2-byte (opc|mant8)         [".X" = 0.X]
+OP_FLT3  = $BE       ; 3-byte (opc|exp8|mant8)    ["1.2"; "2.55"; "10.2"]
+OP_FLT4  = $BF       ; 4-byte (opc|exp8|mant16)   ["99.99", "1.9876"]
+OP_FLT5  = $A9       ; 5-byte (opc|exp8|mant24)   ["987654.3", "9.876543"]
 
 
 ; context keywords (keep on one page for Y indexing)
@@ -1901,7 +2074,6 @@ kwt_var:
 
 expr_rev:                  ; [29]
   DB (ex_abs - expr_page)  ; "ABS",$80
-  DB (ex_at - expr_page)   ; "AT",$99
   DB (ex_asc - expr_page)  ; "ASC",$82
   DB (ex_chr - expr_page)  ; "CHR",$86
   DB (ex_cos - expr_page)  ; "COS",$87
@@ -1910,6 +2082,7 @@ expr_rev:                  ; [29]
   DB (ex_erl - expr_page)  ; "ERL",$8C
   DB (ex_fn  - expr_page)  ; "FN",$8F
   DB (ex_get - expr_page)  ; "GET",$90
+  DB (ex_hit - expr_page)  ; "HIT",$99
   DB (ex_ink - expr_page)  ; "INKEY",$91
   DB (ex_ins - expr_page)  ; "INSTR",$92
   DB (ex_int - expr_page)  ; "INT",$93
@@ -2310,9 +2483,8 @@ printmsg:         ; Y=msg (uses A,B,X,Y,Term,Src,Dst)
   ; +++ fall through to @@ print +++
 
 ; @@ print, in text mode
-; write a length-prefix string to the screen
-; assumes we're in text mode with TXTP set up
-print:           ; X=high Y=low (uses A,B,X,Y,Term,Src,Dst)
+; write a length-prefix string to the screen in text-mode
+print:           ; X=high Y=low (uses A,B,X,Y,Term,Src,Dst) -> Y = strlen (excludes length byte)
   STX PrintH     ; src high
   STY PrintL     ; src low
   LDY #0         ; string offset, counts up
@@ -2335,7 +2507,7 @@ print:           ; X=high Y=low (uses A,B,X,Y,Term,Src,Dst)
   CPY B          ; [5] equals length?                    32
   BNE @loop      ; [2] not at end -> @loop [+1]          35 per char!
 @ret
-  RTS            ; [6] done
+  RTS            ; [6] done; Y = strlen (excludes length byte)
 @nl:             ; wrap onto the next line and keep printing
   LDA #13        ; [2] newline control code
 @ctrl:
@@ -2359,7 +2531,7 @@ print:           ; X=high Y=low (uses A,B,X,Y,Term,Src,Dst)
 
 ; @@ readline
 ; read a single line of input into the line buffer (zero-terminated)
-readline:        ; uses A,X,Y,B,C returns Y=length (Z=1 if zero)
+readline:        ; uses A,X,Y,B,C returns Y=length (EQ if zero)
   LDA #0
   STA B          ; init line length
   STA C          ; init line cursor (linear)
