@@ -239,6 +239,7 @@ basic_e1:        ; <- entry point after Escape
   STX DataL      ; no data yet
   STX DataH      ; no data yet
   JSR readline   ; -> Y=length
+  STY E          ; for tokenizer
   JSR newline    ; uses A,X
 
   ; parse the command
@@ -324,63 +325,6 @@ repl_esc:
 ;
 ; X = current source offset in LineBuf (persistent)
 
-; NUDs:
-; number
-; string
-; var[$][(n)]
-; ABS[$](x[,y])
-; FN<name>[$](...)
-; '-' expr
-; 'NOT' expr
-; '(' expr
-
-; LEDs:
-; operators ^ * / + - = <> <= < >= >
-; AND,OR,EOR,DIV,MOD
-; ')'
-; "Missing operator"
-
-oper_tab_sz = 10
-oper_tab:
-  DB '^'  ; OP_POW
-  DB '*'  ; OP_MUL
-  DB '/'  ; OP_DIV
-  DB '+'  ; OP_ADD
-  DB '-'  ; OP_SUB
-  DB '='  ; OP_EQ
-  DB '<'  ; OP_NE, OP_LT, OP_LE
-  DB '<'  ; (for above)
-  DB '<'  ; (for above)
-  DB '>'  ; OP_GT, OP_GE
-
-; @@ skip_spc
-; skip spaces in the input buffer [NO TEXT-OUT]
-skip_spc:        ; X=ln-ofs -> X (uses A,X)
-  LDA LineBuf,X  ; [4] next input char
-  INX            ; [2] advance (assume match)
-  CMP #32        ; [2] was it space?
-  BEQ skip_spc   ; [2] -> loop [+1]
-  DEX            ; [2] undo advance (didn't match)
-  RTS            ; [6] return X=ln-ofs, A=next-char [12+6=18]
-
-; @@ is_alpha
-is_alpha:        ; X=input-ofs (uses A) -> CC=alphabetic [NO TEXT-OUT]
-  LDA LineBuf,X  ; [4] next input char
-  AND #$DF       ; [2] lower -> upper (clear bit 5) detect alpha char
-  SEC            ; [2] for subtract
-  SBC #65        ; [2] make 'A' be 0
-  CMP #26        ; [2] 26 letters (CS if >= 26)
-tok_ret1:
-  RTS            ; [6] return A=alphabet-index CC=alphabetic [12+6=18]
-
-; @@ tok_emit
-; Emit an opcode at CODE and advance CODE.
-tok_emit:            ; uses Y; preserves A,X -> PL=ok  [19]
-  LDY EmitOfs        ; [3] get output offset           [MZ]
-  STA LineBuf,Y      ; [5] write opcode                []
-  INC EmitOfs        ; [5] advance output offset       [NZ]
-  RTS                ; [6] M=0 (PL) unless overrun
-
 ; @@ tok_eol:
 ; end of line reached, do whatever
 tok_eol:
@@ -390,7 +334,7 @@ tok_eol:
 ; report a missing quote
 miss_quo:
   LDA #$22           ; closing quote '"'
-  JMP tok_expect
+  JMP err_expect
 
 ; @@ tok_str
 ; tokenize a string
@@ -530,6 +474,34 @@ err_overflow:
   JMP report_err
 
 
+; @@ skip_spc
+; skip spaces in the input buffer [NO TEXT-OUT]
+skip_spc:        ; X=ln-ofs -> X (uses A,X)
+  LDA LineBuf,X  ; [4] next input char
+  INX            ; [2] advance (assume match)
+  CMP #32        ; [2] was it space?
+  BEQ skip_spc   ; [2] -> loop [+1]
+  DEX            ; [2] undo advance (didn't match)
+  RTS            ; [6] return X=ln-ofs, A=next-char [12+6=18]
+
+; @@ is_alpha
+is_alpha:        ; X=input-ofs (uses A) -> CC=alphabetic
+  LDA LineBuf,X  ; [4] next input char
+  AND #$DF       ; [2] lower -> upper (clear bit 5) detect alpha char
+  SEC            ; [2] for subtract
+  SBC #65        ; [2] make 'A' be 0
+  CMP #26        ; [2] 26 letters (CS if >= 26)
+tok_ret1:
+  RTS            ; [6] return A=alphabet-index CC=alphabetic [12+6=18]
+
+; @@ tok_emit
+; Emit an opcode at CODE and advance CODE.
+tok_emit:            ; uses Y; preserves A,X -> PL=ok  [19]
+  LDY EmitOfs        ; [3] get output offset           [MZ]
+  STA LineBuf,Y      ; [5] write opcode                []
+  INC EmitOfs        ; [5] advance output offset       [NZ]
+  RTS                ; [6] M=0 (PL) unless overrun
+
 ; @@ tok_num_o
 ; tokenize and emit a number
 tok_num_o:       ; CS=found
@@ -576,10 +548,9 @@ tok_num_o:       ; CS=found
   BPL @int2      ; -> not negative, need extra sign byte
   BMI @int1      ; -> negative, single byte
 
-
-; @@ tok_expect
+; @@ err_expect
 ; Report an "Expecting [char]" error
-tok_expect:       ; A = expected character (uses A,B,C,D,E,X,Y,Src,Dst)
+err_expect:       ; A = expected character (uses A,B,C,D,E,X,Y,Src,Dst)
   STA E           ; save char
   LDY #<msg_expecting
   JSR printmsg    ; Y=low (uses A,B,C,D,X,Y,Src,Dst)
@@ -587,6 +558,376 @@ tok_expect:       ; A = expected character (uses A,B,C,D,E,X,Y,Src,Dst)
   JSR wrchr       ; uses A,X
   JSR newline     ; uses A,X
   JMP repl
+
+
+; LET <var> '=' <expr>                                   -> {LETn|LETs|LETa}<var><expr> (x2?)
+; DIM <var> '(' <expr> ')'                               -> {DIM}<var><expr_n>
+; FOR <var> '=' <expr_n> 'TO' <expr_n> ['STEP' <expr_n>] -> {FOR}<var><expr_n><expr_n><expr_n|$00>
+; NEXT [<var>|$00]                                       -> {NEXT}<var|$00>
+; IF <expr_n> THEN <line>/<stmts> [ELSE <line>/<stmts>]  -> {IF}<expr_n><len> | {IFLN}<expr_n><n16>
+; ELSE <line>/<stmts>                                    -> {ELSE}<len>       | {ELLN}<n16>
+; READ {<var> ','}                                       -> {READ}<len>{<var>}
+; INPUT { [,;'] "str" | <var> }                          -> {INPUT}<len>{<op|lit|var>}
+; PRINT { [,;'] "str" | <expr_n> | <expr_s> } [;]        -> {PRINT|PRINT;}<len>{<op|lit|expr>}
+; DEF FN <name> '(' {<var>} ')'                          -> {DEFFN}<name><len>{<var>}
+; OPEN #<n> ',' <expr_s>                                 -> {OPEN}<n><expr_s>
+; CLOSE #<n>                                             -> {CLOSE}<n>
+; REM <text>                                             -> {REM}<len><data>
+; DATA <text>                                            -> {DATA}<len><data>    (XXX "DATA 1.02e1" -> A$)
+; RETURN                                                 -> {RETURN}
+; REPEAT                                                 -> {REPEAT}
+; CLS                                                    -> {CLS}
+; GOTO <expr>                                            -> {GOTO}<expr_n>
+; GOSBU <expr>                                           -> {GOSUB}<expr_n>
+; RESTORE <expr_n>                                       -> {RESTORE}<n16>
+; UNTIL <expr_n>                                         -> {UNTIL}<expr_n>
+; MODE <expr_n>                                          -> {MODE}<expr_n>
+; WAIT <expr_n>                                          -> {WAIT}<expr_n>
+; POKE <expr_n> ',' <expr_n>                             -> {POKE}<expr_n><expr_n>
+; OPT <expr_n> ',' <expr_n>                              -> {OPT}<expr_n><expr_n>
+; SOUND <pitch><vol><len>[<dp>[<dv>]]                    -> {SOUND}<expr_n><expr_n><expr_n><expr_n|$00><expr_n|$00>
+; PLOT <expr_n> ',' <expr_n>                             -> {PLOT}<expr_n><expr_n>
+; LINE <expr_n> ',' <expr_n> ',' <expr_n> ',' <expr_n>   -> {PLOT}<expr_n><expr_n><expr_n><expr_n>
+; '=' <expr>                                             -> {RETFN}<expr>   (not a keyword)
+
+SYN_FLAG    = $08       ; bit 3 flag
+
+SYN_NN      = $00       ; N x <expr_n> *
+SYN_DATA    = $10       ; <len><data>
+SYN_CH      = $20       ; #<n> [ ',' <expr_s> ]:FLAG
+SYN_LET     = $30       ; [LET] <var> = <expr>                      -> <var><expr_*>
+SYN_DIM     = $40       ; DIM <var> '(' <expr> ')'                  -> <var><expr_n>
+SYN_FOR     = $50       ; FOR <var> '=' <expr_n> 'TO' <expr_n> ['STEP' <expr_n>] -> <var><expr_n><expr_n><expr_n|$00>
+SYN_NEXT    = $60       ; NEXT [<var>|$00]                          -> <var|$00>
+SYN_IF      = $70       ; IF <expr_n> [THEN [<line>]]               -> <expr_n><len|n16>
+SYN_ELSE    = $80       ; ELSE [<line>]                             -> <len>
+SYN_READ    = $90       ; READ {<var> ','}                          -> <len>{<var>}
+SYN_INPUT   = $A0       ; { [,;'] "str" | <var> }                   -> <len>{<op|lit|var>}
+SYN_PRINT   = $B0       ; { [,;'] "str" | <expr_n> | <expr_s> } [;] -> <len>{<op|lit|var>}
+SYN_DEF     = $C0       ; 'FN' <name> '(' {<var>} ')'               -> <name><len>{<var>}
+
+syn_tab:                ; [30]
+  DB 0                  ; OP_LN      $C0   (not used)
+  DB SYN_NN | 0         ; OP_CLS     $C1
+  DB SYN_CH             ; OP_CLOSE   $C2
+  DB SYN_DATA           ; OP_DATA    $C3
+  DB SYN_DIM            ; OP_DIM     $C4
+  DB SYN_DEF            ; OP_DEFFN   $C5
+  DB SYN_ELSE           ; OP_ELSE    $C6
+  DB SYN_NN | 0         ; OP_END     $C7
+  DB SYN_FOR            ; OP_FOR     $C8
+  DB SYN_NN | 1         ; OP_GOTO    $C9
+  DB SYN_NN | 1         ; OP_GOSUB   $CA
+  DB SYN_IF             ; OP_IF      $CB
+  DB SYN_INPUT          ; OP_INPUT   $CC
+  DB SYN_LET            ; OP_LET     $CD
+  DB SYN_NN | 4         ; OP_LINE    $CE
+  DB SYN_NN | 1         ; OP_MODE    $CF
+  DB SYN_NEXT           ; OP_NEXT    $D0
+  DB SYN_NN | 2         ; OP_OPT     $D1
+  DB SYN_CH|SYN_FLAG    ; OP_OPEN    $D2
+  DB SYN_NN | 2         ; OP_PLOT    $D3
+  DB SYN_NN | 2         ; OP_POKE    $D4
+  DB SYN_PRINT          ; OP_PRINT   $D5
+  DB SYN_READ           ; OP_READ    $D6
+  DB SYN_NN | 0         ; OP_REPEAT  $D7
+  DB SYN_NN | 1         ; OP_RESTORE $D8
+  DB SYN_NN | 0         ; OP_RETURN  $D9
+  DB SYN_DATA           ; OP_REM     $DA
+  DB SYN_NN|SYN_FLAG|4  ; OP_SOUND   $DB
+  DB SYN_NN | 1         ; OP_UNTIL   $DC
+  DB SYN_NN | 1         ; OP_WAIT    $DD
+
+syn_jmp:                ; [14] range-checked page offsets
+  DB (syn_nn - syn_page)
+  DB (syn_data - syn_page)
+  DB (syn_ch - syn_page)
+  DB (syn_let - syn_page)
+  DB (syn_dim - syn_page)
+  DB (syn_for - syn_page)
+  DB (syn_next - syn_page)
+  DB (syn_if - syn_page)
+  DB (syn_else - syn_page)
+  DB (syn_read - syn_page)
+  DB (syn_input - syn_page)
+  DB (syn_print - syn_page)
+  DB (syn_def - syn_page)
+
+
+; -------------------------------------------------------------
+; $300 Syntax Recognisers
+;
+; X = line-ofs
+; D = syn_tab byte (syn:7-4, flag:3, count:2-0)
+; E = line-len
+; skip_spc already done
+
+; var/expr types
+TYPE_NUM   = 0
+TYPE_STR   = 1
+TYPE_ARR   = 2
+TYPE_NUM_A = 2 ; TYPE_ARR|TYPE_NUM
+TYPE_STR_A = 3 ; TYPE_ARR|TYPE_STR
+
+ALIGN $100
+syn_page:
+
+; XXX line up the table above with these entry points!!
+
+syn_0:           ; no args
+  RTS
+
+syn_nn:          ; N x <expr_n>
+  JSR syn_count  ; get count from syn-byte (uses A) -> A
+  STA D          ; num exprs
+  BNE @first     ; -> no first comma (assume D>0)
+@loop:
+  JSR syn_comma  ; expect ','
+@first:
+  JSR syn_exp_n  ; tokenize and emit numeric expression
+  DEC D
+  BNE @loop
+@done:
+  RTS
+
+syn_sound:        ; N x <expr_n> +1 or +2
+  JSR syn_nn      ; tokenize first four arguments
+  JSR syn_exp_no  ; tokenize and emit numeric expression (optional) -> CS=found
+  BCC syn_00      ; -> no 5th argument
+  JSR syn_exp_no  ; tokenize and emit numeric expression (optional) -> CS=found
+  BCC syn_00      ; -> no 6th argument
+  RTS
+
+syn_00:
+  LDA #0
+  JMP tok_emit    ; write $00 marker (uses Y; preserves A,X)
+
+syn_data:         ; <len><data>
+  JSR syn_rem_len ; get remaining length of input (uses A,B) -> A
+  JSR tok_emit    ; write length (uses Y; preserves A,X)
+  TAY             ; length counter
+@copy:
+  LDA LineBuf,X   ; next input char
+  INX             ; advance input
+  JSR tok_emit    ; emit code
+  DEY             ; decrement length counter
+  BNE @copy       ; -> until done
+  RTS
+
+syn_ch:
+  JMP syn_chan    ; expect and emit '#' <channel> -> A
+
+syn_ch_s:
+  JSR syn_chan    ; expect and emit '#' <channel> -> A
+  JSR syn_comma   ; expect ','
+  JSR syn_exp_s   ; tokenize and emit string expression
+  RTS
+
+                  ; XXX OP_LETN, OP_LETS, OP_LETA opcode must be emtted here...
+syn_let:          ; LET <var> '=' <expr> -> {LETn|LETs|LETa}<var><expr> (x2?)
+  JSR syn_var     ; expect and emit <name>[$] -> A=type
+  STA E           ; save expr type
+  LDA #$3D        ; '='
+  JSR syn_sym     ; expect '='
+  JSR syn_exp     ; tokenize and emit expression -> A=type
+  CMP E           ; same as var?
+  BNE syn_type    ; -> type mismatch
+  RTS
+
+syn_type:
+  LDY #>msg_type  ; "Bad Type"
+  JMP report_bad  ; -> report error
+
+syn_dim:          ; DIM <var> '(' <expr> ')' -> {DIM}<var><expr_n>
+  JSR syn_var     ; expect and emit <name>[$] -> A=type
+  LDA #$28        ; '('
+  JSR syn_sym     ; expect '('
+  JSR syn_exp_n   ; tokenize and emit numeric expression
+  LDA #$29        ; ')'
+  JSR syn_sym     ; expect ')'
+syn_ret:
+  RTS
+
+syn_for:          ; FOR <var> '=' <expr_n> 'TO' <expr_n> ['STEP' <expr_n>] -> {FOR}<var><expr_n><expr_n><expr_n|$00>
+  JSR syn_var     ; expect and emit <name>[$] -> A=type
+  AND #1          ; mask off TYPE_ARR = 2
+  BNE syn_type    ; -> type mismatch (must be TYPE_NUM = 0)
+  LDA #$3D        ; '='
+  JSR syn_sym     ; expect '='
+  JSR syn_exp_n   ; tokenize and emit numeric expression (from)
+  LDY #>kwt_to    ; "TO"
+  JSR syn_kw      ; match "TO"
+  JSR syn_exp_n   ; tokenize and emit numeric expression (to)
+  LDY #>kwt_step  ; "STEP"
+  JSR syn_kwo     ; match "STEP" -> CS=found A=OP
+  BCC syn_00      ; emit $00 marker
+  JMP syn_exp_n   ; tokenize and emit numeric expression (step)
+
+syn_next:
+  JSR skip_spc    ; before is_alpha
+  JSR is_alpha    ; X=ln-ofs (uses A) -> CC=alphabetic
+  BCS syn_00      ; emit $00 marker (no var)
+  JMP syn_var     ; expect and emit <name>[$] -> A=type (XXX runtime type-check)
+
+syn_if:           ; IF <expr_n> THEN <line>/<stmts> [ELSE..] -> {IF}<expr_n><len> | {IFLN}<expr_n><n16>
+  JSR syn_exp_n   ; tokenize and emit numeric expression
+  LDY #>kwt_then  ; "THEN"
+  JSR syn_kwo     ; match "THEN" -> CS=found A=OP
+  BCC @stmts      ; -> no "THEN"
+  JSR syn_u16o    ; tokenize and emit u16 -> CS=found
+  BCC @stmts      ; -> no <line>
+  ; XXX patch opcode = IFLN
+@stmts:
+  ; XXX reserve space for length
+  ; XXX set "inside IF" flag and save length-offset
+  RTS
+
+syn_else:
+  ; XXX check "inside IF" -> missing IF
+  ; XXX patch saved length-offset: (Ofs) = X
+  ; XXX reserve space for length
+  ; XXX set "inside ELSE" flag and save length-offset
+
+syn_read:
+  JSR tok_emit   ; length placeholder
+  STY E          ; save length-offset
+  LDA #0
+  STA D          ; counter
+@loop:
+  JSR syn_var    ; expect and emit <var>[$]
+  INC D          ; count vars
+  LDA LineBuf,X  ; next input char
+  CMP #$2C       ; ','
+  BEQ @loop      ; -> more
+@done:
+  LDA D          ; get length
+  LDY E          ; get length-offset
+  STA LineBuf,Y  ; patch in length over length placeholder
+  RTS
+
+syn_input:
+
+syn_print:
+
+syn_def:
+
+syn_goto:
+
+
+; Syntax Utils
+
+syn_count:       ; get count from syn-byte (uses A) -> A
+  LDA D          ;     nnnSSSSS
+  ROL            ; n - nnSSSSS0
+  ROL            ; n - nSSSSS0n
+  ROL            ; n - SSSSS0nn
+  ROL            ; S - SSSS0nnn
+  AND #7         ; count:2-0
+  RTS
+
+syn_rem_len:     ; get remaining length of input (uses A,B) -> A
+  STX B          ; current ln-ofs
+  LDA E          ; length of line from `repl`
+  CLC
+  SBC B          ; subtract start of data
+  RTS
+
+syn_comma:
+  LDA #$2C       ; ','
+syn_sym:
+  CMP LineBuf,X  ; next input char
+  BNE err_expect ; -> "Expecting ,"
+  RTS
+
+syn_chan:        ; expect and emit '#' <channel> -> A
+  LDA #$23       ; '#'
+  JSR syn_sym    ; expect '#'
+  JSR num_u16    ; integer literal
+  LDA Acc1
+  BNE err_range  ; -> out of range
+  LDA Acc0
+  CMP #9         ; more than 9?
+  BCS err_range  ; -> out of range (too big)
+  JMP tok_emit   ; emit 0-9
+
+; expect keyword
+syn_kw:          ; X=ln Y=kw (uses A,Y,B,C) -> A=OP
+  STY B          ; save keyword for error case
+  JSR syn_kwo    ; uses (A,Y,B) -> CS=found
+  BCC @no_kw     ; -> "Expected <kw>"
+  RTS
+@no_kw:
+  LDY B          ; restore keyword
+  JMP syn_expect_y
+
+; match a keyword in kwtab
+syn_kwo:         ; X=ln Y=kw (uses A,Y,B) -> CS=found A=OP
+  JSR skip_spc   ; X=ln (uses A)
+  STX F          ; [3] save ln in case we don't match
+  DEX            ; [2] set up for pre-increment
+  DEY            ; [2] set up for pre-increment
+@loop:
+  INX            ; [2] pre-increment
+  INY            ; [2] pre-increment
+  LDA kwtab,Y    ; [4] get keyword char
+  CMP LineBuf,X  ; [4] matches input char?
+  BEQ @loop      ; [3] -> continue until not equal
+  CMP #$80       ; [2] CF=(A >= $80) top-bit set
+  BCS @found     ; [2] -> found match [+1]
+  LDX F          ; [3] restore ln at start of kw
+@found:
+  RTS            ; [6] -> CS=found A=OP
+
+; report missing keyword
+syn_expect_y:    ; Y=kw-ofs[kwtab]  (uses A,B,X,Y,Term,Src,Dst)
+  STY E
+  LDY #<msg_expecting
+  JSR printmsg   ; Y=low (uses A,B,X,Y,Term,Src,Dst)
+  LDY E          ; keyword offset
+  JSR printkw    ; Y=offset (uses A,Src)
+  JSR newline
+  JMP repl
+
+syn_u16o:
+  RTS
+
+syn_exp:         ; tokenize and emit expression -> A=type
+syn_exp_no:      ; tokenize and emit numeric expression (optional)
+syn_exp_n:       ; tokenize and emit numeric expression
+syn_exp_s:       ; tokenize and emit string expression
+syn_var:         ; expect and emit <name>[$] -> CS=str
+
+
+; NUDs:
+; number
+; string
+; var[$][(n)]
+; ABS[$](x[,y])
+; FN<name>[$](...)
+; '-' expr
+; 'NOT' expr
+; '(' expr
+
+; LEDs:
+; operators ^ * / + - = <> <= < >= >
+; AND,OR,EOR,DIV,MOD
+; ')'
+; "Missing operator"
+
+oper_tab_sz = 10
+oper_tab:
+  DB '^'  ; OP_POW
+  DB '*'  ; OP_MUL
+  DB '/'  ; OP_DIV
+  DB '+'  ; OP_ADD
+  DB '-'  ; OP_SUB
+  DB '='  ; OP_EQ
+  DB '<'  ; OP_NE, OP_LT, OP_LE
+  DB '<'  ; (for above)
+  DB '<'  ; (for above)
+  DB '>'  ; OP_GT, OP_GE
+
+
 
 
 ; ------------------------------------------------------------------------------
@@ -917,7 +1258,7 @@ cmd_run:
   LDY #0            ; set CODE offset
   STY DataL         ; no data yet
   STY DataH         ; no data yet
-  JMP do_ln_ex      ; -> expect first line
+  JMP do_ln_op      ; -> expect first line (OP_LN)
 @noprog:
   RTS
 
@@ -1004,12 +1345,12 @@ cmd_old:
 
 ; jump table
 stmt_l:
+  DB <do_ln
   DB <do_cls
   DB <do_close
   DB <do_data
   DB <do_dim
   DB <do_deffn
-  DB <do_defproc
   DB <do_else
   DB <do_end
   DB <do_for
@@ -1019,7 +1360,6 @@ stmt_l:
   DB <do_input
   DB <do_let
   DB <do_line
-  DB <do_local
   DB <do_mode
   DB <do_next
   DB <do_opt
@@ -1030,26 +1370,22 @@ stmt_l:
   DB <do_proc
   DB <do_read
   DB <do_repeat
-  DB <do_fill
   DB <do_restore
   DB <do_return
   DB <do_rem
-  DB <do_copy
   DB <do_sound
   DB <do_until
   DB <do_wait
-  DB <do_window
   DB <do_fnret
   DB <do_thenln
   DB <do_elseln
-  DB <do_ln1
 stmt_h:
+  DB >do_ln
   DB >do_cls
   DB >do_close
   DB >do_data
   DB >do_dim
   DB >do_deffn
-  DB <do_defproc
   DB >do_else
   DB >do_end
   DB >do_for
@@ -1059,7 +1395,6 @@ stmt_h:
   DB >do_input
   DB >do_let
   DB >do_line
-  DB >do_local
   DB >do_mode
   DB >do_next
   DB >do_opt
@@ -1067,22 +1402,17 @@ stmt_h:
   DB >do_plot
   DB >do_poke
   DB >do_print
-  DB >do_proc
   DB >do_read
   DB >do_repeat
-  DB >do_fill
   DB >do_restore
   DB >do_return
   DB >do_rem
-  DB >do_copy
   DB >do_sound
   DB >do_until
   DB >do_wait
-  DB >do_window
   DB >do_fnret
   DB >do_thenln
   DB >do_elseln
-  DB >do_ln1
 
 ; control frame tags
 TOK_FOR    = $F0
@@ -1113,20 +1443,19 @@ code_add_y:
 @done:
   RTS
 
-; @@ do_ln_ex
+; @@ do_ln_op
 ; expect start of next line
-do_ln_ex:
+do_ln_op:
   LDA (CODE),Y   ; [5] load token
   CMP #OP_LN     ; [2]
   BNE do_syn0    ; [2] -> syntax error
-  ; +++ fall through to @@ do_ln0 +++
+  INY            ; [2]
+  ; +++ fall through to @@ do_ln +++
 
-; @@ do_ln0
+; @@ do_ln
 ; start a new line: fold Y into CODE.
 ; assumes (CODE),Y points at OP_LN.
-do_ln0:          ; advance past OP_LN and line header; add Y to CODE
-  INY            ; [2] skip OP_LN
-do_ln1:          ; advance past line header; add Y to CODE
+do_ln:           ; advance past line header; add Y to CODE
   TYA            ; [2] get accumulated Y
   LDY #4         ; [2] skip (LineLo,LineHi,LenBk,LenFw)
   CLC            ; [2]
@@ -1241,7 +1570,7 @@ do_next:
 ;        advance CODE by length-byte
 ;        jump to STMT loop  (ELSE<ln> is a STMT)
 do_if:
-  JSR do_expr_b  ; [12+] boolean expr (uses A,X,Y,???)
+  JSR syn_exp_n  ; [12+] numeric expr (uses A,X,Y,???)
   BCC do_else    ; [2] -> cond is false, advance to ELSE (re-uses do_else code) [+1]
   INY            ; [2] skip length-byte (for ELSE)
   JMP do_stmt    ; [3] -> next stmt
@@ -1325,6 +1654,11 @@ do_until:
 ;      read vars from current data-ptr and advance
 ;      find vars and assign new values
 do_read:
+  JSR bind_var    ; find or bind variable (onto stack) [2]
+  ; XX if no data, go find first DATA
+  ; XX read tag at next data element
+  ; XX if type differs, convert to var type
+  ; XX copy value to var slot
   JMP do_stmt
 
 
@@ -1343,9 +1677,9 @@ do_restore:
 
 ; --- PRINT, INPUT ---
 
+
 ; INPUT:
 do_input:
-@loop:
   LDA (CODE),Y    ; [5] get tag byte
   INY             ; advance (tag byte)
   ASL             ; bit 7 to carry, bit 6 to sign
@@ -1402,7 +1736,7 @@ do_print:
 ; tab to next field
 @comma:
   PHA             ; save A
-  LDA #9          ; tab char
+  LDA #9          ; tab: advance to next print zone (4 coumns x 8 spaces)
   JSR wrctl       ; print $09 tab (uses A,X,Src,Dst,F) preserves Y
   PLA             ; restore A
   BNE @resume     ; -> always (won't be zero)
@@ -1541,77 +1875,6 @@ do_cls:
   JMP do_stmt      ; -> next stmt
 
 
-; --- WINDOW ---
-
-; WINDOW: set a text window
-do_window:
-  STY E            ; save CODE offset
-  LDX #4           ; evaluate 4 arguments
-  JSR args_i8      ; stack: (X,Y,W,H) <-
-  TSX
-  ; left
-  LDA $103,X       ; X coordinate low byte
-  AND #31          ; modulo 32
-  STA WinL         ; set window left
-  ; top
-  LDA $102,X       ; Y coordinate low byte
-  CMP #23          ; clamp if >23
-  BCC @y_ok        ; CC < 23
-  LDA #23          ; maximum 23
-@y_ok
-  STA WinT         ; set window top
-  ; width
-  SEC
-  LDA #32
-  SBC WinL         ; 32 - WinL (minimum 1)
-  CMP $101,X       ; is (32-WinL) < W
-  BCC @w_ok        ; CC < W (not enough space for W, use (32-WinL))
-  LDA $101,X       ; use W
-@w_ok:
-  STA WinW         ; set window width
-  ; height
-  SEC
-  LDA #24
-  SBC WinT         ; 24 - WinT (minimum 1)
-  CMP $100,X       ; is (24-WinT) < H
-  BCC @h_ok        ; CC < H (not enough space for H, use (24-WinT))
-  LDA $100,X       ; use H
-@h_ok:
-  STA WinH         ; set window height
-  ; clean up
-  PLA              ; pop X
-  PLA              ; pop Y
-  PLA              ; pop W
-  PLA              ; pop H
-  ; move cursor
-  JSR txt_home     ; move cursor to (0,0) in the window (uses A,X,Y)
-  LDY E            ; restore CODE offset
-  JMP do_stmt
-
-
-; --- COPY, FILL ---
-
-; @@ do_copy
-; copy the text screen by (X,Y)
-do_copy:
-  STY E            ; save CODE offset
-  LDX #6           ; evaluate 6 arguments
-  JSR args_i8      ; stack: (X,Y,W,H) <-
-  JSR txt_copy     ; text copy from (X,Y) to (X,Y) size (W,H)
-  LDY E            ; restore CODE offset
-  JMP do_stmt
-
-; @@ do_fill
-; fill the text screen from (X0,Y0) to (X1,Y1) with (CH)
-do_fill:
-  STY E            ; save CODE offset
-  LDX #4           ; evaluate 4 arguments
-  JSR args_i8      ; stack: (X0,Y0,X1,Y1,W,H) <-
-  JSR gfx_fill     ; -> fill rectangle (X0,Y0)-(X1,Y1)
-  LDY E            ; restore CODE offset
-  JMP do_stmt      ; -> next stmt
-
-
 ; --- SOUND ---
 
 do_sound:
@@ -1690,14 +1953,6 @@ find_line:
 
 ; --- EXPRESSIONS ---
 
-; @@ do_expr_b
-; evaluate a boolean expression -> CC|CS
-do_expr_b:
-  ; XX detect string expr
-  JSR do_expr_i   ; -> evaluate integer expression  (TODO errors?)
-  ; XX cast to bool
-  RTS
-
 ; @@ do_expr_u16
 ; evaluate integer expression, range-check u16, return Acc01
 do_expr_u16:
@@ -1732,7 +1987,7 @@ do_range:
   JMP err_range
 
 ; @@ do_expr
-; evaluate an expression (XXX should be do_expr_n, do_expr_s, do_expr_b)   (TODO errors?)
+; evaluate an expression (XXX should be do_expr_n, do_expr_s)   (TODO errors?)
 ; XXX "PRINT" is the outlier, accepting all types...
 ; XXX tracked state: expect a comma after each expr except the first?
 do_expr:
@@ -1762,59 +2017,49 @@ do_expr_s::
 ; ------------------------------------------------------------------------------
 ; PAGE 7 - Statement Tokens
 
-ORG $FA00
-
-OP_CLS     = $C1   ; 0x01 when top bits masked off
+OP_LN      = $C0   ; start-of-line
+OP_CLS     = $C1
 OP_CLOSE   = $C2
-OP_COPY    = $DF
 OP_DATA    = $C3
 OP_DIM     = $C4
-OP_DEFFN   = $C5   ; must be even
-OP_DEFPROC = $C6   ; must be odd
-OP_ELSE    = $C7   ; ELSE with <length>     (OP_ELSE,$xx vs source "EL.")
-OP_END     = $C8
-OP_FILL    = $DB
-OP_FOR     = $C9
-OP_GOTO    = $CA
-OP_GOSUB   = $CB
-OP_IF      = $CC   ; IF <else-ofs> <cond> (THEN1,0xNN | THEN2,0xNN,0xMM | THEN | ε)   [OP_IF,$nn vs "IF"]
-OP_INPUT   = $CD
-OP_LET     = $CE
-OP_LINE    = $CF
-OP_LOCAL   = $D0
-OP_MODE    = $D1
-OP_NEXT    = $D2
-OP_OPT     = $D3
-OP_OPEN    = $D4
-OP_PLOT    = $D5
-OP_POKE    = $D6
-OP_PRINT   = $D7
-OP_PROC    = $D8
-OP_READ    = $D9
-OP_REPEAT  = $DA
-OP_RESTORE = $DC
-OP_RETURN  = $DD
-OP_REM     = $DE
-OP_SOUND   = $E0
-OP_UNTIL   = $E1
-OP_WAIT    = $E2
-OP_WINDOW  = $E3
-OP_STEP    = $E4
-OP_THEN    = $E5
-OP_THENLN  = $E6
-OP_ELSELN  = $E7
-OP_LN      = $E8 ; start-of-line
+OP_DEFFN   = $C5
+OP_ELSE    = $C6   ; ELSE with <length>     (OP_ELSE,$xx vs source "EL.")
+OP_END     = $C7
+OP_FOR     = $C8
+OP_GOTO    = $C9
+OP_GOSUB   = $CA
+OP_IF      = $CB   ; IF <else-ofs> <cond> (THEN1,0xNN | THEN2,0xNN,0xMM | THEN | ε)   [OP_IF,$nn vs "IF"]
+OP_INPUT   = $CC
+OP_LET     = $CD
+OP_LINE    = $CE
+OP_MODE    = $CF
+OP_NEXT    = $D0
+OP_OPT     = $D1
+OP_OPEN    = $D2
+OP_PLOT    = $D3
+OP_POKE    = $D4
+OP_PRINT   = $D5
+OP_READ    = $D6
+OP_REPEAT  = $D7
+OP_RESTORE = $D8
+OP_RETURN  = $D9
+OP_REM     = $DA
+OP_SOUND   = $DB
+OP_UNTIL   = $DC
+OP_WAIT    = $DD
+; extras
+OP_STEP    = $DE
+OP_THEN    = $DF
+OP_THENLN  = $E0
+OP_ELSELN  = $E1
 
-
-ALIGN $100
+ORG $FA00
 stmt_page:
-
 kws_a:
 kws_b:
 kws_c:
 kw_cls    DB "CLS",      OP_CLS
 kw_close  DB "CLOSE",    OP_CLOSE  ; #ch
-kw_copy   DB "COPY",     OP_COPY
 kws_d:
 kw_data   DB "DATA",     OP_DATA
 kw_dim    DB "DIM",      OP_DIM
@@ -1823,7 +2068,6 @@ kws_e:
 kw_else   DB "ELSE",     OP_ELSE
 kw_end    DB "END",      OP_END
 kws_f:
-kw_fill   DB "FILL",     OP_FILL
 kw_for    DB "FOR",      OP_FOR
 kws_g:
 kw_goto   DB "GOTO",     OP_GOTO
@@ -1837,7 +2081,6 @@ kws_k:
 kws_l:
 kw_let    DB "LET",      OP_LET
 kw_line   DB "LINE",     OP_LINE
-kw_local  DB "LOCAL",    OP_LOCAL
 kws_m:
 kw_mode   DB "MODE",     OP_MODE
 kws_n:
@@ -1849,7 +2092,6 @@ kws_p:
 kw_plot   DB "PLOT",     OP_PLOT
 kw_poke   DB "POKE",     OP_POKE
 kw_print  DB "PRINT",    OP_PRINT  ; [#ch,]
-kw_proc   DB "PROC",     OP_PROC
 kws_q:
 kws_r:
 kw_read   DB "READ",     OP_READ
@@ -1865,7 +2107,6 @@ kw_until  DB "UNTIL",    OP_UNTIL
 kws_v:
 kws_w:
 kw_wait   DB "WAIT",     OP_WAIT
-kw_wind   DB "WINDOW",   OP_WINDOW
 kws_x:
 kws_y:
 kws_z:
@@ -1902,40 +2143,35 @@ stmt_idx:
 
 ; Statement Reverse Lookup    ; (COULD linear-search the Statement Tokens...)
 stmt_rev:                     ; [34] indices MUST match OPCODEs
-  DB (kw_cls - stmt_page)     ; "CLS",$C4
-  DB (kw_close - stmt_page)   ; "CLOSE",$C6
-  DB (kw_copy - stmt_page)    ; "COPY",$E9       -
-  DB (kw_data - stmt_page)    ; "DATA",$C7
-  DB (kw_dim - stmt_page)     ; "DIM",$C9
-  DB (kw_def - stmt_page)     ; "DEF",$CA
-  DB (kw_else - stmt_page)    ; "ELSE",$CB
-  DB (kw_end - stmt_page)     ; "END",$CD
-  DB (kw_fill - stmt_page)    ; "FILL",$E2       -
-  DB (kw_for - stmt_page)     ; "FOR",$CE
-  DB (kw_goto - stmt_page)    ; "GOTO",$CF
-  DB (kw_gosub - stmt_page)   ; "GOSUB",$D0
-  DB (kw_if - stmt_page)      ; "IF",$D1
-  DB (kw_input - stmt_page)   ; "INPUT",$D2
-  DB (kw_let - stmt_page)     ; "LET",$D3
-  DB (kw_line - stmt_page)    ; "LINE",$C8
-  DB (kw_local - stmt_page)   ; "LOCAL",$D4      -
-  DB (kw_mode - stmt_page)    ; "MODE",$D6
-  DB (kw_next - stmt_page)    ; "NEXT",$D7
-  DB (kw_opt - stmt_page)     ; "OPT",$D9        ?
-  DB (kw_open - stmt_page)    ; "OPEN",$DB
-  DB (kw_plot - stmt_page)    ; "PLOT",$DD
-  DB (kw_poke - stmt_page)    ; "POKE",$C1
-  DB (kw_print - stmt_page)   ; "PRINT",$DC
-  DB (kw_proc - stmt_page)    ; "PROC",$DE       -
-  DB (kw_read - stmt_page)    ; "READ", $E0
-  DB (kw_rept - stmt_page)    ; "REPEAT",$E1     ?
-  DB (kw_rest - stmt_page)    ; "RESTORE",$E3
-  DB (kw_retr - stmt_page)    ; "RETURN",$E4
-  DB (kw_rem - stmt_page)     ; "REM",$E5
-  DB (kw_soun - stmt_page)    ; "SOUND",$EA
-  DB (kw_until - stmt_page)   ; "UNTIL",$ED      ?
-  DB (kw_wait - stmt_page)    ; "WAIT",$F0
-  DB (kw_wind - stmt_page)    ; "WINDOW",$F1     -
+  DB (kw_cls - stmt_page)     ; "CLS",$C1
+  DB (kw_close - stmt_page)   ; "CLOSE",$C2
+  DB (kw_data - stmt_page)    ; "DATA",$C3
+  DB (kw_dim - stmt_page)     ; "DIM",$C4
+  DB (kw_def - stmt_page)     ; "DEF",$C5
+  DB (kw_else - stmt_page)    ; "ELSE",$C6
+  DB (kw_end - stmt_page)     ; "END",$C7
+  DB (kw_for - stmt_page)     ; "FOR",$C8
+  DB (kw_goto - stmt_page)    ; "GOTO",$C9
+  DB (kw_gosub - stmt_page)   ; "GOSUB",$CA
+  DB (kw_if - stmt_page)      ; "IF",$CB
+  DB (kw_input - stmt_page)   ; "INPUT",$CC
+  DB (kw_let - stmt_page)     ; "LET",$CD
+  DB (kw_line - stmt_page)    ; "LINE",$CE
+  DB (kw_mode - stmt_page)    ; "MODE",$CF
+  DB (kw_next - stmt_page)    ; "NEXT",$D0
+  DB (kw_opt - stmt_page)     ; "OPT",$D1
+  DB (kw_open - stmt_page)    ; "OPEN",$D2
+  DB (kw_plot - stmt_page)    ; "PLOT",$D3
+  DB (kw_poke - stmt_page)    ; "POKE",$D4
+  DB (kw_print - stmt_page)   ; "PRINT",$D5
+  DB (kw_read - stmt_page)    ; "READ", $D6
+  DB (kw_rept - stmt_page)    ; "REPEAT",$D7
+  DB (kw_rest - stmt_page)    ; "RESTORE",$D8
+  DB (kw_retr - stmt_page)    ; "RETURN",$D9
+  DB (kw_rem - stmt_page)     ; "REM",$DA
+  DB (kw_soun - stmt_page)    ; "SOUND",$DB
+  DB (kw_until - stmt_page)   ; "UNTIL",$DC
+  DB (kw_wait - stmt_page)    ; "WAIT",$DD
 
 ; 19 bytes free
 
