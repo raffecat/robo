@@ -1680,6 +1680,7 @@ do_restore:
 
 ; INPUT:
 do_input:
+@loop:
   LDA (CODE),Y    ; [5] get tag byte
   INY             ; advance (tag byte)
   ASL             ; bit 7 to carry, bit 6 to sign
