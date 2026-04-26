@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
 
     // DEBUGGER
     dbg_enable = 0;
-    dbg_break = 0x0F121;
+    dbg_break = 0x0F1B9;
     Uint32 held_time = 0;
 
     // run the simulator.
@@ -187,9 +187,9 @@ uint8_t scanKeyCol(uint8_t col) {
             // Esc Shf Ctl Fn
             return ((keys[SDL_SCANCODE_ESCAPE]?1:0)<<7) |
                    ((keys[SDL_SCANCODE_LSHIFT]|keys[SDL_SCANCODE_RSHIFT])<<6) |
-                   ((keys[SDL_SCANCODE_LCTRL]|keys[SDL_SCANCODE_RCTRL])<<6) |
-                   ((keys[SDL_SCANCODE_LALT]|keys[SDL_SCANCODE_RALT])<<5) |
-                   (0<<4) |
+                   ((keys[SDL_SCANCODE_LCTRL]|keys[SDL_SCANCODE_RCTRL])<<5) |
+                   ((keys[SDL_SCANCODE_LALT])<<4) |    // GR key
+                   ((keys[SDL_SCANCODE_RALT])<<3) |    // COL key
                    (0<<3) |
                    (0<<2) |
                    (0<<1) |
