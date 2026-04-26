@@ -117,7 +117,6 @@ KeyRep   = $D4    ; keyboard auto-repeat timer
 WinT     = $D5    ; text window top
 WinH     = $D7    ; text window height
 
-CurY     = $D8    ; text cursor Y
 ;WinRem   = $D9    ; remaining space on this line
 TXTP     = $DB    ; text write address
 TXTPH    = $DC    ; text write address high
@@ -2413,7 +2412,7 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
   RTS
 @rep_chk:
   LDY LastKey     ; [3] get last phys_key
-  LDA #7          ; [2] repeat rate: 7.5 per sec
+  LDA #4          ; [2] repeat rate: ?? per sec
   DEC KeyRep      ; [5] count down to auto-repeat
   BEQ @repeat     ; [2] -> repeat last key (Y=phys_key) [+1]
   RTS             ; [6] TOTAL Scan 2+13*8-1+6 = [111] cycles
@@ -2439,7 +2438,7 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
   CPY LastKey     ; [3] one-key roll over
   BEQ @was_down   ; [2] -> key was already down
   STY LastKey     ; [3] save last physical key pressed (exit path)
-  LDA #31         ; [2] initial delay: 1/2 sec
+  LDA #16         ; [2] initial delay: ?? sec
 @repeat:          ; (Y=phys_key)
   STA KeyRep      ; [3] reset key-repeat timer for new key
 ; translate to ascii
@@ -2532,80 +2531,69 @@ readchar:        ; uses A,X,Y returns ASCII or zero
 ; @@ wrchr       (95b wrchr + newline)
 ; write a single character to the screen
 ; assumes we're in text mode with TXTP set up
-wrchr:           ; A=char; (uses A,X,Src,Dst,F) preserves Y [25]
-  CMP #32        ; [2] is it a control character?
-  BCC wrctl      ; [2] -> ch < 32, do control code [+1]  (uses A,X preserves Y)
-  LDX #0         ; [2] const for (TXTP,X) ie (TXTP)
-  STA (TXTP,X)   ; [6] write character to video memory
-  INC TXTP       ; [5] advance text position
-;  DEC WinRem     ; [5] at right edge of window?               (4b) WinRem  4+7+4=15
-;  BEQ @nl        ; [2] if so -> newline [+1]   
-  LDA TXTP       ; [5] get new TXTP                           (6b) NoRem  6+8=14
-  AND #31        ; [2] at start of a line?
-  BEQ @nl        ; [2] if so -> newline [+1]
-  RTS            ; [6]
+wrchr:            ; A=char; (uses A,X,F,Src,Dst) preserves Y [25]
+  CMP #32         ; [2] is it a control character?
+  BCC wrctl       ; [2] -> ch < 32, do control code [+1]  (uses A,X preserves Y)
+  LDX #0          ; [2] const for (TXTP,X) ie (TXTP)
+  STA (TXTP,X)    ; [6] write character to video memory
+  INC TXTP        ; [5] advance text position
+  LDA TXTP        ; [5] get new TXTP
+  AND #31         ; [2] at start of a line?
+  BEQ @nl         ; [2] if so -> newline [+1]
+  RTS             ; [6]
 @nl:
-  DEC TXTP       ; [5] let newline do it, so it can detect TXTPH increment (fix!)   (window)  (-2b)
-  ; +++ fall through to @@ newline +++         (XXX does print: also need this fix?)
+  DEC TXTP       ; [5] undo advance (back to end of prior line)
+  ; +++ fall through to @@ newline +++
 
 ; @@ newline, in "text mode"
 ; advance to the next line inside the text window
 ; scroll the text window if we're at the bottom
 ; assumes we're in text mode with TXTP set up
-newline:         ; (uses A,X,Src,Dst,F) preserves Y
-  LDX CurY       ; [3] get Cursor Y
-  INX            ; [2] advance Cursor Y
-  CPX WinH       ; [3] off the bottom of the window?
-  BEQ @scroll    ; [2] -> scroll down [+1]
-  STX CurY       ; [3] update Cursor Y
-; advance TXTP to start of next line
-;  LDA WinRem     ; [3]                       (7b) WinRem
-;  CLC            ; [2]
-;  ADC TXTP       ; [2]
-;  STA TXTP       ; [3]
-  LDA TXTP       ; [3] get TXTP low         (8b) NoRem
-  ORA #31        ; [2] set low 5 bits
-  TAX            ; [2] as X
-  INX            ; [2] TXTP += 1
-  STX TXTP       ; [3] update TXTP low
-  BNE @skiphi    ; [2] -> no wrap-around [+1]
-  INC TXTPH      ; [5] TXTPH += 1
-@skiphi:           ; 
-;  LDA #32        ; [3] reset remaining window width                (4b) WinRem
-;  STA WinRem     ; [3] must be ready to write in steady-state
-  RTS            ; [6]
+newline:          ; (uses A,X,F,Src,Dst) preserves Y
+  LDA TXTP        ; [3]
+  ORA #31         ; [2] to end of current line
+  TAX             ; [2]
+  INX             ; [2] plus 1, to start of next line
+  STX TXTP        ; [3]
+  BNE @nl_noh     ; [2] -> no page-cross [+1]
+  LDA TXTPH       ; [3] test TXTPH
+  CMP #$04        ; [2] at bottom of screen?    [$02 $03 $04]
+  BEQ scroll      ; [2] -> scroll down [+1]
+  INC TXTPH       ; [5] go down one page
+@nl_noh:
+  RTS             ; [6]
+
+; @@ scroll
 ; scroll the text window up one line
-@scroll:
+scroll:           ; (uses A,X,F,Src,Dest) preserves Y
   TYA             ; save Y for caller
   PHA
-  LDX WinH
-  DEX
-  BEQ @noscr       ; -> height is one line, no scroll
 ; set up Src
-  LDY WinT
-  INY              ; source starts down one line
-  TYA              ; row = WinT-1
-  JSR txt_row      ; A=row -> AY=addr (uses A,X,Y,F)
+  LDY WinT         ; 
+  INY              ; row = WinT-1
+  TYA              ;
+  JSR txt_row      ; A=row -> AX=addr (uses A,X,Y,F)
   STA SrcH
-  STY Src
+  STX Src
 ; set up Dst
   LDA WinT         ; row = WinT
-  JSR txt_row      ; A=row -> AY=addr (uses A,X,Y,F)
+  JSR txt_row      ; A=row -> AX=addr (uses A,X,Y,F)
   STA DstH
-  STY Dst
+  STX Dst
 ; scroll up one line
   LDY WinH
   DEY              ; rows = WinH - 1
-  JSR txt_rows_y   ; Y=rows -> AX=size (uses A,X,Y,F)
+  BEQ @noscr       ; -> height = 1, no scroll
+  JSR txt_rowsz_y  ; Y=rows -> AX=size (uses A,X,Y,F)
   JSR copy_fw      ; copy forwards AX=size (uses A,X,Y,F,Src,Dest)
 @noscr:
 ; clear the bottom row
-  LDX #0           ; col = 0
   LDA WinT         ; XX in support of WinB
   CLC
   ADC WinH         ; bottom of window (too far)
   ADC #$FF         ; minus 1
-  JSR txt_addr_ax  ; A=row X=col -> AX=TXTP (uses A,X,Y,F)
+  LDX #0
+  JSR txt_addr_tp  ; A=row X=0 -> AX=TXTP (uses A,X,Y,F)
   JSR txt_clr      ; clear row at TXTP (uses A,Y)
 ; return
   PLA              ; restore Y for caller
@@ -2616,7 +2604,7 @@ newline:         ; (uses A,X,Src,Dst,F) preserves Y
 ; @@ wrctl       (105b wrctl)
 ; write a single control code
 ; assumes we're in text mode with TXTP set up
-wrctl:           ; (uses A,X,Src,Dst,F) preserves Y
+wrctl:           ; (uses A,X,F,Src,Dst) preserves Y
   CMP #13        ; [2] is it RETURN?
   BEQ newline    ; [2] -> do newline [+1]
   CMP #8         ; [2] is it BACKSPACE?
@@ -2641,7 +2629,7 @@ wrctl:           ; (uses A,X,Src,Dst,F) preserves Y
   RTS            ; [6] // 9
 
 @left:           ; move left one place
-  DEC TXTP       ; [5] go back one space                        (XXX doesn't update CurY)
+  DEC TXTP       ; [5] go back one space
   LDA TXTP       ; [3] 
   CMP #$FF       ; [2] crossed page?
   BEQ @up_pg     ; [2] -> crossed page, go up one page [+1]
@@ -2651,7 +2639,7 @@ wrctl:           ; (uses A,X,Src,Dst,F) preserves Y
   LDA TXTP       ; [3]
   SEC            ; [2]
   SBC #32        ; [2]
-  STA TXTP       ; [3]                                         (XXX doesn't update CurY)
+  STA TXTP       ; [3]
   BCS @done      ; [2] -> no page-cross [+1]
 @up_pg:
   DEC TXTPH      ; [5] go up one page
@@ -2663,7 +2651,7 @@ wrctl:           ; (uses A,X,Src,Dst,F) preserves Y
   RTS            ; [6] // 22
 
 @right:          ; move right one place
-  INC TXTP       ; [5] go forward one space                     (XXX doesn't update CurY)
+  INC TXTP       ; [5] go forward one space
   BEQ @down_pg   ; [2] -> crossed page, go down one page [+1]
   RTS            ; [6] // 5
 
@@ -2671,7 +2659,7 @@ wrctl:           ; (uses A,X,Src,Dst,F) preserves Y
   LDA TXTP       ; [3]
   CLC            ; [2]
   ADC #32        ; [2]
-  STA TXTP       ; [3]                                         (XXX doesn't update CurY)
+  STA TXTP       ; [3]
   BCC @done      ; [2] -> no page-cross [+1]
 @down_pg:
   INC TXTPH      ; [5] go down one page
@@ -2730,8 +2718,6 @@ print:           ; X=high Y=low (uses A,B,X,Y,Term,Src,Dst) -> Y = strlen (exclu
   BCC @ctrl      ; [2] if <32 -> @ctrl [+1]              11
   STA (TXTP,X)   ; [6] write character to video memory   17
   INC TXTP       ; [5] advance text position             22
-;  DEC WinRem     ; [5] at right edge of window?          27                (window)
-;  BEQ @nl        ; [2] if so -> @nl [+1]                 29
   LDA TXTP       ; [5] get new TXTP                           (6b) NoRem  6+8=14
   AND #31        ; [2] test low 5 bits
   BEQ @nl        ; [2] if so -> newline [+1]
@@ -2742,6 +2728,7 @@ print:           ; X=high Y=low (uses A,B,X,Y,Term,Src,Dst) -> Y = strlen (exclu
 @ret
   RTS            ; [6] done; Y = strlen (excludes length byte)
 @nl:             ; wrap onto the next line and keep printing
+  DEC TXTP       ; [5] undo advance (back to end of prior line)
   LDA #13        ; [2] newline control code
 @ctrl:
   JSR wrctl      ; [6] execute control code (uses A,X,Src,Dst) preserves Y
@@ -2868,7 +2855,7 @@ vid_mode:        ; set screen mode, A=mode (uses A,X,Y,F)
 vid_cls:                 ; (uses A,X,Y,F)
   LDA WinT               ; [3] text window top
   LDX #0                 ; [2] col=0
-  JSR txt_addr_ax        ; [6] A=row X=col -> AX=TXTP (uses A,X,Y,F)
+  JSR txt_addr_tp        ; [6] A=row X=col -> TXTP(AX) (uses A,X,Y,F)
   LDX WinH               ; [3] number of rows
 @row:
   JSR txt_clr            ; [6] clear row at TXTP (uses A,Y)
@@ -2907,22 +2894,16 @@ txt_tab:         ; (uses A,X,Y)
   DEY            ; clamp to last row  (XXX reduce WinH by -1?)          (window)
 @y_ok:
 tab_e2:
-;  STX F          ; save CurX to Scratch
-;  LDA #32        ; WinRem = WinW - CurX                                 (window)
-;  SEC            ;                                                      (window)
-;  SBC F          ;                                                      (window)
-;  STA WinRem     ; set WinRem (accelerates PRINT)                       (window)
-  STY CurY       ; set cursor Y
 ; Map from text window X,Y to screen X,Y
 ; the text plane is 32x24 in text mode
   TYA            ; Y row in text window                                 (window: add WinT)
   CLC            ;                                                      (window: add WinT)
   ADC WinT       ; Y row in screen space (add window top)               (window: add WinT)
-  ; +++ fall through to @@ txt_addr_ax +++
+  ; +++ fall through to @@ txt_addr_tp +++
 
-; @@ txt_addr_ax
+; @@ txt_addr_tp
 ; calculate VRAM address for A=row X=col in text mode; set TXTP
-txt_addr_ax:     ; A=row X=col -> AX=TXTP (uses A,X,Y)
+txt_addr_tp:     ; A=row X=col -> TXTP(AX) (uses A,X,Y)
   JSR txt_addr   ; AX -> AX
   STA TXTPH      ; set TXTPH
   STX TXTP       ; set TXTP
@@ -2952,15 +2933,15 @@ txt_addr:          ; A=row X=col -> AX=addr (uses A,X,Y,F)  [19]
   ADC #2           ; VRAM base high byte
   RTS              ; -> AX=address
 
-; @@ txt_rows_y
+; @@ txt_rowsz_y
 ; convert N text-rows to linear size
-txt_rows_y:        ; Y=rows -> AX=size (uses A,X,Y)
+txt_rowsz_y:       ; Y=rows -> AX=size (uses A,X,Y)
   TYA
-  ; +++ fall through to @@ txt_rows +++
+  ; +++ fall through to @@ txt_rowsz +++
 
-; @@ txt_rows
+; @@ txt_rowsz
 ; convert N text-rows to linear size
-txt_rows:          ; A=rows -> AX=size (uses A,X,Y)
+txt_rowsz:         ; A=rows -> AX=size (uses A,X,Y)
   ROR              ; [0000YYYY]Y
   ROR              ; [Y0000YYY]Y
   ROR              ; [YY0000YY]Y
@@ -3000,23 +2981,29 @@ copy_fw:                 ; copy forwards AX=size (uses A,X,Y,F,Src,Dest)
   DEX                    ; [2] decrement span count    X = 1    X = 0         X = FF    X = 1     X = 0
   BNE @span              ; [3] -> until X=0            ->       EQ            ->        ->        EQ
 ; advance to next page
-  LDX #0                 ; [2] span count = 256                     X = 0                            X = 0
+  LDX #0                 ; [2] next span count = 256                X = 0                            X = 0
   TYA                    ; [2] final Y = initial X                  Y = 2                            Y = 0
   BEQ @whole             ; [2] -> whole page step                   NE                               ->
   CLC                    ; [2]
   ADC Src                ; [3] bump Src += Y                      Src += 2
-  STA Src                ; [3]
+  STA Src                ; [3] 
+  BCC @no_shi            ; [2]
+  INC SrcH               ; [5]
+@no_shi:
   TYA                    ; [2] final Y = initial X
   CLC                    ; [2]
   ADC Dst                ; [3] bump Dst += Y                      Dst += 2
   STA Dst                ; [3]
+  BCC @no_dhi            ; [2]
+  INC DstH               ; [5]
+@no_dhi:
   JMP @page              ; [3] until pages=0                      ->
 @whole:
   INC SrcH               ; [5] Src += 256                                                       Src += 256
   INC DstH               ; [5] Dst += 256                                                       Dst += 256
   DEC F                  ; [2] decrement page counter                                               F = 0
   BNE @page              ; [3] until pages=0                                                        EQ
-  RTS
+  RTS                    ; [6]
 
 
 ; @@ copy_bw
