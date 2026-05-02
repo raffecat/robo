@@ -69,7 +69,9 @@ static uint8_t ula_io_read(uint16_t address) {
             break;
         }
     }
-    printf("IO Read: [$%02X] -> $%02X\n", address, value);
+    if (address != IO_KEYB) {
+        printf("IO Read: [$%02X] -> $%02X\n", address, value);
+    }
     return value;
 }
 
@@ -85,7 +87,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
         case IO_VPAL:       // $F9: (7-6:Border 5-3:BG 2-0:FG)
             VidPal = value;
             break;
-        case IO_VLIN:       // $FA: current Y-line (write: not writeable)
+        case IO_VLIN:       // $FA: current Y-line (write: acknowledge interrupt)
             break;
         case IO_KEYB:       // $FB: set keyboard scan row (4-bit -> 1 of 8 Decoder)
             KbdCol = value & 0x0F;
@@ -95,7 +97,9 @@ static void ula_io_write(uint16_t address, uint8_t value) {
             break;
         }
     }
-    printf("IO Write: [$%02X] <- $%02X\n", address, value);
+    if (address != IO_KEYB && address != IO_VLIN) {
+        printf("IO Write: [$%02X] <- $%02X\n", address, value);
+    }
 }
 
 uint8_t read6502(uint16_t address) {

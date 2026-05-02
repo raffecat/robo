@@ -36,6 +36,7 @@ enum vtiming {
 
 static SDL_Window* window = 0;
 static SDL_Renderer* renderer = 0;
+static Uint64 frame_due = 0;
 static SDL_Texture* texture = 0;
 static uint64_t vdp_clk = 0;
 //static int vdp_nextbus = 0;
@@ -91,7 +92,7 @@ int init_render() {
     }
     SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS);
     window = SDL_CreateWindow(
-        "Color BASIC Computer",
+        "Frontier Research Pixie-4",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         width, height,
         0
@@ -159,7 +160,15 @@ void render() {
     SDL_UnlockTexture(texture);    
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, texture, NULL, NULL);
-    SDL_RenderPresent(renderer);
+    // wait until frame_due has arrived.
+    if (!frame_due) frame_due = SDL_GetTicks64();
+    Uint64 now;
+    while ((now=SDL_GetTicks64()) <= frame_due) {
+        SDL_Delay(1);
+    }
+    //printf("diff %ld\n", (long)frame_due - (long)now);
+    frame_due += 16; // limit to ~62.5fps
+    SDL_RenderPresent(renderer); // wait for VSync (snap to 60fps)
 }
 
 // advance the renderer to catch up with the CPU clock (clockticks6502)
