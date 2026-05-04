@@ -46,7 +46,8 @@ OperStk  = $00    ; BASIC operator stack
 
 ; -- $20-3F Unused space (32)
 
-;Unused  = $20    ; (32 bytes)
+ram_disp = $20    ; RAM dispatch routine (9 bytes) $20-28
+;Unused  = $29    ; (32-9 bytes)
 
 ; -- $40-73 BASIC Variables (52; 26 pointers)
 
@@ -152,9 +153,9 @@ IrqVec   = $ED    ; IRQ vector in RAM {JMP,Low,High} (for ROM override)
 
 ; -- $F0-FF  IO Registers
 
-ram_disp = $F0    ; RAM dispatch routine (8 bytes) $F0-F7
+; F0-F7 free (8)
 
-; F8-FA IO space free (3 registers)
+; F9-FA IO space free (3 registers)
 
 IO_PSGF  = $FB    ; PSG frequency (7860 Hz / divider)
 IO_KEYB  = $FC    ; Keyboard scan (write: set row; read: scan column)
@@ -191,9 +192,9 @@ ModCol   = $08    ; COL key is down
 ; PAGE 0 - Boot
 
 ORG ROM
+messages:        ; must be within one page for Y indexing
 
-; ROM entry table     ; public entry points (might be too expensive)
-JMP reset             ; $E000  reset the computer                           (JMP)
+; ROM entry table     ; public entry points (takes too much space!)
 ; JMP basic           ; $E003  enter BASIC                                  (JMP)
 ; JMP print           ; $E006  print string, len-prefix, X=page Y=offset    (JSR uses A,B,X,Y)
 ; JMP wrchr           ; $E009  print char or control code in A              (JSR preserves Y)
@@ -204,10 +205,48 @@ JMP reset             ; $E000  reset the computer                           (JMP
 ; JMP vid_cls         ; $E015  clear the screen                             (JSR uses A,X,Y)
 ; JMP txt_tab         ; $E018  move text cursor to X,Y within text window   (JSR uses A,X,Y)
 
-messages:    ; must be within one page for Y indexing
+reset:
+  SEI            ; disable interrupts
+  CLD            ; disable BCD mode
+  LDX #$FF       ; reset stack
+  TXS            ; stack init
+  LDX #1         ; #1 for cursor reset
+  STX CurTime    ; show on the next frame
+  DEX            ; screen mode 0 (32x24 text, 16 color)
+  JSR vid_mode   ; set mode, clear screen
+  JSR irq_init   ; init IRQ vector, init keyboard, enable IRQ
+; install RAM dispatcher
+  LDX #(rom_disp_e - rom_disp)-1  ; size of rom_disp - 9 bytes
+@cpy_lp:
+  LDA rom_disp,X ; copy rom_disp
+  STA ram_disp,X ; to ram_disp
+  DEX
+  BPL @cpy_lp    ; until X<0
+; start uCode
+  LDY #0         ; uCode low byte
+enter_ucode:
+  JMP ram_disp   ; -> start execution (Y=0)
+
+; Return to REPL
+repl:
+  LDY #<urepl
+  BNE enter_ucode
+
+; RAM dispatch routine (copied to ram_disp) [9 bytes]
+rom_disp:
+  LDA uCode,Y    ; [4] fetch opcode
+  INY            ; [2] advance
+  STA ram_disp+7 ; [3] set JMP low byte
+  JMP uCodeRTL   ; [3] jump into uCodeRTL page [+3 return] // [15]
+rom_disp_e:
+
+
 msg_boot:    ; red orange yellow green cyan
   DB 8+17
-  DB $92,$93,$94,$95,$9E,$90,13,13
+  DB $92,$93,$94,$95,$96,$90,13,13
+; DB 18+17
+; DB $91,$92,$93,$94,$95,$96,$97, $98, $99,$9A,$9B,$9C,$9D,$9E,$9F, $90,13,13
+; DB $91,$99,$92,$9A,$93,$9B,$94, $9C, $95,$9D,$96,$9E,$97,$98,$9F, $90,13,13
   DB "Pixie BASIC 1.0",13,13
 msg_freemem:
   DB 13+18
@@ -235,48 +274,6 @@ msg_rng:  DB 3,"RNG"    ; Error
 msg_err:  DB 7," Error",13
 msg_blk:  DB 5,"Block"
 msg_esc:  DB 6,"Escape"
-
-; -----------------------------------------
-; Startup
-
-reset:
-  SEI            ; disable interrupts
-  CLD            ; disable BCD mode
-  LDX #$FF       ; reset stack
-  TXS            ; stack init
-  LDX #1         ; #1 for cursor reset
-  STX CurTime    ; show on the next frame
-  DEX            ; screen mode 0 (32x24 text, 16 color)
-  JSR vid_mode   ; set mode, clear screen
-  JSR irq_init   ; init IRQ vector, init keyboard, enable IRQ
-; install RAM dispatcher
-  LDX #(rom_disp_e - rom_disp)-1  ; size of rom_disp - 8 bytes
-@cpy_lp:
-  LDA rom_disp,X ; copy rom_disp
-  STA ram_disp,X ; to ram_disp
-  DEX
-  BPL @cpy_lp    ; until X<0
-; start uCode
-  LDY #0         ; uCode low byte
-enter_ucode:
-  STY ExpTop     ; reset expression stack
-  STY CODE       ; set CODE low
-  LDA #>uCode    ; uCode page
-  STA CODEH      ; set CODE low
-  JMP ram_disp   ; -> start execution (Y=0)
-
-; Return to REPL
-repl:
-  LDY #<urepl
-  BNE enter_ucode
-
-; RAM dispatch routine (copied to ram_disp)
-rom_disp:
-  LDA (CODE),Y   ; [5] fetch opcode
-  INY            ; [2] advance
-  STA ram_disp+6 ; [3] set JMP low byte
-  JMP uCodeRTL   ; [3] jump into uCodeRTL page [+3 return] // [16]
-rom_disp_e:
 
 
 ; ------------------------------------------------------------------------------
@@ -710,32 +707,30 @@ err_overflow:
 ORG $F300
 uCode:
 
-uboot:                        ; 39 -> 21 (plus RTL!)
+uboot:                        ;
   DB <uc_msg, <msg_boot
 
 ; probe memory
   DB <uc_setz, BasePage, $05
   DB <uc_setz, EndPage, $10
 
-; print free memory - maybe not a net win
-  DB <uc_ldpg, EndPage
-  DB <uc_ldpg, BasePage
-  DB <uc_sub
-  DB <uc_prnum
+; print free memory
+  DB <uc_prfr
   DB <uc_msg, <msg_freemem
 
 ; enter BASIC
 ubasic:
   DB <uc_msg, <msg_ready
 urepl:
+  DB <uc_setz, ExpTop, 0      ; reset to $00
+  DB <uc_setz, EmitOfs, 0     ; reset to $100
   DB <uc_rdln
   DB <uc_nl
-; tokenize                    ; was 47 now 10
-  DB <uc_setz, EmitOfs, 0     ; reset to $100
+; tokenize                    ; 
 utok_stmt:
   DB <uc_skipsp
   DB <uc_isalpha, <ue_syn     ; not alpha -> Syntax Error
-  DB <uc_stmtkw, <ue_syn      ; no match -> Syntax Error
+  DB <uc_stmtkw, <ue_syn      ; no match -> Syntax Error (XXX match '=' for FN return)
   DB <uc_disp, <stmt_dt       ; table jump (on C)
 
 usyn_1:           ; OP_GOTO,OP_GOSUB,OP_MODE,OP_RESTORE,OP_UNTIL,OP_WAIT
@@ -860,6 +855,8 @@ uexpr_s:                       ; expression must be a string
 
 ; expression parsing
 uexpr:
+
+
   DB <uc_isch, $2D, <urepl    ; '-' OP_UNEG
   DB <uc_isch, $2B, <urepl    ; '+' OP_UPLUS
   DB <uc_isch, $28, <urepl    ; '(' OP_LPAR
@@ -920,7 +917,7 @@ ORG $F400
 uCodeRTL:
 
 uc_msg:          ; print a const message (<msg)        - Y SAVE/REST
-  LDA (CODE),Y   ; fetch msg
+  LDA uCode,Y    ; fetch msg
   INY
   STY D          ; [3] XXX
   TAY            ; Y=msg
@@ -929,7 +926,7 @@ uc_msg:          ; print a const message (<msg)        - Y SAVE/REST
   JMP ram_disp   ; // 14
 
 uc_putc:         ; print a const character (char)      - Y OK
-  LDA (CODE),Y   ; fetch c
+  LDA uCode,Y    ; fetch c
   INY
   JSR wrchr      ; A=chr (uses A,X,F,Src,Dst)
   JMP ram_disp   ; // 9
@@ -939,41 +936,24 @@ uc_nl:           ; print newline ()                    - Y OK
   JSR wrchr      ; A=chr (uses A,X,F,Src,Dst)
   JMP ram_disp   ; // 8
 
-uc_setz:         ; set a byte in zero-page (zp,byte) - Y OK
-  LDA (CODE),Y   ; fetch ZP address
+uc_setz:         ; set a byte in zero-page (zp,byte)   - Y OK
+  LDA uCode,Y    ; fetch ZP address
   INY
   TAX            ; address to X
-  LDA (CODE),Y   ; fetch byte
+  LDA uCode,Y    ; fetch byte
   INY
   STA $00,X      ; store byte to ZP
   JMP ram_disp   ; // 12
 
-uc_ldpg:         ; load a Page-byte into Acc (zp)      - Y OK
-  LDA (CODE),Y   ; fetch ZP address
-  INY
-  TAX            ; address to X
+uc_prfr:         ; print free memory                   - Y OK
   LDA #0
-  PHA            ; push Top0
-  LDA $00,X      ; load byte from ZP
-  PHA            ; push Top1
-  LDA #0         ; 
-  PHA            ; push Top2
-  PHA            ; push TopE
-  JMP ram_disp
-
-uc_sub:          ; subtract numbers on stack ()        - Y OK
-  JSR num_sub    ; (uses A,X)
-  JMP ram_disp
-
-uc_prnum:        ; print number on stack ()            - Y OK
-  PLA
-  STA Acc0       ;    (XXX num_print should do this pushing)
-  PLA
-  STA Acc1
-  PLA
+  STA Acc0
   STA Acc2
-  PLA
   STA AccE
+  LDA EndPage    
+  SEC
+  SBC BasePage
+  STA Acc1
   JSR num_print  ; from Acc (uses A,X)
   JMP ram_disp
 
@@ -984,7 +964,7 @@ uc_rdln:         ; read an input line ()               - Y SAVE/REST
   JMP ram_disp
 
 uc_jmp:          ; jump to a uCode address (uAddr)     - Y OK
-  LDA (CODE),Y   ; fetch ZP address
+  LDA uCode,Y    ; fetch ZP address
 uc_jmp_ex:
   TAY            ; set uCode offset in Y
   JMP ram_disp
@@ -996,7 +976,7 @@ uc_eqCE:           ; jump if C != E
   BEQ uc_nojmp     ; -> no jump
 
 uc_isch:         ; tokenize - jump if is character
-  LDA (CODE),Y   ; fetch character
+  LDA uCode,Y    ; fetch character
   INY
   LDX #0         ; [2] X=0
   CMP (Ptr,X)    ; [6] compare next input char
@@ -1047,7 +1027,7 @@ uc_exprkw:         ; (uAddr) MUST follow uc_isalpha (sets X = letter index)
   BNE uc_kws       ; -> do lookup
 
 uc_disp:           ; (dtOfs) dispatch using result of (from uc_kws)
-  LDA (CODE),Y     ; fetch Dispatch Table address
+  LDA uCode,Y      ; fetch Dispatch Table address
   INY
   CLC
   ADC C            ; add keyword index (from uc_kws)
@@ -1056,7 +1036,7 @@ uc_disp:           ; (dtOfs) dispatch using result of (from uc_kws)
   BNE uc_jmp_ex    ; -> do the jump
 
 uc_expect:         ; expect character (or set C; jump to ue_expect)
-  LDA (CODE),Y     ; fetch character
+  LDA uCode,Y      ; fetch character
   INY
   LDX #0           ; [2] X=0
   CMP (Ptr,X)      ; [6] compare next input char
@@ -1089,7 +1069,7 @@ uc_var:            ; recogise and emit VAR name; type -> C
   JMP ram_disp     ; [3]
 
 uc_emit:
-  LDA (CODE),Y     ; fetch byte
+  LDA uCode,Y      ; fetch byte
   INY
   JSR tok_emit     ; output token with top-bit set (uses X; preserves A,Y; sets NE)
   BNE uc_done      ; -> ram_disp
@@ -1477,12 +1457,10 @@ TOK_FOR_S  = $F1
 TAG_GOSUB  = $F2
 
 ; variable tags
-VT_NUM = 1
-VT_STR = 2
-VT_NUM_ARR = 3
-VT_STR_ARR = 4
-VT_FN = 5
-VT_PROC = 6
+VT_NUM = $80
+VT_STR = $81
+VT_NUM_ARR = $82
+VT_STR_ARR = $83
 
 
 ; --- DISPATCH ---
@@ -1499,6 +1477,10 @@ code_add_y:
   INC CODEH      ; [5]
 @done:
   RTS
+
+do_syn0:
+  LDA #<msg_syn
+  JMP report_err
 
 ; @@ do_ln_op
 ; expect start of next line
@@ -1541,28 +1523,29 @@ do_stmt:
 
 ; --- LET, DIM ---
 
-do_let:
-  ; check for VAR (implied LET)
-  AND #$DF       ; [2] lower -> upper (clear bit 5)
-  SEC            ; [2] for subtract
-  SBC #65        ; [2] make 'A' be 0
-  CMP #26        ; [2] 26 letters (CS if >= 26)
-  BCS do_syn0    ; [2] -> syntax error                 (XXX already checked in tokenize)
-  ; get ptr to var-list at TOP for this letter     [JSR find_var]
-  STY B          ; [3] save Y=code-ofs
-  ASL A          ; [2] letter * 2
-  TAY            ; [2] 0-25 letter boxes
-  LDA (TopPtr),Y ; [5] var-list pointer low byte
-  STA Src        ; [3] 
-  INY            ; [2] next byte
-  LDA (TopPtr),Y ; [5] var-list pointer high byte
-  STA SrcH       ; [3] 
-  ; scan the list for a matching VAR
-  ; XXX
+do_let:          ; assign VAR[$] = Expr                              (40b)
+  JSR find_var   ; [6] find VAR matching Y=ofs -> Ptr=var, Y=slot-ofs, A=tag, B=CodeOfs; report not found
+  AND #1         ; [2] num/str flag
+  BNE @str       ; [2] -> str [+1]
+  JSR eval_n     ; [6] evaluate numeric expression -> Acc
+  LDA Acc0       ; [3] 
+  STA (Ptr),Y    ; [6] write to Var0
+  INY            ; [2]
+  LDA Acc1       ; [3] 
+  STA (Ptr),Y    ; [6] write to Var1
+  INY            ; [2]
+@scpy:
+  LDA Acc2       ; [3] 
+  STA (Ptr),Y    ; [6] write to Var2
+  INY            ; [2]
+  LDA AccE       ; [3] 
+  STA (Ptr),Y    ; [6] write to VarE
+  LDY B          ; [3] restore Y=CodeOfs
+  JMP do_stmt     ; -> next stmt
+@str:
+  JSR eval_s     ; [6] evaluate string expression -> Acc2E (StrPtr)
+  JMP @scpy      ; [3] -> copy str ptr to slot
 
-do_syn0:
-  LDA #<msg_syn
-  JMP report_err
 
 ; DIM: expect VAR '(' DIM-expr ')'
 ;      add var to var-list;
@@ -1956,9 +1939,74 @@ bind_var:
 
 
 ; @@ find_var
-; find named variable (Y=ofs -> Src; report not found)
-find_var:
-  RTS
+; find VAR matching Y=ofs -> Ptr=var, Y=slot-ofs, A=tag, B=code-ofs; report not found      (84b)
+find_var:         ; (uses A,X)
+; add Y to CODE so we can start at Y=0 (vastly simplifies everything)
+  TYA             ; [2]
+  CLC             ; [2]
+  ADC CODE        ; [3] add Y to CODE
+  STA CODE        ; [3] update CODE
+  BCC @noch       ; [2] -> no page cross [+1]
+  INC CODEH       ; [5]
+@noch:
+  LDY #0          ; [2] reset Y=0 // [17]
+; first letter index
+  LDA (CODE),Y    ; [5] get next byte
+  AND #$DF        ; [2] lower -> upper (clear bit 5)
+  SEC             ; [2] for subtract
+  SBC #65         ; [2] make 'A' be 0
+  CMP #26         ; [2] 26 letters (CS if >= 26)
+  BCS do_syn1     ; [2] -> syntax error // [15]
+; copy VarPtr from VarPtrs
+  ASL             ; [2] letter * 2
+  TAX             ; [2] 0-50 index
+  LDA VarPtrs,X   ; [4] var-list pointer low byte
+  STA Ptr         ; [3] 
+  LDA VarPtrs+1,X ; [4] var-list pointer high byte (zero if no VARs)
+  BEQ @novar      ; [2] -> no VARs start with this letter [+1]
+  STA PtrH        ; [3]
+; compare (CODE),Y to (Ptr),Y until they differ
+@next:            ; <- check next VAR
+  DEY             ; [2] for pre-increment // [22] (54 setup!)
+@cmp:             ; [+15] per char:
+  INY             ; [2] pre-increment
+  LDA (CODE),Y    ; [5] get next Code byte    (may be $80+ for KW)
+  CMP (Ptr),Y     ; [5] equals next VAR byte? (may be $80+ type-tag at end of name)
+  BEQ @cmp        ; [2] -> same, continue [+1]
+; they differ: is (CODE),Y < $80 (miss)
+  BPL @miss       ; [2] -> incomplete CODE match [+1] (VAR match may be complete)
+  LDA (Ptr),Y     ; [5] is Ptr,X < $80 (miss)
+  BPL @miss       ; [2] -> incomplete VAR match [+1]
+; found a match
+  STY B           ; [3] -> B = code-ofs
+  INY             ; [2] skip [$8x]
+  INY             ; [2] skip [NextL]
+  INY             ; [2] skip [NextH]
+  RTS             ; [6] -> Ptr=var, Y=slot-ofs, A=tag, B=code-ofs // [26] (80+15*n total: 95,110,125..) 
+@miss:           ; skip rest of VAR (may be at end already)
+  DEY            ; [2] for pre-increment
+@xlp:            ; [+9] per char:
+  INY            ; [2] pre-increment
+  LDA (Ptr),Y    ; [5] is Ptr,X >= $80
+  BPL @xlp       ; [2] -> more to go [+1]
+; at end of VAR
+  INY            ; [2] skip [$8x]
+  LDA (Ptr),Y    ; [5] get [NextL]
+  TAX            ; [2] save [NextL] -> X
+  INY            ; [2] Y++
+  LDA (Ptr),Y    ; [5] get [NextH] (zero at end of var-list)
+  BEQ @novar     ; [2] -> no more VARs
+  STX Ptr        ; [3] set new [PtrL] <- X
+  STA PtrH       ; [3] set new [PtrH]
+  LDY #0         ; [2] reset Y=0
+  BEQ @next      ; [3] -> check next VAR (always)
+@novar:          ; no matching VAR found
+  LDA #<msg_var
+  JMP report_err
+
+do_syn1:
+  LDA #<msg_syn
+  JMP report_err
 
 
 ; --- HELPERS ---
@@ -2074,28 +2122,34 @@ badprg:
   LDY #<msg_prg
   JMP report_err
 
+eval_s:    ; XXX
+  RTS
+
+e_typ1:
+  LDY #<msg_typ
+  JMP report_err
+
 ; @@ eval_n
-; evaluate numeric expression
+; evaluate numeric expression -> Acc
 eval_n:
   LDA (CODE),Y   ; [5] get next byte
   BMI @bfunc     ; [2] -> BASIC function [8]
   CMP $40        ; [2] below letters?
   BCC @numpf     ; [2] -> number ($3x) or prefix ($2x) [12]
 ; --- look up variable [11]
-  LDA #VT_NUM    ; [2] variable type
-  JSR find_var   ; [12] find variable by name (Y=codeofs -> Y, Src; report if not found)
-  STY B          ; [3] save CodeOfs
-  LDY #2         ; [2] ofs=2: [NextPtr.2][Num.4]
-  LDA (Src),Y    ; [5] Num0
+  JSR find_var   ; [6] find VAR matching Y=ofs -> Ptr=var, Y=slot-ofs, A=tag, B=CodeOfs; report not found
+  AND #1         ; [2] num/str flag
+  BNE e_typ1     ; [2] -> not a number [+1]
+  LDA (Ptr),Y    ; [5] Num0
   PHA            ; [3] push Num0   (XXX write to Expr stack?)
   INY            ; [2]
-  LDA (Src),Y    ; [5] Num1
+  LDA (Ptr),Y    ; [5] Num1
   PHA            ; [3] push Num1
   INY            ; [2]
-  LDA (Src),Y    ; [5] Num2
+  LDA (Ptr),Y    ; [5] Num2
   PHA            ; [3] push Num2
   INY            ; [2]
-  LDA (Src),Y    ; [5] Num3
+  LDA (Ptr),Y    ; [5] Num3
   PHA            ; [3] push Num3
   LDY B          ; [3] restore CodeOfs
   BNE eval_n     ; [3] -> always [11+12+48=71+find]
@@ -2355,7 +2409,7 @@ num_print:       ; from Acc (uses A,X)
   PLA
   BEQ @done
   JSR wrchr      ; print it (A=char, uses A,X)
-  BNE @print     ; always (unless zero-byte)
+  BNE @print     ; always (OK unless wrchr scrolled) XXX
 @done
   RTS
 
@@ -2685,19 +2739,19 @@ nl_page:          ; crossed a page boundary (uses A,X,F,Src,Dst preserves Y)
   BEQ nl_scrup    ; [2] -> scroll up [+1]
   INC TXTPH       ; [5] go down one page
 nl_npg:
-  RTS             ; [6]
+  RTS             ; [6] -> NE (unless scrolled, assumes no 64K wraparound)
 
 ; @@ wrchr       (95b wrchr + newline)
 ; write a single character to the screen
 ; assumes we're in text mode with TXTP set up
-wrchr:            ; A=char; (uses A,X,F,Src,Dst) preserves Y -> NE [25]
+wrchr:            ; A=char; (uses A,X,F,Src,Dst) preserves Y [25]
   CMP #32         ; [2] is it a control character?
   BCC wrctl       ; [2] -> ch < 32, do control code [+1]  (uses A,X preserves Y)
   LDX #0          ; [2] const for (TXTP,X) ie (TXTP)
   STA (TXTP,X)    ; [6] write character to video memory
   INC TXTP        ; [5] advance text position
   BEQ nl_page     ; [2] -> crossed page boundary [+1]
-  RTS             ; [6]
+  RTS             ; [6] -> NE (unless scrolled)
 
 ; @@ nl_scrup
 ; scroll the text window up one line
