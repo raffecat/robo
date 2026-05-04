@@ -28,28 +28,29 @@ PHI = 1.0
 Sat = 0.8
 
 HI = 0.5
-SatHi = 0.2
+SatHi = 0.3
 
 Tune = 3
 
 # Y, ns (0-279), sat
 colors = [
-    (0.0, 0, 0.0),    # black
-    (LO, 45, Sat),    # blue
-    (LO, 90, Sat),    # red
-    (LO, 135, Sat),   # orange
-    (LO, 180, Sat),   # green
-    (LO, 225, Sat),   # yellow
-    (LO, 270, Sat),   # cyan
-    (PHI, 315, Sat),  # purple
-    (0.5, 0, 0.0),    # grey
-    (HI, 45, SatHi),  # light purple
-    (HI, 90, SatHi),  # pink
-    (HI, 135, SatHi), # pastel green
-    (HI, 180, SatHi), # pastel yellow
-    (HI, 225, SatHi), # mint
-    (HI, 270, Sat),   # pastel blue
-    (1.0, 0, 0.0),    # white
+    (0.0,  0,   0),     # black            90
+    (1.0,  45,  0.68),  # magenta          91
+    (0.68, 120, 0.68),  # red (+30)        92•
+    (0.68, 135, 0.68),  # orange           93•
+    (0.68, 180, 0.68),  # yellow           94•
+    (0.68, 225, 0.68),  # green            95•
+    (0.68, 270, 0.68),  # cyan             96
+    (0.68, 300, 0.68),  # blue             97
+
+    (0.47, 0,   0),     # grey             98
+    (0.47, 45,  0.22),  # dark purple      99
+    (0.47, 120, 0.22),  # dark red         9A
+    (0.47, 135, 0.22),  # brown            9B
+    (0.47, 180, 0.22),  # olive            9C
+    (0.47, 225, 0.22),  # mint             9D
+    (0.47, 270, 0.22),  # teal             9E•
+    (1.0,  0,   0),     # white            9F
 ]
 
     # HI = 0.95
