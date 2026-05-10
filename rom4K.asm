@@ -216,15 +216,19 @@ reset:
   JSR vid_mode   ; set mode, clear screen
   JSR irq_init   ; init IRQ vector, init keyboard, enable IRQ
 ; install RAM dispatcher
-  LDX #(rom_disp_e - rom_disp)-1  ; size of rom_disp - 9 bytes
+  LDX #(rom_disp_e - rom_disp)-1  ; size of rom_disp - 8 bytes
 @cpy_lp:
   LDA rom_disp,X ; copy rom_disp
   STA ram_disp,X ; to ram_disp
   DEX
   BPL @cpy_lp    ; until X<0
 ; start uCode
-  LDY #0         ; uCode low byte
+  LDY #0         ; uboot
 enter_ucode:
+  LDA #>uCode    ; uCode page
+  STA CODEH      ; set CODE high
+  LDA #0         ; uCode low byte
+  STA CODE       ; set CODE low
   JMP ram_disp   ; -> start execution (Y=0)
 
 ; Return to REPL
@@ -232,12 +236,12 @@ repl:
   LDY #<urepl
   BNE enter_ucode
 
-; RAM dispatch routine (copied to ram_disp) [9 bytes]
+; RAM dispatch routine (copied to ram_disp) [8 bytes]
 rom_disp:
-  LDA uCode,Y    ; [4] fetch opcode
+  LDA (CODE),Y   ; [5] fetch opcode (indirect saves space in ucodeRTL page)
   INY            ; [2] advance
-  STA ram_disp+7 ; [3] set JMP low byte
-  JMP uCodeRTL   ; [3] jump into uCodeRTL page [+3 return] // [15]
+  STA ram_disp+6 ; [3] set JMP low byte
+  JMP uCodeRTL   ; [3] jump into uCodeRTL page [+3 return] // [16]
 rom_disp_e:
 
 
@@ -282,107 +286,7 @@ msg_esc:  DB 6,"Escape"
 ORG $F100
 stmt_page:
 
-; $8x-9x more keywords to follow (same first letter) -$40
-; $Cx-Dx last keyword in list (for this letter)      -0
-; (ORA #$40 before emit -> $Cx-Dx for statements)
-
-OP_LN      = $C0   ; start-of-line
-OP_CLS     = $C1
-OP_CLOSE   = $C2
-OP_DATA    = $C3
-OP_DIM     = $C4
-OP_DEFFN   = $C5
-OP_ELSE    = $C6   ; ELSE with <length>     (OP_ELSE,$xx vs source "EL.")
-OP_END     = $C7
-OP_FOR     = $C8
-OP_GOTO    = $C9
-OP_GOSUB   = $CA
-OP_IF      = $CB   ; IF <else-ofs> <cond> (THEN1,0xNN | THEN2,0xNN,0xMM | THEN | ε)   [OP_IF,$nn vs "IF"]
-OP_INPUT   = $CC
-OP_LET     = $CD
-OP_LINE    = $CE
-OP_MODE    = $CF
-OP_NEXT    = $D0
-OP_OPT     = $D1
-OP_OPEN    = $D2
-OP_PLOT    = $D3
-OP_POKE    = $D4
-OP_PRINT   = $D5
-OP_READ    = $D6
-OP_REPEAT  = $D7
-OP_RESTORE = $D8
-OP_RETURN  = $D9
-OP_REM     = $DA
-OP_SOUND   = $DB
-OP_UNTIL   = $DC
-OP_WAIT    = $DD
-
-stmt_count = 30  ; $1E
-
-; extras
-OP_STEP    = $DE
-OP_THEN    = $DF
-OP_THENLN  = $E0
-OP_ELSELN  = $E1
-
-kws_a:
-kws_b:
-kws_c:
-kw_cls    DB "CLS",      OP_CLS    -$40
-kw_close  DB "CLOSE",    OP_CLOSE  -0     ; #ch
-kws_d:
-kw_data   DB "DATA",     OP_DATA   -$40
-kw_dim    DB "DIM",      OP_DIM    -$40
-kw_def    DB "DEF",      OP_DEFFN  -0
-kws_e:
-kw_else   DB "ELSE",     OP_ELSE   -$40
-kw_end    DB "END",      OP_END    -0
-kws_f:
-kw_for    DB "FOR",      OP_FOR    -0
-kws_g:
-kw_goto   DB "GOTO",     OP_GOTO   -$40
-kw_gosub  DB "GOSUB",    OP_GOSUB  -0
-kws_h:
-kws_i:
-kw_if     DB "IF",       OP_IF     -$40
-kw_input  DB "INPUT",    OP_INPUT  -0     ; [#ch,]
-kws_j:
-kws_k:
-kws_l:
-kw_let    DB "LET",      OP_LET    -$40
-kw_line   DB "LINE",     OP_LINE   -0
-kws_m:
-kw_mode   DB "MODE",     OP_MODE   -0
-kws_n:
-kw_next   DB "NEXT",     OP_NEXT   -0
-kws_o:
-kw_opt    DB "OPT",      OP_OPT    -$40
-kw_open   DB "OPEN",     OP_OPEN   -0
-kws_p:
-kw_plot   DB "PLOT",     OP_PLOT   -$40
-kw_poke   DB "POKE",     OP_POKE   -$40
-kw_print  DB "PRINT",    OP_PRINT  -0     ; [#ch,]
-kws_q:
-kws_r:
-kw_read   DB "READ",     OP_READ     -$40
-kw_rept   DB "REPEAT",   OP_REPEAT   -$40
-kw_rest   DB "RESTORE",  OP_RESTORE  -$40
-kw_retr   DB "RETURN",   OP_RETURN   -$40
-kw_rem    DB "REM",      OP_REM      -0
-kws_s:
-kw_soun   DB "SOUND",    OP_SOUND  -0
-kws_t:
-kws_u:
-kw_until  DB "UNTIL",    OP_UNTIL  -0
-kws_v:
-kws_w:
-kw_wait   DB "WAIT",     OP_WAIT   -0
-kws_x:
-kws_y:
-kws_z:
-  DB 0 ; end of list
-
-; Statement Index
+; Statement Index (must be at offset 0)
 stmt_idx:
   DB (kws_a - stmt_page) ; A
   DB (kws_b - stmt_page) ; B
@@ -411,7 +315,111 @@ stmt_idx:
   DB (kws_y - stmt_page) ; Y
   DB (kws_z - stmt_page) ; Z
 
-; Statement Reverse Lookup    ; (COULD linear-search the Statement Tokens...)
+; $8x-9x more keywords to follow (same first letter) -$40
+; $Cx-Dx last keyword in list (for this letter)      -0
+; (ORA #$40 before emit -> $Cx-Dx for statements)
+
+OP_LN      = $C0   ; start-of-line
+OP_CLS     = $C1
+OP_CLOSE   = $C2
+OP_DATA    = $C3
+OP_DIM     = $C4
+OP_DEFFN   = $C5
+OP_ELSE    = $C6   ; ELSE with <length>     (OP_ELSE,$xx vs source "EL.")
+OP_END     = $C7
+OP_FOR     = $C8
+OP_GOTO    = $C9
+OP_GOSUB   = $CA
+OP_IF      = $CB   ; IF <else-ofs> <cond> (THEN1,0xNN | THEN2,0xNN,0xMM | THEN | ε)   [OP_IF,$nn vs "IF"]
+OP_INPUT   = $CC
+OP_LET     = $CD
+OP_LINE    = $CE
+OP_LOAD    = $CF
+OP_MODE    = $D0
+OP_NEXT    = $D1
+OP_OPT     = $D2
+OP_OPEN    = $D3
+OP_PUT     = $D4
+OP_PRINT   = $D5
+OP_PLOT    = $D6
+OP_POKE    = $D7
+OP_READ    = $D8
+OP_REPEAT  = $D9
+OP_RESTORE = $DA
+OP_RETURN  = $DB
+OP_REM     = $DC
+OP_SOUND   = $DD
+OP_UNTIL   = $DE
+OP_WAIT    = $DF
+
+stmt_count = 32  ; $20
+
+; extras
+OP_STEP    = $E0
+OP_THEN    = $E1
+OP_THENLN  = $E2
+OP_ELSELN  = $E3
+
+kws_a:
+kws_b:
+kws_c:
+kw_cls    DB "CLS",      OP_CLS    -$40
+kw_close  DB "CLOSE",    OP_CLOSE  -0     ; #ch
+kws_d:
+kw_data   DB "DATA",     OP_DATA   -$40
+kw_dim    DB "DIM",      OP_DIM    -$40
+kw_def    DB "DEF",      OP_DEFFN  -0
+kws_e:
+kw_else   DB "ELSE",     OP_ELSE   -$40
+kw_end    DB "END",      OP_END    -0
+kws_f:
+kw_for    DB "FOR",      OP_FOR    -0
+kws_g:
+kw_goto   DB "GOTO",     OP_GOTO   -$40
+kw_gosub  DB "GOSUB",    OP_GOSUB  -0
+kws_h:
+kws_i:
+kw_if     DB "IF",       OP_IF     -$40
+kw_input  DB "INPUT",    OP_INPUT  -0     ; [#ch,]
+kws_j:
+kws_k:
+kws_l:
+kw_let    DB "LET",      OP_LET    -$40
+kw_line   DB "LINE",     OP_LINE   -$40
+kw_load   DB "LOAD",     OP_LOAD   -0
+kws_m:
+kw_mode   DB "MODE",     OP_MODE   -0
+kws_n:
+kw_next   DB "NEXT",     OP_NEXT   -0
+kws_o:
+kw_opt    DB "OPT",      OP_OPT    -$40
+kw_open   DB "OPEN",     OP_OPEN   -0
+kws_p:
+kw_put    DB "PUT",      OP_PUT    -$40
+kw_print  DB "PRINT",    OP_PRINT  -$40   ; [#ch,]
+kw_plot   DB "PLOT",     OP_PLOT   -$40
+kw_poke   DB "POKE",     OP_POKE   -0
+kws_q:
+kws_r:
+kw_read   DB "READ",     OP_READ     -$40
+kw_rept   DB "REPEAT",   OP_REPEAT   -$40
+kw_rest   DB "RESTORE",  OP_RESTORE  -$40
+kw_retr   DB "RETURN",   OP_RETURN   -$40
+kw_rem    DB "REM",      OP_REM      -0
+kws_s:
+kw_soun   DB "SOUND",    OP_SOUND  -0
+kws_t:
+kws_u:
+kw_until  DB "UNTIL",    OP_UNTIL  -0
+kws_v:
+kws_w:
+kw_wait   DB "WAIT",     OP_WAIT   -0
+kws_x:
+kws_y:
+kws_z:
+  DB 0 ; end of list
+
+; Statement Reverse Lookup
 stmt_rev:                     ; [34] indices MUST match OPCODEs
   DB (kw_cls - stmt_page)     ; "CLS",$C1
   DB (kw_close - stmt_page)   ; "CLOSE",$C2
@@ -427,43 +435,60 @@ stmt_rev:                     ; [34] indices MUST match OPCODEs
   DB (kw_input - stmt_page)   ; "INPUT",$CC
   DB (kw_let - stmt_page)     ; "LET",$CD
   DB (kw_line - stmt_page)    ; "LINE",$CE
-  DB (kw_mode - stmt_page)    ; "MODE",$CF
-  DB (kw_next - stmt_page)    ; "NEXT",$D0
-  DB (kw_opt - stmt_page)     ; "OPT",$D1
-  DB (kw_open - stmt_page)    ; "OPEN",$D2
-  DB (kw_plot - stmt_page)    ; "PLOT",$D3
-  DB (kw_poke - stmt_page)    ; "POKE",$D4
+  DB (kw_load - stmt_page)    ; "LOAD",$CF
+  DB (kw_mode - stmt_page)    ; "MODE",$D0
+  DB (kw_next - stmt_page)    ; "NEXT",$D1
+  DB (kw_opt - stmt_page)     ; "OPT",$D2
+  DB (kw_open - stmt_page)    ; "OPEN",$D3
+  DB (kw_put - stmt_page)     ; "PUT",$D4
   DB (kw_print - stmt_page)   ; "PRINT",$D5
-  DB (kw_read - stmt_page)    ; "READ", $D6
-  DB (kw_rept - stmt_page)    ; "REPEAT",$D7
-  DB (kw_rest - stmt_page)    ; "RESTORE",$D8
-  DB (kw_retr - stmt_page)    ; "RETURN",$D9
-  DB (kw_rem - stmt_page)     ; "REM",$DA
-  DB (kw_soun - stmt_page)    ; "SOUND",$DB
-  DB (kw_until - stmt_page)   ; "UNTIL",$DC
-  DB (kw_wait - stmt_page)    ; "WAIT",$DD
-
-
-; REPL command list
-; matches repl_fn table
-repl_len = 8
-repl_tab:
-  DB "LIST", $80 +$40
-  DB "RUN",  $81 +$40
-  DB "ART",  $82 +$40
-  DB "LOAD", $83 +$40
-  DB "SAVE", $84 +$40
-  DB "NEW",  $85 +$40
-  DB "OLD",  $86 +0   ; no $40 terminates list
+  DB (kw_plot - stmt_page)    ; "PLOT",$D6
+  DB (kw_poke - stmt_page)    ; "POKE",$D7
+  DB (kw_read - stmt_page)    ; "READ", $D8
+  DB (kw_rept - stmt_page)    ; "REPEAT",$D9
+  DB (kw_rest - stmt_page)    ; "RESTORE",$DA
+  DB (kw_retr - stmt_page)    ; "RETURN",$DB
+  DB (kw_rem - stmt_page)     ; "REM",$DC
+  DB (kw_soun - stmt_page)    ; "SOUND",$DD
+  DB (kw_until - stmt_page)   ; "UNTIL",$DE
+  DB (kw_wait - stmt_page)    ; "WAIT",$DF
 
 
 ; ------------------------------------------------------------------------------
-; PAGE B2 - Expression Tokens
+; PAGE 2 - Expression Tokens
 
 ORG $F200
 expr_page:
 kwtab:
 
+; Expression Index (must be at offset 0)
+expr_idx:
+  DB (expr_a - expr_page) ; A
+  DB (expr_b - expr_page) ; B
+  DB (expr_c - expr_page) ; C
+  DB (expr_d - expr_page) ; D
+  DB (expr_e - expr_page) ; E
+  DB (expr_f - expr_page) ; F
+  DB (expr_g - expr_page) ; G
+  DB (expr_h - expr_page) ; H
+  DB (expr_i - expr_page) ; I
+  DB (expr_j - expr_page) ; J
+  DB (expr_k - expr_page) ; K
+  DB (expr_l - expr_page) ; L
+  DB (expr_m - expr_page) ; M
+  DB (expr_n - expr_page) ; N
+  DB (expr_o - expr_page) ; O
+  DB (expr_p - expr_page) ; P
+  DB (expr_q - expr_page) ; Q
+  DB (expr_r - expr_page) ; R
+  DB (expr_s - expr_page) ; S
+  DB (expr_t - expr_page) ; T
+  DB (expr_u - expr_page) ; U
+  DB (expr_v - expr_page) ; V
+  DB (expr_w - expr_page) ; W
+  DB (expr_x - expr_page) ; X
+  DB (expr_y - expr_page) ; Y
+  DB (expr_z - expr_page) ; Z
 
 ; EXPRESSION TOKENS
 
@@ -486,14 +511,15 @@ OP_PI = $8F
 OP_RIGHT = $90
 OP_RND = $91
 OP_SCN = $92
-OP_STR = $93
-OP_SQR = $94
-OP_SGN = $95
-OP_TIME = $96
-OP_TOP = $97
-OP_USR = $98
-OP_VAL = $99
-OP_VPOS = $9A
+OP_STRNG = $93
+OP_STR = $94
+OP_SQR = $95
+OP_SGN = $96
+OP_TIME = $97
+OP_TOP = $98
+OP_USR = $99
+OP_VAL = $9A
+OP_VPOS = $9B
 
 ; operators in precedence order:
 OP_NOT   = $AD       ; unary
@@ -558,6 +584,7 @@ ex_rgt  DB "RIGHT$",  OP_RIGHT  +$40     ; fn$ (1,2) 1st is $
 ex_rnd  DB "RND",     OP_RND    +0       ; fn (0,1)
 expr_s:
 ex_scn  DB "SCN",     OP_SCN    +$40     ; SCN(x,y)  get screen x,y
+ex_stri DB "STRING$", OP_STRNG  +$40     ; fn$ (n,s) 2nd is $
 ex_str  DB "STR$",    OP_STR    +$40     ; fn$ (1,1) 1st is $
 ex_sqr  DB "SQR",     OP_SQR    +$40     ; fn (0,1)
 ex_sgn  DB "SGN",     OP_SGN    +0       ; fn (0,1)
@@ -617,75 +644,46 @@ kwt_tab:
 kwt_fn:
   DB "FN",       $00      ; DEF keyword
 
-
-
+; Expression Reverse Lookup
 expr_rev:                  ; [29]
   DB (ex_abs - expr_page)  ; "ABS",$80
-  DB (ex_asc - expr_page)  ; "ASC",$82
+  DB (ex_asc - expr_page)  ; "ASC",$81
   DB (ex_btn - expr_page)  ; "BTN",$82
-  DB (ex_chr - expr_page)  ; "CHR",$86
-  DB (ex_eof - expr_page)  ; "EOF",$8A
-  DB (ex_fn  - expr_page)  ; "FN",$8F
-  DB (ex_get - expr_page)  ; "GET",$90
-  DB (ex_ins - expr_page)  ; "INSTR",$92
-  DB (ex_int - expr_page)  ; "INT",$93
-  DB (ex_joy - expr_page)  ; "JOY",$91
-  DB (ex_key - expr_page)  ; "KEY",$91
-  DB (ex_len - expr_page)  ; "LEN",$94
-  DB (ex_lft - expr_page)  ; "LEFT",$95
-  DB (ex_mid - expr_page)  ; "MID",$98
-  DB (ex_pos - expr_page)  ; "POS",$9A
-  DB (ex_pi  - expr_page)  ; "PI",$9B
-  DB (ex_rgt - expr_page)  ; "RIGHT",$9C
-  DB (ex_rnd - expr_page)  ; "RND",$9E
-  DB (ex_scn - expr_page)  ; "SCN",$9E
-  DB (ex_str - expr_page)  ; "STR",$9F
-  DB (ex_sqr - expr_page)  ; "SQR",$A1
-  DB (ex_sgn - expr_page)  ; "SGN",$A3
-  DB (ex_tme - expr_page)  ; "TIME",$A6
-  DB (ex_top - expr_page)  ; "TOP",$A7
-  DB (ex_usr - expr_page)  ; "USR", $A8
-  DB (ex_val - expr_page)  ; "VAL",$A9
-  DB (ex_vps - expr_page)  ; "VPOS",$AA
+  DB (ex_chr - expr_page)  ; "CHR",$83
+  DB (ex_eof - expr_page)  ; "EOF",$84
+  DB (ex_fn  - expr_page)  ; "FN",$85
+  DB (ex_get - expr_page)  ; "GET",$86
+  DB (ex_ins - expr_page)  ; "INSTR",$87
+  DB (ex_int - expr_page)  ; "INT",$88
+  DB (ex_joy - expr_page)  ; "JOY",$89
+  DB (ex_key - expr_page)  ; "KEY",$8A
+  DB (ex_len - expr_page)  ; "LEN",$8B
+  DB (ex_lft - expr_page)  ; "LEFT",$8C
+  DB (ex_mid - expr_page)  ; "MID",$8D
+  DB (ex_pos - expr_page)  ; "POS",$8E
+  DB (ex_pi  - expr_page)  ; "PI",$8F
+  DB (ex_rgt - expr_page)  ; "RIGHT",$90
+  DB (ex_rnd - expr_page)  ; "RND",$91
+  DB (ex_scn - expr_page)  ; "SCN",$92
+  DB (ex_stri - expr_page) ; "STRING",$93
+  DB (ex_str - expr_page)  ; "STR",$94
+  DB (ex_sqr - expr_page)  ; "SQR",$95
+  DB (ex_sgn - expr_page)  ; "SGN",$96
+  DB (ex_tme - expr_page)  ; "TIME",$97
+  DB (ex_top - expr_page)  ; "TOP",$98
+  DB (ex_usr - expr_page)  ; "USR", $99
+  DB (ex_val - expr_page)  ; "VAL",$9A
+  DB (ex_vps - expr_page)  ; "VPOS",$9B
 
 kw_rev_pre:
-  DB (kw_not - expr_page)  ; "NOT",$AB
+  DB (kw_not - expr_page)  ; "NOT",$A0
 
 kw_rev_inf:
-  DB (kw_and - expr_page)  ; "AND",$AC
-  DB (kw_div - expr_page)  ; "DIV",$AD
-  DB (kw_eor - expr_page)  ; "EOR",$AE
-  DB (kw_mod - expr_page)  ; "MOD",$AF
-  DB (kw_or  - expr_page)  ; "OR",$B0
-
-; Expression Index
-expr_idx:
-  DB (expr_a - expr_page) ; A
-  DB (expr_b - expr_page) ; B
-  DB (expr_c - expr_page) ; C
-  DB (expr_d - expr_page) ; D
-  DB (expr_e - expr_page) ; E
-  DB (expr_f - expr_page) ; F
-  DB (expr_g - expr_page) ; G
-  DB (expr_h - expr_page) ; H
-  DB (expr_i - expr_page) ; I
-  DB (expr_j - expr_page) ; J
-  DB (expr_k - expr_page) ; K
-  DB (expr_l - expr_page) ; L
-  DB (expr_m - expr_page) ; M
-  DB (expr_n - expr_page) ; N
-  DB (expr_o - expr_page) ; O
-  DB (expr_p - expr_page) ; P
-  DB (expr_q - expr_page) ; Q
-  DB (expr_r - expr_page) ; R
-  DB (expr_s - expr_page) ; S
-  DB (expr_t - expr_page) ; T
-  DB (expr_u - expr_page) ; U
-  DB (expr_v - expr_page) ; V
-  DB (expr_w - expr_page) ; W
-  DB (expr_x - expr_page) ; X
-  DB (expr_y - expr_page) ; Y
-  DB (expr_z - expr_page) ; Z
+  DB (kw_and - expr_page)  ; "AND",$A1
+  DB (kw_div - expr_page)  ; "DIV",$A2
+  DB (kw_eor - expr_page)  ; "EOR",$A3
+  DB (kw_mod - expr_page)  ; "MOD",$A4
+  DB (kw_or  - expr_page)  ; "OR",$A5
 
 
 ; @@ tok_emit
@@ -702,7 +700,7 @@ err_overflow:
   JMP enter_ucode
 
 ; ------------------------------------------------------------------------------
-; uCode Page
+; PAGE 3 - uCode Page
 
 ORG $F300
 uCode:
@@ -729,9 +727,9 @@ urepl:
 ; tokenize                    ; 
 utok_stmt:
   DB <uc_skipsp
-  DB <uc_isalpha, <ue_syn     ; not alpha -> Syntax Error
-  DB <uc_stmtkw, <ue_syn      ; no match -> Syntax Error (XXX match '=' for FN return)
-  DB <uc_disp, <stmt_dt       ; table jump (on C)
+  DB <uc_isalpha, <ue_syn           ; not alpha -> Syntax Error
+  DB <uc_kwidx, <stmt_idx, <ue_syn  ; no match -> Syntax Error  (XXX match '=' for FN return)
+  DB <uc_disp, <stmt_dt             ; table jump (on C)
 
 usyn_1:           ; OP_GOTO,OP_GOSUB,OP_MODE,OP_RESTORE,OP_UNTIL,OP_WAIT
   DB <uc_call, <uexpr_i
@@ -884,10 +882,10 @@ uexpgt:
 ; expression functions
 uexpr_fn:
   DB <uc_skipsp
-  DB <uc_isalpha, <ue_syn     ; not alpha -> Syntax Error
-  DB <uc_exprkw, <ue_syn      ; no match -> Syntax Error
-  DB <uc_expect, $28          ; '('
-  DB <uc_disp, <expr_dt       ; table jump (on C)
+  DB <uc_isalpha, <ue_syn           ; not alpha -> Syntax Error
+  DB <uc_kwidx, <expr_idx, <ue_syn  ; no match -> Syntax Error
+  DB <uc_expect, $28                ; '('
+  DB <uc_disp, <expr_dt             ; table jump (on C)
 
 uexpr_fe:
   DB <uc_expect, $29          ; ')'
@@ -911,41 +909,47 @@ uex_usr:                      ; OP_USR
 
 
 ; ------------------------------------------------------------------------------
-; uCode Runtime
+; PAGE 4 - uCode Runtime
 
 ORG $F400
 uCodeRTL:
 
-uc_msg:          ; print a const message (<msg)        - Y SAVE/REST
-  LDA uCode,Y    ; fetch msg
+uc_msg:            ; print a const message (<msg)        - Y SAVE/REST
+  LDA (CODE),Y     ; [5] fetch msg
   INY
-  STY D          ; [3] XXX
-  TAY            ; Y=msg
-  JSR printmsg   ; (uses A,B,X,Y,Term,Src,Dst)
-  LDY D          ; [3] XXX
-  JMP ram_disp   ; // 14
+  STY D            ; [3] XXX
+  TAY              ; Y=msg
+  JSR printmsg     ; (uses A,B,X,Y,Term,Src,Dst)
+  LDY D            ; [3] XXX
+  JMP ram_disp     ; // 14
 
-uc_putc:         ; print a const character (char)      - Y OK
-  LDA uCode,Y    ; fetch c
+uc_putc:           ; print a const character (char)      - Y OK
+  LDA (CODE),Y     ; fetch c
   INY
-  JSR wrchr      ; A=chr (uses A,X,F,Src,Dst)
-  JMP ram_disp   ; // 9
+uc_wrch:
+  JSR wrchr        ; A=chr (uses A,X,F,Src,Dst)
+  JMP ram_disp     ; // 9
 
-uc_nl:           ; print newline ()                    - Y OK
+uc_nl:             ; print newline ()                    - Y OK
   LDA #13
-  JSR wrchr      ; A=chr (uses A,X,F,Src,Dst)
-  JMP ram_disp   ; // 8
+  BNE uc_wrch      ; -> write it // 4
 
-uc_setz:         ; set a byte in zero-page (zp,byte)   - Y OK
-  LDA uCode,Y    ; fetch ZP address
-  INY
-  TAX            ; address to X
-  LDA uCode,Y    ; fetch byte
-  INY
-  STA $00,X      ; store byte to ZP
-  JMP ram_disp   ; // 12
+uc_prnext:         ; wrchr the next input character
+  LDX #0           ; [2] X=0
+  LDA (Ptr,X)      ; [6] compare next input char
+  JSR wrchr        ; [6] print the char
+  JMP ram_disp     ; [3]
 
-uc_prfr:         ; print free memory                   - Y OK
+uc_setz:           ; set a byte in zero-page (zp,byte)   - Y OK
+  LDA (CODE),Y     ; fetch ZP address
+  INY
+  TAX              ; address to X
+  LDA (CODE),Y     ; fetch byte
+  INY
+  STA $00,X        ; store byte to ZP
+  JMP ram_disp     ; // 12
+
+uc_prfr:           ; print free memory                   - Y OK
   LDA #0
   STA Acc0
   STA Acc2
@@ -954,122 +958,41 @@ uc_prfr:         ; print free memory                   - Y OK
   SEC
   SBC BasePage
   STA Acc1
-  JSR num_print  ; from Acc (uses A,X)
+  JSR num_print    ; from Acc (uses A,X)
   JMP ram_disp
 
-uc_rdln:         ; read an input line ()               - Y SAVE/REST
-  STY D          ; [3] XXX
-  JSR readline   ; uses A,X,Y,B,C -> Ptr, Y=length (EQ if zero)
-  LDY D          ; [3] XXX
+uc_rdln:           ; read an input line ()               - Y SAVE/REST
+  STY D            ; [3] XXX
+  JSR readline     ; uses A,X,Y,B,C -> Ptr, Y=length (EQ if zero)
+  LDY D            ; [3] XXX
   JMP ram_disp
 
-uc_jmp:          ; jump to a uCode address (uAddr)     - Y OK
-  LDA uCode,Y    ; fetch ZP address
-uc_jmp_ex:
-  TAY            ; set uCode offset in Y
-  JMP ram_disp
-
-uc_eqCE:           ; jump if C != E
-  LDA C
-  CMP E
-  BNE uc_jmp       ; -> do the jump
-  BEQ uc_nojmp     ; -> no jump
-
-uc_isch:         ; tokenize - jump if is character
-  LDA uCode,Y    ; fetch character
-  INY
-  LDX #0         ; [2] X=0
-  CMP (Ptr,X)    ; [6] compare next input char
-  BNE uc_nojmp   ; [2] -> no match, don't jump
-  INC Ptr        ; [5] consume input
-  BNE uc_jmp     ; [2] -> do the jump
-
-uc_skipsp:       ; tokenize - skip spaces ()           - Y OK
-  LDX #0         ; [2] X=0
-@loop:
-  LDA (Ptr,X)    ; [6] next input char
-  INC Ptr        ; [5] advance (assume match)
-  CMP #32        ; [2] was it space?
-  BEQ @loop      ; [2] -> loop [+1]
-  DEC Ptr        ; [2] undo advance (didn't match)
-uc_done:
-  JMP ram_disp   ; [3]
-
-uc_isalpha:      ; tokenize - jump if NOT alpha (uAddr)    - Y OK     (XXX always related to keyword match?)
-  LDX #0         ; [2] X=0
-  LDA (Ptr,X)    ; [6] next input char
-  AND #$DF       ; [2] lower -> upper (clear bit 5) detect alpha char
-  SEC            ; [2] for subtract
-  SBC #65        ; [2] make 'A' be 0
-  CMP #26        ; [2] 26 letters (CS if >= 26)
-  TAX            ; [2] X = letter index (for uc_azkw)
-  BCS uc_jmp     ; [2] -> not alpha, do the jump
-uc_nojmp:
-  INY            ; [2] skip the address
-  BCC uc_done    ; [2] -> ram_disp
-
-uc_stmtkw:         ; (uAddr) MUST follow uc_isalpha (sets X = letter index)
-  LDA stmt_idx,X   ; letter index into stmt_page (A-Z)
-  LDX #>stmt_page  ; stmt table page
-uc_kws:
-  JSR match_kws    ; XA=table -> CS=found, A=high-byte (uses A,X,B,Src)
-  BCC uc_jmp       ; -> no match, do the jump
-  INY              ; skip the address
-  ORA #$C0         ; fix top bits (match_kws uses top 2 bits)
-  JSR tok_emit     ; output token with top-bit set (uses X; preserves A,Y; sets NE)
-  AND #63          ; [2] low 6 bits
-  STA C            ; [3] save keyword index (for uc_disp)
+; XXX
+uc_tabcmp:         ; tokenize - table compare ()         - Y SAVE/REST
   JMP ram_disp     ; [3]
 
-uc_exprkw:         ; (uAddr) MUST follow uc_isalpha (sets X = letter index)
-  LDA expr_idx,X   ; letter index into expr_page (A-Z)
-  LDX #>expr_page  ; expr table page
-  BNE uc_kws       ; -> do lookup
-
-uc_disp:           ; (dtOfs) dispatch using result of (from uc_kws)
-  LDA uCode,Y      ; fetch Dispatch Table address
-  INY
-  CLC
-  ADC C            ; add keyword index (from uc_kws)
-  TAX              ; address to X
-  LDA dt_page,X    ; get table entry, ROM page 0 (see stmt_dt)
-  BNE uc_jmp_ex    ; -> do the jump
-
-uc_expect:         ; expect character (or set C; jump to ue_expect)
-  LDA uCode,Y      ; fetch character
-  INY
-  LDX #0           ; [2] X=0
-  CMP (Ptr,X)      ; [6] compare next input char
-  BEQ uc_done      ; [2] -> matched, done
-  LDY #<ue_expect  ; [2] hard-coded jump destination (NE)
-  BNE uc_jmp_ex    ; [2] -> do the jump
-
-uc_tabcmp:       ; tokenize - table compare ()         - Y SAVE/REST
-  JMP ram_disp   ; [3]
-
+; XXX
 uc_call:
   JMP ram_disp     ; [3]
 
+; XXX
 uc_ret:
   JMP ram_disp     ; [3]
 
+; XXX
 uc_dbz:            ; decrement branch if zero
   JMP ram_disp     ; [3]
 
+; XXX
 uc_cmpz:           ; (zpReg, byte, jmp_eq) jump if equal
   JMP ram_disp     ; [3]
 
-uc_prnext:         ; wrchr the next input character
-  LDX #0           ; [2] X=0
-  LDA (Ptr,X)      ; [6] compare next input char
-  JSR wrchr        ; print the char
-  JMP ram_disp     ; [3]
-
+; XXX
 uc_var:            ; recogise and emit VAR name; type -> C
   JMP ram_disp     ; [3]
 
 uc_emit:
-  LDA uCode,Y      ; fetch byte
+  LDA (CODE),Y     ; fetch byte to emit
   INY
   JSR tok_emit     ; output token with top-bit set (uses X; preserves A,Y; sets NE)
   BNE uc_done      ; -> ram_disp
@@ -1079,29 +1002,142 @@ uc_ploc:           ; save patch location (for uc_plen)
   STX EmitPtch     ; [3]
   JMP ram_disp     ; [3]
 
-uc_u8:             ; (N) parse and emit small integer < N
-;  JMP ram_disp     ; [3]
-
 uc_plen:           ; patch length at ploc
-;  JMP ram_disp     ; [3]
+;  JMP ram_disp    ; [3]
 
 uc_popc:           ; (byte) patch opcode with replacement byte
-;  JMP ram_disp     ; [3]
+;  JMP ram_disp    ; [3]
+
+uc_u8:             ; (N) parse and emit small integer < N
+;  JMP ram_disp    ; [3]
 
 uc_reqkw:          ; (kwt_*, jmp_not) match a keyword
-;  JMP ram_disp     ; [3]
+;  JMP ram_disp    ; [3]
 
 uc_u16:            ; (jmp_not) parse and emit a u16  (XXX maybe defer emit, see usyn_if)
-;  JMP ram_disp     ; [3]
+;  JMP ram_disp    ; [3]
 
 uc_copyln:         ; copy rest of line -> emit
-;  JMP ram_disp     ; [3]
+;  JMP ram_disp    ; [3]
+
+
+uc_skipsp:         ; tokenize - skip spaces ()           - Y OK
+  LDX #0           ; [2] X=0
+@loop:
+  LDA (Ptr,X)      ; [6] next input char
+  INC Ptr          ; [5] advance (assume match)
+  CMP #32          ; [2] was it space?
+  BEQ @loop        ; [2] -> loop [+1]
+  DEC Ptr          ; [2] undo advance (didn't match)
+uc_done:
+  JMP ram_disp     ; [3]
+
+uc_disp:           ; (dtOfs) dispatch using result of (from uc_kwidx)
+  LDA (CODE),Y     ; fetch Dispatch Table address
+  INY
+  CLC
+  ADC C            ; add keyword index (from uc_kwidx)
+  TAX              ; address to X
+  LDA dt_page,X    ; get table entry, ROM page 0 (see stmt_dt)
+  BNE uc_jmp_ex    ; -> do the jump
+
+uc_expect:         ; expect character (or set C; jump to ue_expect)
+  LDA (CODE),Y     ; fetch character
+  INY
+  LDX #0           ; [2] X=0
+  CMP (Ptr,X)      ; [6] compare next input char
+  BEQ uc_done      ; [2] -> matched, done
+  LDY #<ue_expect  ; [2] hard-coded jump destination (NE)
+  BNE uc_jmp_ex    ; [2] -> do the jump
+
+uc_jmp:            ; jump to a uCode address (uAddr)     - Y OK
+  LDA (CODE),Y     ; fetch ZP address
+uc_jmp_ex:
+  TAY              ; set uCode offset in Y
+  JMP ram_disp
+
+uc_eqCE:           ; jump if C != E
+  LDA C
+  CMP E
+  BNE uc_jmp       ; -> do the jump
+  BEQ uc_nojmp     ; -> no jump
+
+uc_isch:           ; tokenize - jump if is character
+  LDA (CODE),Y     ; fetch character
+  INY
+  LDX #0           ; [2] X=0
+  CMP (Ptr,X)      ; [6] compare next input char
+  BNE uc_nojmp     ; [2] -> no match, don't jump
+  INC Ptr          ; [5] consume input
+  BNE uc_jmp       ; [2] -> do the jump
+
+uc_isalpha:        ; tokenize - jump if NOT alpha (uAddr)    - Y OK     (XXX always related to keyword match?)
+  LDX #0           ; [2] X=0
+  LDA (Ptr,X)      ; [6] next input char
+  AND #$DF         ; [2] lower -> upper (clear bit 5) detect alpha char
+  SEC              ; [2] for subtract
+  SBC #65          ; [2] make 'A' be 0
+  CMP #26          ; [2] 26 letters (CS if >= 26)
+  TAX              ; [2] save X = letter index (for uc_findkw)
+  BCS uc_jmp       ; [2] -> not alpha, do the jump
+uc_nojmp:
+  INY              ; [2] skip the address
+  BCC uc_done      ; [2] -> ram_disp
+
+; find a matching keyword (linear table scan)
+uc_kwtab:          ; (tabPg,uAddr) (9b)
+  LDX #0           ; letter index always zero
+  ; +++ fall through to @@ uc_kwidx +++
+
+; find a matching keyword (using X = letter index from uc_isalpha)
+uc_kwidx:          ; (tabPg,uAddr)
+  LDA (CODE),Y     ; fetch page number
+  INY              ; [2]
+  STA SrcH         ; [3] set page
+  LDA #0           ; [2]
+  STA Src          ; [3] set page offset
+  LDA (Src),X      ; [5] letter index into keyword page (A-Z)  [XXX no this won't work]
+  STA Src          ; set page offset
+; find matching keyword, terminated by a byte with top-bit set (8x,9x,Ax,Bx)
+; if no match, continue until bit 6 is set (Cx,Dx,Ex,Fx)
+; Src=table Ptr=input -> CF=found, Y=ofs, A=high-byte
+  LDA Ptr          ; [3] get input Ptr
+  STA B            ; [3] save it
+@next_kw:
+  LDX #0           ; [2] const X=0
+  DEC Ptr          ; [2] set up for pre-increment
+  DEC Src          ; [2] set up for pre-increment
+@match_lp:
+  INC Ptr          ; [2] pre-increment input position
+  INC Src          ; [5] pre-increment table offset
+  LDA (Src,X)      ; [6] next table char
+  CMP (Ptr,X)      ; [4] does it match input?
+  BEQ @match_lp    ; [2] -> yes, next char [+1]
+  BPL @not_found   ; [2] -> did not match keyword (top bit clear) [+1]
+  INY              ; [2] skip uAddr arg
+  ORA #$C0         ; [2] fix top bits (match_kws uses top 2 bits)
+  JSR tok_emit     ; [6] output token with top-bit set (uses X; preserves A,Y; sets NE)
+  AND #63          ; [2] low 6 bits
+  STA C            ; [3] save keyword index (for uc_disp)
+  JMP ram_disp     ; [3]
+@not_found:        ; skip rest of keyword (find top-bit)
+  INC Src          ; [5] pre-increment table offset
+  LDA (Src,X)      ; [6] check table byte
+  BPL @not_found   ; [2] -> top bit clear, keep going [+1]
+  INC Src          ; [5] adance past top-bit byte
+  LDX B            ; [3] get saved input Ptr
+  STX Ptr          ; [3] restore original input Ptr
+  ASL              ; [2] shift left top-bit byte
+  BPL @next_kw     ; [2] -> bit 6 clear, try next keyword [+1]
+  BMI uc_jmp       ; [2] -> no match, do the jump [+1]
+
+
 
 ; ------------------------------------------------------------------------------
-; Dispatch Tables
+; PAGE 5 - Dispatch Tables
 
-ORG $F500
-dt_page:
+dt_page = $F500
+ORG $F520
 
 ; LET <var> '=' <expr>                                   -> {LETn|LETs|LETa}<var><expr> (x2?)
 ; DIM <var> '(' <expr> ')'                               -> {DIM}<var><expr_n>
@@ -1218,61 +1254,6 @@ escape:       ; A = msg address low
   JMP repl
 
 
-
-; @@ match_kws
-; find matching keyword, terminated by a byte with top-bit set (8x,9x,Ax,Bx)
-; if no match, continue until bit 6 is set (Cx,Dx,Ex,Fx)
-match_kws:       ; Ptr=input XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,Src)
-  STA Src        ; [3] table-low
-  STX SrcH       ; [3] table-high
-  LDA Ptr        ; [3] get input Ptr
-  STA B          ; [3] save it
-@next_kw:
-  LDX #0         ; [2] const X=0
-  DEC Ptr        ; [2] set up for pre-increment
-  DEC Src        ; [2] set up for pre-increment
-@match_lp:
-  INC Ptr        ; [2] pre-increment input position
-  INC Src        ; [5] pre-increment keyword position
-  LDA (Src,X)    ; [6] next keyword char
-  CMP (Ptr,X)    ; [4] does it match input?
-  BEQ @match_lp  ; [2] -> yes, next char [+1]
-  BPL @not_found ; [2] -> did not match keyword (top bit clear) [+1]
-  SEC            ; [2] set carry: keyword was found
-  RTS            ; [6] X = next-character A=hi-byte (top bit set)
-; no match, skip rest of keyword (find top-bit)
-@not_found:
-  INC Src        ; [5] pre-increment keyword position
-  LDA (Src,X)    ; [6] check keyword char
-  BPL @not_found ; [2] -> top bit clear, keep going [+1]
-  INC Src        ; [5] adance past top-bit byte
-  LDX B          ; [3] get saved Ptr
-  STX Ptr        ; [3] restore original Ptr
-  ASL            ; [2] shift left top-bit byte
-  BPL @next_kw   ; [2] -> bit 6 clear, try next keyword [+1]
-  CLC            ; [2] no match found
-  RTS            ; [6] Ptr = start of input
-
-
-
-; ------------------------------------------------------------------------------
-; BASIC LIST
-
-DB "LIST"
-
-; @@ printkw
-; Print a keyword directly from a Keyword Table
-printkw:          ; 13 bytes
-  LDA kwtab,Y     ; [4] first char
-@loop:
-  JSR wrchr       ; [6] print char (A=char, uses A,X)
-  INY             ; [2] advance
-  LDA kwtab,Y     ; [4] load next char
-  BPL @loop       ; [3] until top-bit is set
-  RTS             ; [6] done
-
-
-
 ; ------------------------------------------------------------------------------
 ; REPL Commands
 
@@ -1373,6 +1354,17 @@ cmd_old:
   ; XX walk old program and verify valid lines
   RTS
 
+
+; @@ printkw
+; Print a keyword directly from a Keyword Table
+printkw:          ; 13 bytes
+  LDA kwtab,Y     ; [4] first char
+@loop:
+  JSR wrchr       ; [6] print char (A=char, uses A,X)
+  INY             ; [2] advance
+  LDA kwtab,Y     ; [4] load next char
+  BPL @loop       ; [3] until top-bit is set
+  RTS             ; [6] done
 
 
 ; ------------------------------------------------------------------------------
@@ -2528,7 +2520,24 @@ gfx_line:          ; uses (A,X,Y)
 
 ; ------------------------------------------------------------------------------
 ; PAGE C - SYSTEM
-ORG $FC90
+ORG $FC00
+repl_page:
+  DB <repl_tab    ; index zero (uc_kwtab)
+
+; REPL command list
+; matches repl_fn table
+repl_len = 8
+repl_tab:
+  DB "LIST",   $80 +$40
+  DB "RUN",    $81 +$40
+  DB "ART",    $82 +$40
+  DB "SAVE",   $83 +$40
+  DB "AUTO",   $84 +$40
+  DB "DEL",    $85 +$40
+  DB "NEW",    $86 +$40
+  DB "OLD",    $87 +0   ; no $40 terminates list
+
+
 
 ; @@ key_scan     (107b code; 254b for all KB stuff!)
 ; scan the keyboard matrix for a keypress
@@ -2674,8 +2683,6 @@ readchar:        ; uses A,X,Y returns ASCII or zero
 
 ; ------------------------------------------------------------------------------
 ; PRINT, WRCHR, WRCTL, NEWLINE
-
-DB "PR"
 
 ; @@ printmsgln
 ; println a string in the messages page
@@ -2866,8 +2873,6 @@ wrctl:           ; (uses A,X,F,Src,Dst) preserves Y
 ; ------------------------------------------------------------------------------
 ; READLINE, LINE EDITOR
 
-DB "RD"
-
 ; Arrows move within the line; insert or delete text within the line.
 ; TAB calls up an existing line in edit mode.
 
@@ -2940,8 +2945,6 @@ readline:         ; uses A,X,Y,B,C -> Ptr, Y=length (EQ if zero)
 
 ; ------------------------------------------------------------------------------
 ; MODE, CLS, TAB, text_addr_xy
-
-DB "MO"
 
 ; @@ vid_mode
 ; mode 0 is text mode 32 x 24
@@ -3054,7 +3057,6 @@ txt_fill:          ; fill with A
   BPL @loop        ; -> until Y=-1
   RTS
 
-DB "CP"
 
 ; @@ mcopy
 ; copy memory from (Src) to (Dst) with XY=size                (17b)    [17+31+37 = 85]
@@ -3130,8 +3132,6 @@ mcopyb:                  ; uses (A,X,Y,F,Src,Dst)
 
 ; ------------------------------------------------------------------------------
 ; PAGE
-
-DB "ISR"
 
 cur_toggle:       ; toggle cursor
   BIT CurVis      ; [3] is cursor visible?
