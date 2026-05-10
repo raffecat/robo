@@ -246,9 +246,9 @@ reset:
 basic:
   CLD              ; disable BCD mode (for re-entry)
   JSR irq_init     ; init IRQ vector, init keyboard, enable IRQ
-repl:              ; <- entry point after parse error
   LDY #<msg_ready
   JSR printmsgln   ; (uses A,B,C,D,X,Y,Src,Dst)
+repl:              ; <- entry point after parse error
 basic_e1:          ; <- entry point after Escape
   LDX #$FF         ; reset stack on entry (e.g. from Escape) [for overflow detect]
   TXS              ; stack init
@@ -259,6 +259,7 @@ basic_e1:          ; <- entry point after Escape
   ; parse the command
   LDY #0           ; [2] input offset
   JSR skip_spc     ; [24+] Y=ofs -> Y, A=next-char (uses A,X)
+  CMP #0           ; [2] end of line? (must CMP)
   BEQ repl         ; [2] -> empty line, go back to repl [+1]
   JSR num_u16      ; [6] parse number at Y -> Y,Acc,NE=found (uses A,B,X)
   BNE @haveline    ; [2] -> found line number [+1]
@@ -268,19 +269,19 @@ basic_e1:          ; <- entry point after Escape
   LDA #<repl_tab   ; [2] repl commands low byte
   JSR match_kws    ; [6] Y=ofs AX=table -> CF=found, Y=ofs, A=high-byte (uses A,X,Y,B,C,D,Src)
   BCC @direct      ; [3] -> no match, parse direct
-  AND #7           ; [2] isolate low 3 bits
   JSR @docmd       ; [6] run the command
   JMP repl         ; [3] -> back to repl
 
   ; jump to the REPL command (slow, but saves space)
 @docmd:
-  ASL              ; [2] times 2 (word index)   (XXX use two tables to remove this)
-  TAY              ; [2] as index
-  LDA repl_fn+1,Y  ; [4] repl function, high byte   (XXX use single page, LDA #n)
-  PHA              ; [3] push high
-  LDA repl_fn,Y    ; [4] repl function, low byte
-  PHA              ; [3] push low
-  RTS              ; [6] "return" to the REPL command
+  AND #7            ; [2] isolate low 3 bits
+  ASL               ; [2] times 2 (word index)
+  TAX               ; [2] as index
+  LDA repl_cmd+1,X  ; [4] repl function, high byte   (XXX use single page, LDA #n)
+  PHA               ; [3] push high
+  LDA repl_cmd,X    ; [4] repl function, low byte
+  PHA               ; [3] push low
+  RTS               ; [6] "return" to the REPL command
 
   ; tokenize and evaluate direct BASIC statements
 @direct:
@@ -374,16 +375,15 @@ tok_stmts:
   INY                ; pre-increment (for ':' BEQ)
   JSR skip_spc       ; Y=ofs -> Y, A=next-char (uses X)
   JSR is_alpha       ; Y=ofs -> Y, A=az-index, CC=alpha
-  BCS tok_syn        ; -> no STMT or VAR
+  BCS tok_syn        ; -> non-alpha
   TAX                ; A-Z as index (0-25)
   LDA stmt_idx,X     ; offset in stmt_page (A-Z)
   LDX #>stmt_page    ; stmt table page
   JSR match_kws      ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,Y,B,C,D,Src)
   BCC tok_var        ; -> no match, must be VAR (use LET handler)
+  ORA #$C0           ; set top bits (match_kws uses d7,d6)
   JSR tok_emit       ; output token with top-bit set (uses X=0; preserves A,Y; sets NE)
-  AND #$63           ; low 6 bits, statement index
-  CMP #stmt_count    ; ASSERT: is it < stmt_count
-  BCS tok_syn        ; ASSERT: -> out of bounds
+  AND #$31           ; low 5 bits, statement index
   TAX                ; as statement index               (syn_jmp indirect)(+8b)
   LDA syn_tab,X      ; syn_tab byte for this statement  (syn_jmp indirect)
   STA D              ; save syn_tab byte (for handler)  (syn_jmp indirect)
@@ -396,7 +396,6 @@ tok_stmts:
   RTS                ; "return" to the syntax handler
 
 skip_spc:          ; tokenize - skip spaces ()           - Y OK
-  LDX #0           ; [2] X=0
 @loop:
   LDA LineBuf,Y    ; [4] next input char
   INY              ; [2] advance input (assume match)
@@ -732,11 +731,9 @@ syn_var:         ; expect and emit <name>[$] -> CS=str
 
 ORG $F300
 messages:        ; must be within one page for Y indexing
-repl_page:
-  DB <repl_tab    ; index zero (uc_kwtab)
 
 ; REPL command list
-; matches repl_fn table
+; matches repl_cmd table
 repl_tab:
   DB "LIST",   $80 +$40
   DB "RUN",    $81 +$40
@@ -755,9 +752,8 @@ msg_boot:    ; red orange yellow green cyan
 ; DB $91,$99,$92,$9A,$93,$9B,$94, $9C, $95,$9D,$96,$9E,$97,$98,$9F, $90,13,13
   DB "Pixie BASIC 1.0",13
 msg_freemem:
-  DB 13+17
-  DB " bytes free",13,13
-  DB "Type ART to draw",13
+  DB 12
+  DB " bytes free",13
 msg_ready:
   DB 5,"READY"
 msg_searching:
@@ -1659,7 +1655,7 @@ DB "REPL"
 
 ; matches repl_tab entries in the same order
 ; no special alignment requirements
-repl_fn:             ; 8 entries
+repl_cmd:            ; 8 entries
   DW cmd_list     -1 ;
   DW cmd_run      -1 ;
   DW cmd_art      -1 ;
@@ -1699,11 +1695,16 @@ cmd_clear:          ; clear all variables (uses A,X preserves Y)  10 bytes
   STA VarPtrs,X     ; clear pointer
   DEX
   BPL @lp
+  ; reset free space
+  LDA TopPtr
+  STA FreePtr
+  LDA TopPtrH
+  STA FreePtrH
   RTS
 
 cmd_art:            ; 29 bytes
   LDA #0            ; text mode
-  JSR vid_mode
+  JSR vid_mode      ; and clear screen
   LDY #<msg_art
   JSR printmsg
   JSR txt_home
@@ -1713,7 +1714,7 @@ cmd_art:            ; 29 bytes
   JSR readchar      ; get char from keyboard
   BEQ @loop         ; -> no char
   JSR wrchr         ; print it, or do control code
-  RTS
+  JMP @loop         ; -> more
 @esc:
   JMP escape
 
