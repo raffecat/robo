@@ -46,7 +46,7 @@ uint16_t vdp_hcount = 0; // 8-bit horizontal count
 uint16_t vdp_vcount = 0; // 9-bit vertical line count (visible to ula.c)
 uint8_t vdp_hborder = 1;  // 1-bit latch (visible to ula.c)
 uint8_t vdp_hblank = 0;  // 1-bit latch
-uint8_t vdp_hpalen = 0;  // 1-bit latch (apply C0 control codes)
+uint8_t vdp_hc1en = 0;  // 1-bit latch (apply C1 control codes)
 uint8_t vdp_vborder = 0;  // 1-bit latch
 uint8_t vdp_vblank = 0;  // 1-bit latch (visible to ula.c)
 
@@ -205,7 +205,7 @@ void advance_vdp() {
         // latch C1 color codes into VidPal in parallel (delay: 0px)
         // MUST happen on the first pixel (vdp_hsub == 0)
         // MUST happen on the first visible character cell (not prior)
-        if (vdp_hpalen && vdp_hsub == 0) {
+        if (vdp_hc1en && vdp_hsub == 0) {
             if ((vdp_latch & 0xF0) == 0x80) VidPal = (VidPal & 0xF0) | (vdp_latch & 0x0F); // FG
             if ((vdp_latch & 0xF0) == 0x90) VidPal = (VidPal & 0x0F) | ((vdp_latch & 0x0F) << 4); // BG
         }
@@ -219,19 +219,20 @@ void advance_vdp() {
         }
 
         // Clock in the new HCount, VCount, and decodes.
-        // NTSC Horz: 128 + 31 + 6 + 16 + 2 + 10 + 4 + 31 = 228 (x2 for pixels)
+        // NTSC Horz: 4 + 128 + 28 + 8 + 16 + 2+10+4 + 28 = 228 (color clocks)
+        // NTSC Horz: 1 + 32 + 7 + 2 + 4 + 4 + 7 = 57 (text cells)
         // [0][1][2][3][4][5][6][7][8][-]
         // [/][0][1][2][3][4][5][6][7][8]
         // how does +2 cause the 1st pixel to appear at the right side?
         if (vdp_hcount == 4) {   // MUST enable before first vdp_hcount%8==0
-            vdp_hpalen = 1;      // start iterpreting color control codes (vdp_hcount=8)
+            vdp_hc1en = 1;       // start iterpreting color control codes (vdp_hcount=8)
         }
         if (vdp_hcount == fb_hdelay) {
             vdp_hborder = 0;     // turn off border (at 8+1=9)
         }
         if (vdp_hcount == fb_hdelay+fb_viswidth) {
             vdp_hborder = 1;     // turn on border (after 33 characters) (at 8+256+1 = 265)
-            vdp_hpalen = 0;      // stop processing color codes (allow CPU to set palette)
+            vdp_hc1en = 0;       // stop processing color codes (allow CPU to set palette)
             VidPal = 0x0F;       // reset VidPal latch for each line (Black BG, White FG)
         }
         if (vdp_hcount == fb_hdelay+fb_viswidth+fb_hrightbord) {

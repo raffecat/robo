@@ -20,7 +20,7 @@ def AngSatToIQ(ang,sat):
     return (I,Q)
 
 def DelayToAng(ns):
-    ang = 180 + 33 + (360 * 315/88 * ns * 10**-3)
+    ang = 180 + (1.2886363636363 * ns) # 360 * Colorburst / 1000 = 1.2886363636363
     return ang % 360
 
 LO = 0.65
@@ -30,22 +30,22 @@ Sat = 0.8
 HI = 0.5
 SatHi = 0.3
 
-Tune = 3
+Tune = 23+6  # 23ns = 30° + 6ns adjust
 
 # Y, ns (0-279), sat
 colors = [
-    (0.0,  0,   0),     # black            90
-    (1.0,  45,  0.68),  # magenta          91
-    (0.68, 120, 0.68),  # red (+30)        92•
-    (0.68, 135, 0.68),  # orange           93•
-    (0.68, 180, 0.68),  # yellow           94•
-    (0.68, 225, 0.68),  # green            95•
-    (0.68, 270, 0.68),  # cyan             96
-    (0.68, 300, 0.68),  # blue             97
+    (0.0,  0,   0),     # black        180° + 33° + 0ns = 30°  (no color component)
+    (1.0,  45,  0.68),  # magenta      180° + 33° + 45ns = 275°
+    (0.68, 120, 0.68),  # red (+30)    180° + 33° + 120ns = 12°
+    (0.68, 135, 0.68),  # orange       180° + 33° + 135ns = 31°
+    (0.68, 180, 0.68),  # yellow       180° + 33° + 180ns = 89°
+    (0.68, 225, 0.68),  # green        180° + 33° + 225ns = 147°
+    (0.68, 270, 0.68),  # cyan         180° + 33° + 270ns = 205°
+    (0.68, 300, 0.68),  # blue         180° + 33° + 300ns = 244°
 
-    (0.47, 0,   0),     # grey             98
-    (0.47, 45,  0.22),  # dark purple      99
-    (0.47, 120, 0.22),  # dark red         9A
+    (0.47, 0,   0),     # grey         180° + 33° + ? = 216° ??
+    (0.47, 45,  0.22),  # dark purple  180° + 33° + ? = 274° ??
+    (0.47, 120, 0.22),  # dark red     180° + 33° + 
     (0.47, 135, 0.22),  # brown            9B
     (0.47, 180, 0.22),  # olive            9C
     (0.47, 225, 0.22),  # mint             9D
@@ -67,7 +67,7 @@ colors = [
 
 for (Y,ns,sat) in colors:
     ang = DelayToAng(ns + Tune)
-    # print("ang",ang)
+    print("col at ",ns,"is ang",ang)
     I,Q = AngSatToIQ(ang,sat)
     # print("ang",ang,"sat",sat,"I",I,"Q",Q)
     R,G,B = YIQtoRGB(Y,I,Q)

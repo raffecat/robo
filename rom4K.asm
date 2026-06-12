@@ -31,9 +31,12 @@
 ROM      = $F000  ; 4K = $1000 from F000-FFFF
 VEC      = $FFFA  ; vector table, 6 bytes
 
+; ------------------------------------------------------------------------------
+; Address Space
+
 ZeroPg   = $0000  ; zero page
 StackPg  = $0100  ; stack page
-ScreenPg = $0200  ; start of screen memory
+ScreenPg = $0200  ; screen memory (3/6/12/24 pages)
 Base4K   = $0500  ; start of free memory
 End4K    = $1000  ; end of memory
 
@@ -150,17 +153,18 @@ IRQTmp2  = $E9    ; Temp for IRQ handler #2
 NmiVec   = $EA    ; NMI vector in RAM {JMP,Low,High} (for ROM override)
 IrqVec   = $ED    ; IRQ vector in RAM {JMP,Low,High} (for ROM override)
 
-; -- $F0-FF  IO Registers
+; -- $F0-FF  IO Area
 
-; F0-F7 free (8)
+; F0-F3 Accessory Registers (Expansion slot 3)
+; F4-F7 Disk Controller Registers (Expansion slot 4)
 
-; F9-FA IO space free (3 registers)
-
-IO_PSGF  = $FB    ; PSG frequency (7860 Hz / divider)
-IO_KEYB  = $FC    ; Keyboard scan (write: set row; read: scan column)
-IO_VLIN  = $FD    ; current vertical line (>= 192 in vborder/vblank) (write: ack INT)
-IO_VPAL  = $FE    ; palette for APA (7-4:BG 3-0:FG)
-IO_VCTL  = $FF    ; video mode (7-4:border 1:Grey 0:APA)
+; F9-FF IO Registers
+IO_PSGF  = $FA    ; PSG frequency (7860 Hz / divider)
+IO_KEYB  = $FB    ; Keyboard scan (write: 2-0:KBRow; read: KBColumn)
+IO_VLIN  = $FC    ; vertical line count (>= 192 in vborder/vblank) (write: IRQ Ack 7:VSync 6:VRow 5:KBInt)
+IO_VPL1  = $FD    ; palette for APA (7-4:BG 3-0:FG)
+IO_VPL2  = $FE    ; palette for APA (7-4:C2 3-0:C3)
+IO_VCTL  = $FF    ; video mode (7:VSync 6:VRow 5:Blank 4:Grey 3:Bpp 2:Text 1:VRes 0:HRes)
 
 
 ; ------------------------------------------------------------------------------
@@ -763,6 +767,12 @@ msg_loading:
 msg_art:
   DB 11+4+44
   DB "Pixie ART ",$1C,$1D,$1E,$1F," to move, GRA+key to draw, COL+key for color"
+msg_play:
+  DB 18
+  DB "Press PLAY on TAPE"
+msg_stop:
+  DB 18
+  DB "Press STOP on TAPE"
 
 ; ~64 bytes error messages
 msg_exp:  DB 7,"Expect "
@@ -3346,7 +3356,7 @@ vid_mode:        ; set screen mode, A=mode (uses A,X,Y,F)
   AND #1         ; modes 0-1
   STA IO_VCTL    ; set video mode; reset border color
   LDA #$0F       ; BG=black FG=white (for APA mode)
-  STA IO_VPAL    ; set palette
+  STA IO_VPL1    ; set palette
   LDA #0
   STA WinT       ; reset text window top
   LDA #24        ;

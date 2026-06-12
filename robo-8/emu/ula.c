@@ -3,10 +3,11 @@
 
 enum io_reg {
     IO_VCTL    = 0xFF,   // video control          (4:Width 3:Height 2:Grey 1:APA 0:Color)
-    IO_VPAL    = 0xFE,   // palette register       (7-6:Border 5-3:BG 2-0:FG)
-    IO_VLIN    = 0xFD,   // current video line     (read: V-counter)
-    IO_KEYB    = 0xFC,   // Keyboard scan          (write: set row; read: scan column)
-    IO_PSGF    = 0xFB,   // PSG Frequency          (write: set PSG divider)
+    IO_VPL2    = 0xFE,   // palette register       (7-4:C2 3-0:C3)
+    IO_VPL1    = 0xFD,   // palette register       (7-4:BG 3-0:FG)
+    IO_VLIN    = 0xFC,   // current video line     (read: V-counter)
+    IO_KEYB    = 0xFB,   // Keyboard scan          (write: set row; read: scan column)
+    IO_PSGF    = 0xFA,   // PSG Frequency          (write: set PSG divider)
 };
 
 uint8_t OpenBus[8*1024] = { 0xEE };
@@ -54,7 +55,7 @@ static uint8_t ula_io_read(uint16_t address) {
         case IO_VCTL:       // $F8: (4:Width 3:Height 2:Grey 1:APA 0:Color)
             value = VidCtl;
             break;
-        case IO_VPAL:       // $F9: (7-6:Border 5-3:BG 2-0:FG)
+        case IO_VPL1:       // $F9: (7-6:Border 5-3:BG 2-0:FG)
             value = VidPal;
             break;
         case IO_VLIN:       // $FA: (0-191 are visible lines)
@@ -84,7 +85,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
         case IO_VCTL:       // $F8: (4:Width 3:Height 2:Grey 1:APA 0:Color)
             VidCtl = value;
             break;
-        case IO_VPAL:       // $F9: (7-6:Border 5-3:BG 2-0:FG)
+        case IO_VPL1:       // $F9: (7-6:Border 5-3:BG 2-0:FG)
             VidPal = value;
             break;
         case IO_VLIN:       // $FA: current Y-line (write: acknowledge interrupt)
