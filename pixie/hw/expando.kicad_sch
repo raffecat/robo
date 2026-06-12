@@ -1,0 +1,61 @@
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "a77cbb37-7685-4870-8556-a8e8abbf5bc6")
+	(paper "A3")
+	(title_block
+		(title "Expansion Module (External)")
+		(rev "1")
+		(company "Frontier Research")
+	)
+	(lib_symbols)
+	(global_label "A[0..15]"
+		(shape input)
+		(at 53.34 101.6 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "93178eed-9b48-412c-b39f-59f8047b9a2f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 42.7347 101.6 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+	)
+	(global_label "A0"
+		(shape input)
+		(at 52.07 113.03 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "caf924c4-9b61-459b-97da-1043f5e4ddeb")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 46.7867 113.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+	)
+)
