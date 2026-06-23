@@ -15,10 +15,10 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "CBC-4",
-            "program": "${workspaceFolder}/robo-8/emu/cbc",
+            "name": "Chroma-4",
+            "program": "${workspaceFolder}/robo-8/emu/emu4",
             "args": [],
-            "preLaunchTask": "build_cbc"
+            "preLaunchTask": "build_chroma"
         }
     ]
 }

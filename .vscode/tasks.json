@@ -30,7 +30,7 @@
 		},
 		{
 			"type": "process",
-			"label": "build_cbc",
+			"label": "build_chroma",
 			"command": "./make_emu4",
 			"args": [],
 			"group": "build",

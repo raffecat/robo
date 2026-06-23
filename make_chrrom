@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+asm6 font/font.asm font2K.bin

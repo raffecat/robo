@@ -212,15 +212,13 @@ reset:
   CLD             ; disable BCD mode
   LDX #$FF        ; reset stack
   TXS             ; stack init
-  LDX #1          ; #1 for cursor reset
-  STX CurTime     ; show on the next frame
-  DEX             ; screen mode 0 (32x24 text, 16 color)
+  INX             ; screen mode 0 (text)
   JSR vid_mode    ; set mode, clear screen
   LDY #<msg_boot
   JSR printmsgln  ; (uses A,B,C,D,X,Y,Src,Dst)
 
   ; detect memory installed
-  ; XX scan memmap
+  ; XXX scan memory
   LDA #>End4K      ; page
   STA EndPage      ; set end of memory (will be dynamic)
   LDA #>Base4K     ; page
@@ -734,39 +732,27 @@ syn_var:         ; expect and emit <name>[$] -> CS=str
 ; PAGE 3 - Messages
 
 ORG $F300
-messages:        ; must be within one page for Y indexing
-
-; REPL command list
-; matches repl_cmd table
-repl_tab:
-  DB "LIST",   $80 +$40
-  DB "RUN",    $81 +$40
-  DB "ART",    $82 +$40
-  DB "SAVE",   $83 +$40
-  DB "AUTO",   $84 +$40
-  DB "DEL",    $85 +$40
-  DB "NEW",    $86 +$40
-  DB "OLD",    $87 +0   ; no $40 terminates list
+messages:    ; must be within one page for Y indexing
 
 msg_boot:    ; red orange yellow green cyan
-  DB 8+16
+  DB 8+19
   DB $92,$93,$94,$95,$96,$90,13,13
-; DB 18+16
+; DB 18+19
 ; DB $91,$92,$93,$94,$95,$96,$97, $98, $99,$9A,$9B,$9C,$9D,$9E,$9F, $90,13,13
 ; DB $91,$99,$92,$9A,$93,$9B,$94, $9C, $95,$9D,$96,$9E,$97,$98,$9F, $90,13,13
-  DB "Pixie BASIC 1.0",13
+  DB "Frontier BASIC 1.0",13
 msg_freemem:
   DB 12
   DB " bytes free",13
 msg_ready:
-  DB 5,"READY"
+  DB 5,"Ready"
 msg_searching:
   DB 9,"Searching"
 msg_loading:
   DB 7,"Loading"
 msg_art:
-  DB 11+4+44
-  DB "Pixie ART ",$1C,$1D,$1E,$1F," to move, GRA+key to draw, COL+key for color"
+  DB 14+4+42
+  DB "Chroma ART ",$1C,$1D,$1E,$1F," to move, GRA+key to draw, COL+key for color"
 msg_play:
   DB 18
   DB "Press PLAY on TAPE"
@@ -792,7 +778,7 @@ msg_esc:  DB 6,"Escape"
 ; PAGE 1 - Statement Tokens
 
 ORG $F400
-stmt_page:
+stmt_page = $F400
 
 ; Statement Index (must be at offset 0)
 stmt_idx:
@@ -1656,6 +1642,21 @@ syn_jmp:                ; [14] range-checked page offsets
 ;  DB <uex_usr                      ; OP_USR     $98
 ;  DB <uex_s                        ; OP_VAL     $99
 ;  DB <uex_0                        ; OP_VPOS    $9A
+
+
+; ------------------------------------------------------------------------------
+; REPL Command List
+
+; matches repl_cmd table
+repl_tab:
+  DB "LIST",   $80 +$40
+  DB "RUN",    $81 +$40
+  DB "ART",    $82 +$40
+  DB "SAVE",   $83 +$40
+  DB "AUTO",   $84 +$40
+  DB "DEL",    $85 +$40
+  DB "NEW",    $86 +$40
+  DB "OLD",    $87 +0   ; no $40 terminates list
 
 
 ; ------------------------------------------------------------------------------
@@ -3353,8 +3354,9 @@ readline:         ; uses A,X,Y,B,C -> LineBuf, Y=length (EQ if zero)
 ; mode 0 is text mode 32 x 24
 ; mode 1 is APA mode 128 x 96
 vid_mode:        ; set screen mode, A=mode (uses A,X,Y,F)
-  AND #1         ; modes 0-1
-  STA IO_VCTL    ; set video mode; reset border color
+  CMP #5         ; modes 0-4
+  BCS vid_ret    ; -> out of range
+  STA IO_VCTL    ; set video mode
   LDA #$0F       ; BG=black FG=white (for APA mode)
   STA IO_VPL1    ; set palette
   LDA #0
@@ -3420,6 +3422,7 @@ txt_addr_tp:       ; A=row X=col -> TXTP(XY) (uses A,X,Y)
   JSR txt_addr_ax  ; AX -> XY
   STX TXTPH        ; set TXTPH
   STY TXTP         ; set TXTP
+vid_ret:
   RTS              ; 
 
 ; @@ txt_row

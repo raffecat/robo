@@ -3301,7 +3301,7 @@ dma_fill_vram:           ; A=byte X=base.pg Y=count
 ; PAGE 37-3A (1K) + 3B-3E (1K)
 
 ORG CHROM        ; 256 x 8 = 2K char rom
-  INCLUDE "font/font.txt"
+  INCLUDE "font/font.asm"
 
 ; ------------------------------------------------------------------------------
 ; PAGE 3F
