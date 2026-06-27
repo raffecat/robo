@@ -244,6 +244,7 @@ basic:
   JSR printmsgln   ; (uses A,B,C,D,X,Y,Src,Dst)
 repl:              ; <- entry point after parse error
 basic_esc:         ; <- entry point after Escape
+  SEI              ; disable interrupts
   LDX #$FF         ; reset stack on entry
   TXS              ; set stack pointer
   JSR irq_init     ; init IRQ vector, init keyboard, enable IRQ
@@ -343,13 +344,13 @@ err_expect:       ; A = expected character
 ; must wait for ESC to be released
 ; re-enable interrupts, reset the stack (at basic_e1)
 escape:           ; A = msg address low
-  LDY #<msg_esc
+  JSR hide_cursor ; uses A,Y; Y=0 (reset blink delay)
+  LDY #<msg_esc   ;
   JSR printmsgln  ; Y=msg (uses A,B,X,Y,Ptr,Src,Dst)
+  CLI             ; re-enable interrupts (hide_cursor)
 @wait:            ; wait for Escape to be released
   LDA ModKeys     ; check key state
   BMI @wait       ; -> ESC still down
-  LDY #<msg_esc
-  JSR printmsgln  ; Y=msg (uses A,B,X,Y,Ptr,Src,Dst)
   JMP basic_esc
 
 
@@ -420,7 +421,7 @@ tok_ret1:
 
 syn_page = $F100
 
-DB "SYNRC"
+DB "SYN"
 
 ; LET <var> '=' <expr>                                   -> {LETn|LETs|LETa}<var><expr> (x2?)
 ; DIM <var> '(' <expr> ')'                               -> {DIM}<var><expr_n>
@@ -2695,7 +2696,7 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
 ; ...
 @mods:
   STX ModKeys     ; [3] update ModKeys (X=col_bitmap)
-  BNE @row_cont   ; [2] -> ALWAYS: scan next row (X!=0) [+1]
+  BEQ @row_cont   ; [2] -> ALWAYS: scan next row (BEQ @mods) [+1]
 @is_curr:         ; found CurrKey during scan (set Hit.C)
   LDA IRQTmp2     ; get key-hit flags (N=Hit.C | V=Hit.D)
   ORA #128        ; set Hit.C=1
@@ -2706,8 +2707,6 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
   ORA #64         ; set Hit.D=1
   STA IRQTmp2     ; update key-hit flags
   BNE @cont_bsf   ; -> ALWAYS: continue scan (X=col_bitmap Y=scantab_ofs IRQTmp=row)
-
-DB "END"
 
 ; keymap tables
 ; must be within a page to avoid boundary cross (uses 2x64 = 128 bytes)
