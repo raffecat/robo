@@ -40,8 +40,10 @@ void dbg_decode_next_op(uint16_t pc);
 uint8_t read6502(uint16_t address);
 void write6502(uint16_t address, uint8_t value);
 extern uint8_t VidCtl;
-extern uint8_t VidPal;
+extern uint8_t VidPal1;
+extern uint8_t VidPal2;
 extern uint8_t KbdCol;
+extern uint8_t PSGVol;
 extern uint8_t PSGFrq;
 
 // render

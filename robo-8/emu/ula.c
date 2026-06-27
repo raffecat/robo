@@ -2,12 +2,12 @@
 #include <stdio.h>
 
 enum io_reg {
-    IO_VCTL    = 0xFF,   // video control          (4:Width 3:Height 2:Grey 1:APA 0:Color)
-    IO_VPL2    = 0xFE,   // palette register       (7-4:C2 3-0:C3)
-    IO_VPL1    = 0xFD,   // palette register       (7-4:BG 3-0:FG)
-    IO_VLIN    = 0xFC,   // current video line     (read: V-counter)
-    IO_KEYB    = 0xFB,   // Keyboard scan          (write: set row; read: scan column)
-    IO_PSGF    = 0xFA,   // PSG Frequency          (write: set PSG divider)
+    IO_VCTL    = 0xFF,   // video control      (7:VSync 6:VRow 5:Blank 4:Grey 3:Bpp 2:Text 1:VRes 0:HRes)
+    IO_VPL2    = 0xFE,   // palette register   (7-4:C2 3-0:C3)
+    IO_VPL1    = 0xFD,   // palette register   (7-4:BG 3-0:~FG)
+    IO_VLIN    = 0xFC,   // current video line (read: V-counter >= 192 Blank)(write: IRQAck 7:VSync 6:VRow 5:KBInt)
+    IO_KEYB    = 0xFB,   // Keyboard scan      (write: 7-6:Volume 3-0:KBCol)(read: KBRow)
+    IO_PSGF    = 0xFA,   // PSG Frequency      (write: 7-0:Divider)(7860 Hz / divider)
 };
 
 uint8_t OpenBus[8*1024] = { 0xEE };
@@ -17,9 +17,11 @@ uint8_t CartRAM[8*1024];
 
 extern uint16_t vdp_vcount; // 9-bit vertical line count
 
-uint8_t  VidCtl   = 0x2E;    // 8-bit video control (4:Width 3:Height 2:Grey 1:APA 0:Color)
-uint8_t  VidPal   = 0x15;    // 8-bit register      (7-6:Border 5-3:BG 2-0:FG)
+uint8_t  VidCtl    = 0x2E;   // 8-bit video control (4:Width 3:Height 2:Grey 1:APA 0:Color)
+uint8_t  VidPal1   = 0x3E;   // 8-bit register      (7-4:BG 3-0:~FG)
+uint8_t  VidPal2   = 0xC1;   // 8-bit register      (7-4:C2 3-0:C3)
 uint8_t  KbdCol    = 0x03;   // 4-bit register
+uint8_t  PSGVol    = 0x03;   // 2-bit register
 uint8_t  PSGFrq    = 0x28;   // 8-bit register
 
 static uint8_t* MemMap[8] = {
@@ -52,25 +54,18 @@ static uint8_t ula_io_read(uint16_t address) {
     // now read the IO port
     switch (address) {
         // F-page
-        case IO_VCTL:       // $F8: (4:Width 3:Height 2:Grey 1:APA 0:Color)
-            value = VidCtl;
-            break;
-        case IO_VPL1:       // $F9: (7-6:Border 5-3:BG 2-0:FG)
-            value = VidPal;
-            break;
-        case IO_VLIN:       // $FA: (0-191 are visible lines)
+        case IO_VLIN:       // $FC: (0-191 are visible lines)
             value = vdp_vcount & 0xFF;
             break;
-        case IO_KEYB: {     // $FB: Keyboard scan (read: scan column)
+        case IO_KEYB: {     // $FB: (read: KBRow)
             value = scanKeyCol(KbdCol);
             break;
         }
-        case IO_PSGF: {     // $FC: PSG Divider (read: last write)
-            value = scanKeyCol(KbdCol);
-            break;
-        }
+        default:
+            // Read-through to RAM.
+            return MainRAM[address];
     }
-    if (address != IO_KEYB) {
+    if (address == IO_VLIN) {
         printf("IO Read: [$%02X] -> $%02X\n", address, value);
     }
     return value;
@@ -82,22 +77,29 @@ static void ula_io_write(uint16_t address, uint8_t value) {
     // now write the IO value
     switch (address) {
         // F-page
-        case IO_VCTL:       // $F8: (4:Width 3:Height 2:Grey 1:APA 0:Color)
+        case IO_VCTL:       // $FF: (7:VSync 6:VRow 5:Blank 4:Grey 3:Bpp 2:Text 1:VRes 0:HRes)
             VidCtl = value;
             break;
-        case IO_VPL1:       // $F9: (7-6:Border 5-3:BG 2-0:FG)
-            VidPal = value;
+        case IO_VPL2:       // $FE: (7-4:C2 3-0:C3)
+            VidPal2 = value;
             break;
-        case IO_VLIN:       // $FA: current Y-line (write: acknowledge interrupt)
+        case IO_VPL1:       // $FD: (7-4:BG 3-0:~FG)
+            VidPal1 = value;
             break;
-        case IO_KEYB:       // $FB: set keyboard scan row (4-bit -> 1 of 8 Decoder)
+        case IO_VLIN:       // $FC: (IRQAck 7:VSync 6:VRow 5:KBInt)
+            break;
+        case IO_KEYB:       // $FB: (7-6:Volume 3-0:KBCol)
             KbdCol = value & 0x0F;
+            PSGVol = value >> 6;
             break;
         case IO_PSGF: {     // $FC: PSG Divider (read: last write)
             PSGFrq = value;
             break;
         }
     }
+    // write-through to RAM.
+    MainRAM[address] = value;
+    // log IO writes (except keyboard row / irq ack)
     if (address != IO_KEYB && address != IO_VLIN) {
         printf("IO Write: [$%02X] <- $%02X\n", address, value);
     }

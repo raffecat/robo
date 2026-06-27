@@ -185,7 +185,7 @@ void advance_vdp() {
         if (vdp_hborder == 0 && vdp_vborder == 0 ) { // 
             if (FBrow < fb_height && FBcol < fb_width) { // safety check
                 // clock in the pixel from the palette MUX output on this clock edge
-                int pixel = (vdp_shift>>7) ? (VidPal & 15) : (VidPal >> 4); // palette select MUX
+                int pixel = (vdp_shift>>7) ? ((VidPal1 & 15)^15) : (VidPal1 >> 4); // palette select MUX
                 // drive the resistor DAC from the pixel latch
                 uint32_t dac_color = hw_pal[pixel]; // HW palette (phase select MUX)
                 int coord = ((fb_vbord+FBrow) * fb_width) + FBcol; // FBSpan+FBcol
@@ -206,8 +206,8 @@ void advance_vdp() {
         // MUST happen on the first pixel (vdp_hsub == 0)
         // MUST happen on the first visible character cell (not prior)
         if (vdp_hc1en && vdp_hsub == 0) {
-            if ((vdp_latch & 0xF0) == 0x80) VidPal = (VidPal & 0xF0) | (vdp_latch & 0x0F); // FG
-            if ((vdp_latch & 0xF0) == 0x90) VidPal = (VidPal & 0x0F) | ((vdp_latch & 0x0F) << 4); // BG
+            if ((vdp_latch & 0xF0) == 0x80) VidPal1 = (VidPal1 & 0xF0) | (vdp_latch & 0x0F); // FG
+            if ((vdp_latch & 0xF0) == 0x90) VidPal1 = (VidPal1 & 0x0F) | ((vdp_latch & 0x0F) << 4); // BG
         }
 
         // load a character every bus cycle when fetch is enabled (0px)
@@ -233,7 +233,7 @@ void advance_vdp() {
         if (vdp_hcount == fb_hdelay+fb_viswidth) {
             vdp_hborder = 1;     // turn on border (after 33 characters) (at 8+256+1 = 265)
             vdp_hc1en = 0;       // stop processing color codes (allow CPU to set palette)
-            VidPal = 0x0F;       // reset VidPal latch for each line (Black BG, White FG)
+            VidPal1 = 0;         // reset VidPal latch for each line (Black BG, White FG)
         }
         if (vdp_hcount == fb_hdelay+fb_viswidth+fb_hrightbord) {
             vdp_hblank = 1;      // turn on HBLANK (at 8+256+64+1 = 329)
