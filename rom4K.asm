@@ -1,22 +1,23 @@
 ; Robo 4K BASIC 1.0
 ; Use `asm6` to compile: https://github.com/parasyte/asm6
 
-; BASIC Msgs/Boot 0.25 ($100)  \              00
-; BASIC Keywords  0.5K ($200)  | 2.25         01 02
-; BASIC syntax    0.5K ($200)  |              03 04
-; BASIC runtime   1.0K ($400)  /              05 06 07 08
-; Floating point  0.25 ($100)  \              09
-; Strings         0.25 ($100)  | 1K           0A
-; Graphics        0.25 ($100)  |              0B
-; Casette         0.25 ($100)  /              0C
+; BASIC Messages  0.25 ($100)  \              00
+; BASIC Tokenize  0.5K ($200)  |  2K          01 02
+; BASIC Runtime   1.0K ($400)  |              03 04 05 06
+; Floating Point  0.25 ($100)  /              07
+; Strings         0.25 ($100)  \              08
+; Graphics        0.25 ($100)  |  1K          09
+; Keywords        0.5  ($200)  /              0A 0B
 ; ---------------------------
-; Keyboard        0.25 ($100)  \              0D
-; Print/Wrchr     0.25 ($100)  |  System      0E
-; Readline        132b ($84)   |   768b       0F
-; Cls/Tab/XY      117b ($75)   |   0.75K
-; Copy fw/bw       90b ($5a)   |  ($300)
-; INT/Cursor      104b ($68)   /  [now $3bb]
+; Casette         164b ($a4)   \              0C
+; Keyboard        256b ($100)  |              0D
+; Print/Wrchr     231b ($e7)   |              0E
+; Readline        103b ($67)   |  1K          0F
+; Cls/Tab/XY      106b ($6a)   |  
+; Copy fw/bw       85b ($55)   |  
+; INT/Cursor       79b ($4f)   /
 ;                 -----------
+; 256+231+103+106+85+79+164
 
 ; 3 pages left:
 ; • floating point
@@ -27,9 +28,11 @@
 ; • APA graphics
 ; • Casette code
 ; • Sound interrupt
+; • Color zones
 
 ROM      = $F000  ; 4K = $1000 from F000-FFFF
 VEC      = $FFFA  ; vector table, 6 bytes
+SYSVEC   = $FFC0  ; system vector table
 
 ; ------------------------------------------------------------------------------
 ; Address Space
@@ -124,22 +127,23 @@ Term0    = $C3    ; ALIAS DstH: term byte 0
 KeyHd    = $D0    ; keyboard buffer head (owned by User)
 KeyTl    = $D1    ; keyboard buffer tail (owned by IRQ)
 ModKeys  = $D2    ; modifier keys [7:Esc 6:Shf 5:Ctl 4:Fn] (owned by IRQ)
-LastKey  = $D3    ; keyboard last key pressed, for auto-repeat (owned by IRQ)
-KeyRep   = $D4    ; keyboard auto-repeat timer
+CurrKey  = $D3    ; keyboard current key pressed, for auto-repeat (owned by IRQ)
+DeadKey  = $D4    ; keyboard last key pressed, to ignore it (owned by IRQ)
+KeyRep   = $D5    ; keyboard auto-repeat timer
 
-WinT     = $D5    ; text window top
-WinH     = $D6    ; text window height
+WinT     = $D6    ; text window top
+WinH     = $D7    ; text window height
 
 ;;WinRem   = $Dx    ; remaining space on this line
-TXTP     = $D7    ; text write address
-TXTPH    = $D8    ; text write address high
-CurTime  = $D9    ; cursor flash timer
-CurChar  = $DA    ; character under cursor
-CurVis   = $DB    ; cursor visible flag
+TXTP     = $D8    ; text write address
+TXTPH    = $D9    ; text write address high
+CurTime  = $DA    ; cursor flash timer
+CurChar  = $DB    ; character under cursor
+CurVis   = $DC    ; cursor visible flag
 
-EndPage  = $DC    ; end of memory (page)
+EndPage  = $DD    ; end of memory (page)
 
-; DD-DF free (3)
+; DE-DF free (2)
 
 ; -- $E0-EF OS Vectors
 
@@ -159,10 +163,10 @@ IrqVec   = $ED    ; IRQ vector in RAM {JMP,Low,High} (for ROM override)
 ; F4-F7 Disk Controller Registers (Expansion slot 4)
 
 ; F9-FF IO Registers
-IO_PSGF  = $FA    ; PSG frequency (7860 Hz / divider)
-IO_KEYB  = $FB    ; Keyboard scan (write: 2-0:KBRow; read: KBColumn)
-IO_VLIN  = $FC    ; vertical line count (>= 192 in vborder/vblank) (write: IRQ Ack 7:VSync 6:VRow 5:KBInt)
-IO_VPL1  = $FD    ; palette for APA (7-4:BG 3-0:FG)
+IO_PSGF  = $FA    ; PSG frequency (write: 7-0:Divider)(7860 Hz / divider)
+IO_KEYB  = $FB    ; Keyboard scan (write: 7-6:Volume 2-0:KBCol; read: KBRow)
+IO_VLIN  = $FC    ; vertical line count (>= 192 in vborder/vblank) (write: IRQAck 7:VSync 6:VRow 5:KBInt)
+IO_VPL1  = $FD    ; palette for APA (7-4:BG 3-0:~FG)
 IO_VPL2  = $FE    ; palette for APA (7-4:C2 3-0:C3)
 IO_VCTL  = $FF    ; video mode (7:VSync 6:VRow 5:Blank 4:Grey 3:Bpp 2:Text 1:VRes 0:HRes)
 
@@ -195,17 +199,6 @@ ModCol   = $08    ; COL key is down
 ; PAGE 0 - Boot
 
 ORG ROM
-
-; ROM entry table     ; public entry points (takes too much space!)
-; JMP basic           ; $E003  enter BASIC                                  (JMP)
-; JMP print           ; $E006  print string, len-prefix, X=page Y=offset    (JSR uses A,B,X,Y)
-; JMP wrchr           ; $E009  print char or control code in A              (JSR preserves Y)
-; JMP newline         ; $E00C  print a newline, scroll if necessary         (JSR preserves Y)
-; JMP readline        ; $E00F  read a line into LineBuf (zero-terminated)   (JSR uses A,X,Y) -> Y=length
-; JMP readchar        ; $E00C  read a character from the keyboard           (JSR uses A,X,Y) -> A=char/zero ZF
-; JMP vid_mode        ; $E012  set screen mode, clear the screen            (JSR uses A,X,Y)
-; JMP vid_cls         ; $E015  clear the screen                             (JSR uses A,X,Y)
-; JMP txt_tab         ; $E018  move text cursor to X,Y within text window   (JSR uses A,X,Y)
 
 reset:
   SEI             ; disable interrupts
@@ -247,18 +240,18 @@ reset:
 ; enter the basic command-line interface
 basic:
   CLD              ; disable BCD mode (for re-entry)
-  JSR irq_init     ; init IRQ vector, init keyboard, enable IRQ
   LDY #<msg_ready
   JSR printmsgln   ; (uses A,B,C,D,X,Y,Src,Dst)
 repl:              ; <- entry point after parse error
-basic_e1:          ; <- entry point after Escape
-  LDX #$FF         ; reset stack on entry (e.g. from Escape) [for overflow detect]
-  TXS              ; stack init
+basic_esc:         ; <- entry point after Escape
+  LDX #$FF         ; reset stack on entry
+  TXS              ; set stack pointer
+  JSR irq_init     ; init IRQ vector, init keyboard, enable IRQ
   JSR readline     ; -> LineBuf, Y=length
   STY E            ; input line length, for tokenizer
   JSR newline      ; uses A,X
 
-  ; parse the command
+  ; parse line number
   LDY #0           ; [2] input offset
   JSR skip_spc     ; [24+] Y=ofs -> Y, A=next-char (uses A,X)
   CMP #0           ; [2] end of line? (must CMP)
@@ -345,13 +338,19 @@ err_expect:       ; A = expected character
   JSR newline     ; uses A,X
   JMP repl
 
-escape:       ; A = msg address low
+; @@ escape
+; called from keyboard scan ISR
+; must wait for ESC to be released
+; re-enable interrupts, reset the stack (at basic_e1)
+escape:           ; A = msg address low
   LDY #<msg_esc
-  JSR printmsgln  ; Y=low -> 
+  JSR printmsgln  ; Y=msg (uses A,B,X,Y,Ptr,Src,Dst)
 @wait:            ; wait for Escape to be released
   LDA ModKeys     ; check key state
-  BMI @wait       ; -> Escape still down
-  JMP basic_e1
+  BMI @wait       ; -> ESC still down
+  LDY #<msg_esc
+  JSR printmsgln  ; Y=msg (uses A,B,X,Y,Ptr,Src,Dst)
+  JMP basic_esc
 
 
 ; ------------------------------------------------------------------------------
@@ -417,9 +416,11 @@ tok_ret1:
   RTS              ; [6] -> A=az-index CC=alpha [19]
 
 ; ------------------------------------------------------------------------------
-; PAGE 1 - Syntax Recognisers
+; PAGE 1 - Syntax Recognisers XXX remove this
 
 syn_page = $F100
+
+DB "SYNRC"
 
 ; LET <var> '=' <expr>                                   -> {LETn|LETs|LETa}<var><expr> (x2?)
 ; DIM <var> '(' <expr> ')'                               -> {DIM}<var><expr_n>
@@ -771,11 +772,11 @@ msg_typ:  DB 3,"TYP"    ; Error
 msg_rng:  DB 3,"RNG"    ; Error
 msg_err:  DB 7," Error",13
 msg_blk:  DB 5,"Block"
-msg_esc:  DB 6,"Escape"
+msg_esc:  DB 8,13,13,"Escape"
 
 
 ; ------------------------------------------------------------------------------
-; PAGE 1 - Statement Tokens
+; PAGE 4 - Statement Tokens
 
 ORG $F400
 stmt_page = $F400
@@ -980,7 +981,7 @@ match_kws:       ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,Y,B,
   RTS            ; [6] Y = start of input
 
 ; ------------------------------------------------------------------------------
-; PAGE 2 - Expression Tokens
+; PAGE 5 - Expression Tokens
 
 ORG $F500
 expr_page:
@@ -1231,337 +1232,11 @@ err_overflow:
   LDY #<msg_ovf
   JMP report_err
 
-; ------------------------------------------------------------------------------
-; PAGE 3 - uCode Page
-
-;usyn_1:           ; OP_GOTO,OP_GOSUB,OP_MODE,OP_RESTORE,OP_UNTIL,OP_WAIT
-;  DB <uc_call, <uexpr_i
-;  DB <uc_jmp, <unext_stmt
-;usyn_2:           ; OP_OPT,OP_PLOT,OP_POKE
-;  DB <uc_setz, B, 2                    
-;  DB <uc_call, <uargs_i
-;  DB <uc_jmp, <unext_stmt
-;usyn_4:           ; OP_LINE
-;  DB <uc_setz, B, 4
-;  DB <uc_call, <uargs_i
-;  DB <uc_jmp, <unext_stmt
-;usyn_ch:          ; OP_CLOSE
-;  DB <uc_expect, $23      ; '#'
-;  DB <uc_u8, 10           ; small integer < 10
-;  DB <uc_jmp, <unext_stmt
-;usyn_ch2:         ; OP_OPEN
-;  DB <uc_call, <usyn_ch
-;  DB <uc_expect, $2C      ; ','
-;  DB <uc_call, <uexpr_s
-;  DB <uc_jmp, <unext_stmt
-;usyn_let:         ; OP_LET
-;usyn_dim:         ; OP_DIM
-;  DB <uc_var
-;  DB <uc_expect, $28      ; '('
-;  DB <uc_call, <uexpr_c
-;  DB <uc_expect, $29      ; ')'
-;  DB <uc_jmp, <unext_stmt
-;usyn_data:        ; OP_DATA,OP_REM
-;  DB <uc_ploc     ; save patch location (for uc_plen)
-;  DB <uc_copyln   ; copy rest of line -> emit
-;  DB <uc_plen     ; patch length at ploc
-;  DB <uc_jmp, <unext_stmt
-;usyn_read:        ; OP_READ
-;usyn_if:          ; OP_IF
-;  DB <uc_call, <uexpr_i
-;  DB <uc_reqkw, <kwt_then, <usynif_nt  ; THEN or -> usynif_nt
-;  DB <uc_u16, <usynif_nt               ; u16 emit or -> usynif_nt   (XXX maybe u16 -> Acc, then another op to emit it?)
-;  DB <uc_popc, OP_THENLN               ; patch opcode to OP_THENLN ??
-;  DB <uc_jmp, <unext_stmt              ; -> next stmt               (XXX how does ELSE know it can't uc_plen?)
-;usynif_nt:                             ; no "THEN"
-;  DB <uc_ploc                          ; save patch location        (for uc_plen at ELSE or EOL)
-;  DB <uc_jmp, <unext_stmt              ; -> next stmt               (XXX how does ELSE know it can't uc_plen?)
-;usyn_else:                             ; OP_ELSE
-;  DB <uc_plen                          ; patch length at ploc       (patch the THEN length)
-;  DB <uc_ploc                          ; save patch location        (for uc_plen at EOL)
-;  DB <uc_jmp, <unext_stmt              ; -> next stmt               (XXX how does EOL know it can uc_plen?)
-;
-;usyn_for:         ; OP_FOR
-;usyn_next:        ; OP_NEXT
-;usyn_input:       ; OP_INPUT
-;usyn_print:       ; OP_PRINT
-;usyn_sound:       ; OP_SOUND
-;  DB <uc_setz, B, 4
-;  DB <uc_call, <uargs_i
-;  DB <uc_call, <uoarg_i
-;  DB <uc_call, <uoarg_i
-;  DB <uc_jmp, <unext_stmt
-;usyn_def:         ; OP_DEFFN
-;  DB <uc_msg, <msg_blk
-;  DB <uc_jmp, <urepl            ; (XXX maybe uc_jrepl)
-;
-;unext_stmt:                     ; OP_CLS,OP_END,OP_REPEAT,OP_RETURN
-;  DB <uc_skipsp
-;  DB <uc_isch, $00, <urepl      ; end of statement, finished tokenizing
-;  DB <uc_isch, $3A, <utok_stmt  ; ':' -> another statement
-;ue_syn:                         ; report syntax error
-;  DB <uc_msg, <msg_syn
-;ue_err:
-;  DB <uc_msg, <msg_err
-;  DB <uc_jmp, <urepl            ; (XXX maybe uc_jrepl)
-;
-;ue_expect:
-;  DB <uc_msg, <msg_exp
-;  DB <uc_prnext                 ; print next input character
-;  DB <uc_nl
-;  DB <uc_jmp, <urepl            ; (XXX maybe uc_jrepl)
-;
-;ue_type:
-;  DB <uc_msg, <msg_typ
-;  DB <uc_jmp, <msg_err
-;
-;ue_ovf:
-;  DB <uc_msg, <msg_ovf
-;  DB <uc_jmp, <msg_err
-;
-;
-;; integer argument list
-;uargs_i:        ; B = count
-;uai_lp:
-;  DB <uc_call, <uexpr_i
-;	DB <uc_dbz, B, <u_ret
-;	DB <uc_expect, $2C      ; ','
-;	DB <uc_jmp, <uai_lp
-;u_ret:
-;  DB <uc_ret
-;
-;; optional integer argument
-;uoarg_i:
-;  DB <uc_isch, $2C, <uexpr_i   ; ',' -> expect expression
-;  DB <uc_emit, $00             ; emit $00 placeholder
-;  DB <uc_ret
-;
-;
-;; expression type-checks
-;uexpr_c:                       ; expression must match type in C
-;  DB <uc_call, <uexpr          ; -> type in E
-;  DB <uc_eqCE, <ue_type        ; if C != E -> jump to ue_type   (XXX uc_typchk)
-;  DB <uc_ret
-;
-;uexpr_i:                       ; expression must be numeric
-;  DB <uc_call, <uexpr          ; -> type in E
-;  DB <uc_cmpz, E, 1, <ue_type  ; must be integer (E=1)
-;  DB <uc_ret
-;
-;uexpr_s:                       ; expression must be a string
-;  DB <uc_call, <uexpr          ; -> type in E
-;  DB <uc_cmpz, E, 2, <ue_type  ; must be string (E=2)
-;  DB <uc_ret
-;
-;
-;; expression parsing
-;uexpr:
-;
-;
-;  DB <uc_isch, $2D, <urepl    ; '-' OP_UNEG
-;  DB <uc_isch, $2B, <urepl    ; '+' OP_UPLUS
-;  DB <uc_isch, $28, <urepl    ; '(' OP_LPAR
-;  ; primary: var, num, fn
-;
-;uexop:                        ; expect an operator  (XX do OP_NOT, OP_DIVKW, OP_MODKW, OP_AND, OP_OR, OP_EOR)
-;  DB <uc_isch, $2B, <urepl    ; '+' OP_ADD
-;  DB <uc_isch, $2D, <urepl    ; '-' OP_SUB
-;  DB <uc_isch, $2A, <urepl    ; '*' OP_MUL
-;  DB <uc_isch, $2F, <urepl    ; '/' OP_DIV
-;  DB <uc_isch, $5E, <urepl    ; '^' OP_POW
-;  DB <uc_isch, $3D, <urepl    ; '=' OP_EQ
-;  DB <uc_isch, $3C, <urepl    ; '<' ->
-;  DB <uc_isch, $3E, <urepl    ; '>' ->
-;
-;uexplt:
-;  DB <uc_isch, $3D, <urepl    ; '=' OP_LE
-;  DB <uc_isch, $3E, <urepl    ; '>' OP_NE
-;  ; OP_LE
-;
-;uexpgt:
-;  DB <uc_isch, $3D, <urepl    ; '=' OP_GE
-;  ; OP_GT
-;
-;; expression functions
-;uexpr_fn:
-;  DB <uc_skipsp
-;  DB <uc_isalpha, <ue_syn           ; not alpha -> Syntax Error
-;  DB <uc_kwidx, <expr_idx, <ue_syn  ; no match -> Syntax Error
-;  DB <uc_expect, $28                ; '('
-;  DB <uc_disp, <expr_dt             ; table jump (on C)
-;
-;uexpr_fe:
-;  DB <uc_expect, $29          ; ')'
-;  DB <uc_jmp, <uexop          ; -> expect operator
-;
-;uex_0:                        ; OP_POS,OP_PI,OP_TIME,OP_TOP,OP_VPOS
-;  DB <uc_jmp, <uexpr_fe       ; 
-;uex_n:                        ; OP_ABS,OP_BTN,OP_CHR,OP_INT,OP_JOY,OP_KEY,OP_STR,OP_SQR,OP_SGN
-;uex_nn:                       ; OP_SCN
-;uex_0n:                       ; OP_RND
-;uex_s:                        ; OP_ASC,OP_LEN,OP_VAL
-;uex_ss:                       ; OP_INSTR
-;uex_sn:                       ; OP_LEFT,OP_RIGHT
-;uex_snn:                      ; OP_MID
-;uex_ch:                       ; OP_EOF
-;uex_fn:                       ; OP_FN= ??
-;uex_sorn:                     ; OP_GET
-;uex_usr:                      ; OP_USR
-;  DB <uc_msg, <msg_var
-;  DB <uc_jmp, <urepl          ; (XXX maybe uc_jrepl)
-;
 
 ; ------------------------------------------------------------------------------
-; PAGE 4 - uCode Runtime
+; Syntax Recogniser tables
 
-
-;tok_plok:          ; save patch location (for uc_plen)
-;  LDA EmitOfs      ; [3] save EmitOfs for patching later
-;  STA EmitPtch     ; [3]
-;  RTS              ; [6]
-;
-;tok_plen:          ; patch length at ploc
-;;  JMP ram_disp    ; [3]
-;
-;tok_popc:          ; patch opcode with replacement byte A
-;;  JMP ram_disp    ; [3]
-;
-;uc_disp:           ; (dtOfs) dispatch using result of (from uc_kwidx)
-;  LDA (CODE),Y     ; fetch Dispatch Table address
-;  INY
-;  CLC
-;  ADC C            ; add keyword index (from uc_kwidx)
-;  TAX              ; address to X
-;  LDA dt_page,X    ; get table entry, ROM page 0 (see stmt_dt)
-;  BNE uc_jmp_ex    ; -> do the jump
-;
-;tok_expect:        ; expect character (or set C; jump to ue_expect)
-;  LDA (CODE),Y     ; fetch character
-;  INY
-;  LDX #0           ; [2] X=0
-;  CMP (Ptr,X)      ; [6] compare next input char
-;  BEQ uc_done      ; [2] -> matched, done
-;  LDY #<ue_expect  ; [2] hard-coded jump destination (NE)
-;  BNE uc_jmp_ex    ; [2] -> do the jump
-;
-;uc_jmp:            ; jump to a uCode address (uAddr)     - Y OK
-;  LDA (CODE),Y     ; fetch ZP address
-;uc_jmp_ex:
-;  TAY              ; set uCode offset in Y
-;  JMP ram_disp
-;
-;uc_eqCE:           ; jump if C != E
-;  LDA C
-;  CMP E
-;  BNE uc_jmp       ; -> do the jump
-;  BEQ uc_nojmp     ; -> no jump
-;
-;uc_isch:           ; tokenize - jump if is character
-;  LDA (CODE),Y     ; fetch character
-;  INY
-;  LDX #0           ; [2] X=0
-;  CMP (Ptr,X)      ; [6] compare next input char
-;  BNE uc_nojmp     ; [2] -> no match, don't jump
-;  INC Ptr          ; [5] consume input
-;  BNE uc_jmp       ; [2] -> do the jump
-;
-;uc_isalpha:        ; tokenize - jump if NOT alpha (uAddr)    - Y OK     (XXX always related to keyword match?)
-;  LDX #0           ; [2] X=0
-;  LDA (Ptr,X)      ; [6] next input char
-;  AND #$DF         ; [2] lower -> upper (clear bit 5) detect alpha char
-;  SEC              ; [2] for subtract
-;  SBC #65          ; [2] make 'A' be 0
-;  CMP #26          ; [2] 26 letters (CS if >= 26)
-;  TAX              ; [2] save X = letter index (for uc_findkw)
-;  BCS uc_jmp       ; [2] -> not alpha, do the jump
-;uc_nojmp:
-;  INY              ; [2] skip the address
-;  BCC uc_done      ; [2] -> ram_disp
-;
-;; find a matching keyword (linear table scan)
-;uc_kwtab:          ; (tabPg,uAddr) (9b)
-;  LDX #0           ; letter index always zero
-;  ; +++ fall through to @@ uc_kwidx +++
-;
-;; find a matching keyword (using X = letter index from uc_isalpha)
-;uc_kwidx:          ; (tabPg,uAddr)
-;  LDA (CODE),Y     ; fetch page number
-;  INY              ; [2]
-;  STA SrcH         ; [3] set page
-;  LDA #0           ; [2]
-;  STA Src          ; [3] set page offset
-;  LDA (Src),X      ; [5] letter index into keyword page (A-Z)  [XXX no this won't work]
-;  STA Src          ; set page offset
-;; find matching keyword, terminated by a byte with top-bit set (8x,9x,Ax,Bx)
-;; if no match, continue until bit 6 is set (Cx,Dx,Ex,Fx)
-;; Src=table Ptr=input -> CF=found, Y=ofs, A=high-byte
-;  LDA Ptr          ; [3] get input Ptr
-;  STA B            ; [3] save it
-;@next_kw:
-;  LDX #0           ; [2] const X=0
-;  DEC Ptr          ; [2] set up for pre-increment
-;  DEC Src          ; [2] set up for pre-increment
-;@match_lp:
-;  INC Ptr          ; [2] pre-increment input position
-;  INC Src          ; [5] pre-increment table offset
-;  LDA (Src,X)      ; [6] next table char
-;  CMP (Ptr,X)      ; [4] does it match input?
-;  BEQ @match_lp    ; [2] -> yes, next char [+1]
-;  BPL @not_found   ; [2] -> did not match keyword (top bit clear) [+1]
-;  INY              ; [2] skip uAddr arg
-;  ORA #$C0         ; [2] fix top bits (match_kws uses top 2 bits)
-;  JSR tok_emit     ; [6] output token with top-bit set (uses X; preserves A,Y; sets NE)
-;  AND #63          ; [2] low 6 bits
-;  STA C            ; [3] save keyword index (for uc_disp)
-;  JMP ram_disp     ; [3]
-;@not_found:        ; skip rest of keyword (find top-bit)
-;  INC Src          ; [5] pre-increment table offset
-;  LDA (Src,X)      ; [6] check table byte
-;  BPL @not_found   ; [2] -> top bit clear, keep going [+1]
-;  INC Src          ; [5] adance past top-bit byte
-;  LDX B            ; [3] get saved input Ptr
-;  STX Ptr          ; [3] restore original input Ptr
-;  ASL              ; [2] shift left top-bit byte
-;  BPL @next_kw     ; [2] -> bit 6 clear, try next keyword [+1]
-;  BMI uc_jmp       ; [2] -> no match, do the jump [+1]
-
-
-
-; ------------------------------------------------------------------------------
-; PAGE 5 - Dispatch Tables
-
-ORG $F601
-dt_page = $F600
-
-; LET <var> '=' <expr>                                   -> {LETn|LETs|LETa}<var><expr> (x2?)
-; DIM <var> '(' <expr> ')'                               -> {DIM}<var><expr_n>
-; FOR <var> '=' <expr_n> 'TO' <expr_n> ['STEP' <expr_n>] -> {FOR}<var><expr_n><expr_n><expr_n|$00>
-; NEXT [<var>|$00]                                       -> {NEXT}<var|$00>
-; IF <expr_n> THEN <line>/<stmts> [ELSE <line>/<stmts>]  -> {IF}<expr_n><len> | {IFLN}<expr_n><n16>
-; ELSE <line>/<stmts>                                    -> {ELSE}<len>       | {ELLN}<n16>
-; READ {<var> ','}                                       -> {READ}<len>{<var>}
-; INPUT { [,;'] "str" | <var> }                          -> {INPUT}<len>{<op|lit|var>}
-; PRINT { [,;'] "str" | <expr_n> | <expr_s> } [;]        -> {PRINT|PRINT;}<len>{<op|lit|expr>}
-; DEF FN <name> '(' {<var>} ')'                          -> {DEFFN}<name><len>{<var>}
-; OPEN #<n> ',' <expr_s>                                 -> {OPEN}<n><expr_s>
-; CLOSE #<n>                                             -> {CLOSE}<n>
-; REM <text>                                             -> {REM}<len><data>
-; DATA <text>                                            -> {DATA}<len><data>    (XXX "DATA 1.02e1" -> A$)
-; RETURN                                                 -> {RETURN}
-; REPEAT                                                 -> {REPEAT}
-; CLS                                                    -> {CLS}
-; GOTO <expr>                                            -> {GOTO}<expr_n>
-; GOSBU <expr>                                           -> {GOSUB}<expr_n>
-; RESTORE <expr_n>                                       -> {RESTORE}<n16>
-; UNTIL <expr_n>                                         -> {UNTIL}<expr_n>
-; MODE <expr_n>                                          -> {MODE}<expr_n>
-; WAIT <expr_n>                                          -> {WAIT}<expr_n>
-; POKE <expr_n> ',' <expr_n>                             -> {POKE}<expr_n><expr_n>
-; OPT <expr_n> ',' <expr_n>                              -> {OPT}<expr_n><expr_n>
-; SOUND <pitch><vol><len>[<dp>[<dv>]]                    -> {SOUND}<expr_n><expr_n><expr_n><expr_n|$00><expr_n|$00>
-; PLOT <expr_n> ',' <expr_n>                             -> {PLOT}<expr_n><expr_n>
-; LINE <expr_n> ',' <expr_n> ',' <expr_n> ',' <expr_n>   -> {PLOT}<expr_n><expr_n><expr_n><expr_n>
-; '=' <expr>                                             -> {RETFN}<expr>   (not a keyword)
+DB "SYNTB"
 
 syn_tab:                         ; [30]
   DB 0                           ; OP_LN      $C0   (not used)
@@ -1613,35 +1288,6 @@ syn_jmp:                ; [14] range-checked page offsets
   DB (syn_print - syn_page)
   DB (syn_def - syn_page)
   DB (syn_s - syn_page)
-
-;expr_dt:                           ; [27]
-;  DB <uex_n                        ; OP_ABS     $80
-;  DB <uex_s                        ; OP_ASC     $81
-;  DB <uex_n                        ; OP_BTN     $82
-;  DB <uex_n                        ; OP_CHR     $83
-;  DB <uex_ch                       ; OP_EOF     $84
-;  DB <uex_fn                       ; OP_FN=     $85
-;  DB <uex_sorn                     ; OP_GET     $86
-;  DB <uex_ss                       ; OP_INSTR   $87
-;  DB <uex_n                        ; OP_INT     $88
-;  DB <uex_n                        ; OP_JOY     $89
-;  DB <uex_n                        ; OP_KEY     $8A
-;  DB <uex_s                        ; OP_LEN     $8B
-;  DB <uex_sn                       ; OP_LEFT    $8C
-;  DB <uex_snn                      ; OP_MID     $8D
-;  DB <uex_0                        ; OP_POS     $8E
-;  DB <uex_0                        ; OP_PI      $8F
-;  DB <uex_sn                       ; OP_RIGHT   $90
-;  DB <uex_0n                       ; OP_RND     $91
-;  DB <uex_nn                       ; OP_SCN     $92
-;  DB <uex_n                        ; OP_STR     $93
-;  DB <uex_n                        ; OP_SQR     $94
-;  DB <uex_n                        ; OP_SGN     $95
-;  DB <uex_0                        ; OP_TIME    $96
-;  DB <uex_0                        ; OP_TOP     $97
-;  DB <uex_usr                      ; OP_USR     $98
-;  DB <uex_s                        ; OP_VAL     $99
-;  DB <uex_0                        ; OP_VPOS    $9A
 
 
 ; ------------------------------------------------------------------------------
@@ -2941,65 +2587,86 @@ gfx_line:          ; uses (A,X,Y)
 
 ; ------------------------------------------------------------------------------
 ; PAGE C - SYSTEM
-ORG $FCA0
+ORG $FC40
 
-; @@ key_scan     (107b code; 254b for all KB stuff!)
+; @@ key_scan     (143b code; 271b including tables)
 ; scan the keyboard matrix for a keypress
+; on pressing a new key: (no CurrKey) new key -> CurrKey (preserve dead key)
+; on pressing a new key: (no DeadKey) new key -> CurrKey -> DeadKey (shift down)
+; on pressing a new key: (current AND dead) -> ignore newkey, complete scan
+; on released current key: clear current key (preserve dead key)
+; on released dead key: clear dead key (preserve current key)
 ; [..ABCDE....]
 ;    ^hd  ^tl     ; empty when hd==tl, full when tl+1==hd
 keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
   LDA #0          ; [2] zero
-  STA IRQTmp2     ; [3] clear key-hit flag (is any key down?)
-  LDY #8          ; [2] last key column
-  STY IO_KEYB     ; [3] set keyscan column (0-7) 0µs
-  DEY             ; [2] prev column              2µs
-  LDA IO_KEYB     ; [3] read row_bitmap          2+3µs read 5/0.89Mhz = 5.6µs settle
-  STA ModKeys     ; [3] update modifier keys     3µs
-  CMP IO_KEYB     ; [3] check if stable          3+3µs read 6/0.89Mhz = 6.7µs verify
-  BNE keyscan     ; [2] if not -> try again
-@col_lp:          ; -> [13] cycles
-  STY IO_KEYB     ; [3] set keyscan column (0-7)           0µs (-> 7+3=10µs after prior)
+  STA IRQTmp2     ; [3] clear key-hit flags (N=Hit.C | V=Hit.D)
+  STA ModKeys     ; [3] clear ModKeys (set again if any modkeys are down)   2
+  LDY #8          ; [2] last key row (modifiers)
+; ...
+@row_lp:          ; -> [13] cycles (Y=row)
+  STY IO_KEYB     ; [3] set keyscan row (0-7)              0µs (-> 7+3=10µs after prior)
   NOP             ; [2] delay                              2µs
-  LDX IO_KEYB     ; [3] read row_bitmap                    2+3µs read 5/0.89Mhz = 5.6µs settle
+  LDX IO_KEYB     ; [3] read col_bitmap                    2+3µs read 5/0.89Mhz = 5.6µs settle
   BNE @key_hit    ; [2] -> one or more keys pressed [+1]   2µs -> 1µs (3µs)
-@col_cont:
-  DEY             ; [2] prev column                        2µs
-  BPL @col_lp     ; [3] go again, until Y<0                2+2+3µs -> (7µs)
-; key up or auto-repeat
-  LDA IRQTmp2     ; [3] check key-hit flag (any key down?)
-  BNE @rep_chk    ; [2] -> key is down, check for auto-repeat
-  STY LastKey     ; [3] no keys pressed: clear last key pressed (to $FF)
-  RTS
-@rep_chk:
-  LDY LastKey     ; [3] get last phys_key
-  LDA #4          ; [2] repeat rate: ?? per sec
+@row_cont:
+  DEY             ; [2] prev row                           2µs
+  BPL @row_lp     ; [3] go again, until Y<0                2+2+3µs -> (7µs)
+; ...
+@finish:          ; check for key ups
+  LDA #0          ; [2] A=0
+  BIT IRQTmp2     ; [3] check key-hit flags (N=Hit.C | V=Hit.D)
+  BMI @key1dn     ; [2] -> CurrKey is still down [+1]
+  STA CurrKey     ; [3] clear CurrKey (to $00)
+@key1dn:
+  BVS @key2dn     ; [2] -> DeadKey is still down [+1]
+  STA DeadKey     ; [3] clear DeadKey (to $00)
+@key2dn:
+  LDY CurrKey     ; [3] get current phys_key
+  BEQ @done       ; [2] -> no current key
+  LDA #4          ; [2] repeat rate: 4 frames
   DEC KeyRep      ; [5] count down to auto-repeat
-  BEQ @repeat     ; [2] -> repeat last key (Y=phys_key) [+1]
-  RTS             ; [6] TOTAL Scan 2+13*8-1+6 = [111] cycles
-@key_hit:         ; X=row_bitmap Y=column
-  CPX IO_KEYB     ; [3] check if stable                    3+3µs read 6/0.89Mhz = 6.7µs verify
-  BNE @col_lp     ; [2] if not -> try again
-  STY IRQTmp      ; [3] save keyscan column for resuming
-  TYA             ; [2] active keyscan column
-  ASL             ; [2] column * 8
+  BEQ @rep_ent    ; [2] -> repeat current key (Y=phys_key) [+1]
+  RTS             ; [6] TOTAL Scan ~[110] cycles
+; ...
+@key_hit:         ; X=col_bitmap(!=0) Y=row
 ; debounce check 
+  CPX IO_KEYB     ; [3] check if stable                    3+3µs read 6/0.89Mhz = 6.7µs verify
+  BNE @row_lp     ; [2] if not -> try again
+  CPY #8          ; [2] is ModKeys row?
+  BEQ @mods       ; [2] -> handle ModKeys [+1]
+  STY IRQTmp      ; [3] save keyscan row for @cont_bsf
+  TYA             ; [2] active keyscan row
+  ASL             ; [2] row * 8
   ASL             ; [2] 
   ASL             ; [2] 
-  TAY             ; [2] scantab offset = col*8 as index  (X=row_bitmap Y=col*8 IRQTmp=column)
-  TXA             ; [2] A = row_bitmap
+  TAY             ; [2] scantab offset = row*8 as index  (X=col_bitmap Y=row*8 IRQTmp=row)
+  TXA             ; [2] A = col_bitmap(!=0)
 ; find first bit set
 ; loop WILL terminate because A is non-zero!
-@bsf_lp:          ; A=row_bitmap Y=scantab -> [7] cycles
-  INY             ; [2] count number of shifts (Y = col*8 + row_N)
+@bsf_lp:          ; (A=col_bitmap Y=scantab_ofs) -> [7] cycles
+  INY             ; [2] count number of shifts (Y = row*8 + col_N)
   ASL A           ; [2] shift keys bits left into CF
   BCC @bsf_lp     ; [3] until CF=1 (key is down)                            (XXX will invert, down == 0)
-; key already down?
-  STY IRQTmp2     ; [3] set key-hit flag (any key was down)
-  CPY LastKey     ; [3] one-key roll over
-  BEQ @was_down   ; [2] -> key was already down
-  STY LastKey     ; [3] save last physical key pressed (exit path)
-  LDA #16         ; [2] initial delay: ?? sec
-@repeat:          ; (Y=phys_key)
+; ...
+; found a key down
+  TAX             ; [2] save remaining col_bitmap (X)
+  CPY CurrKey     ; [2] phys_key matches CurrKey?
+  BEQ @is_curr    ; [2] -> found CurrKey [+1]
+  CPY DeadKey     ; [2] phys_key matches DeadKey?
+  BEQ @is_dead    ; [2] -> found DeadKey [+1]
+  LDA CurrKey     ; [3] check if we have a CurrKey
+  BEQ @wrkey      ; [3] -> no CurrKey: set CurrKey, buffer keypress (Y), then return
+  LDA DeadKey     ; [3] check DeadKey
+  BNE @cont_bsf   ; [3] -> have DeadKey, ignore keypress, continue scan (X=col_bitmap Y=scantab_ofs IRQTmp=row)
+; no dead key: rotate current key into dead key
+  LDA CurrKey     ; [3] get CurrKey
+  STA DeadKey     ; [3] move CurrKey to DeadKey
+; ...
+@wrkey:           ; set CurrKey, buffer keypress (Y), then return
+  STY CurrKey     ; [3] set CurrKey to phys_key (Y!=0)
+  LDA #16         ; [2] initial delay: 16 frames
+@rep_ent:         ; (Y=phys_key, A=delay)
   STA KeyRep      ; [3] reset key-repeat timer for new key
 ; translate to ascii
   BIT ModKeys     ; [3] test shift key [N=Esc][V=Shf]
@@ -3012,19 +2679,35 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
   TYA             ; [2]
   AND #15         ; [2] modulo circular buffer
   CMP KeyHd       ; [3] is Tl+1 == Hd ?
-  BEQ @full       ; [2] -> key buffer is full (don't update KeyTl)
+  BEQ @done       ; [2] -> key buffer is full (don't update KeyTl)
   STA KeyTl       ; [3] update Tl = Tl+1 % 32
-@full:
-  RTS             ; [6] done (after one keypress detected)
+@done:
+  RTS             ; [6] return
 @shift:
   LDA scanshf-1,Y ; [4] translate to ASCII (Y is off by +1)
-  BPL @shft_ret   ; [3] top bit is never set!! (XX won't hold for Gfx)
-@was_down:        ; (A=row_bitmap Y=phys_key IRQTmp=column)
-;  RTS             ; XXXXX debug (1-key, we want 2-key)
-  TAX             ; [2] test remaining row_bitmap
+  BPL @shft_ret   ; [3] ALWAYS (top bit never set in scanshf)
+; ...
+@cont_bsf:        ; (X=col_bitmap Y=scantab_ofs IRQTmp=row)
+  TXA             ; [2] restore remaining col_bitmap
   BNE @bsf_lp     ; [3] -> continue bsf loop if A != 0 (more keys are down)   (XXX will invert this, $FF)
-  LDY IRQTmp      ; [3] restore keyscan column (always > 0)
-  JMP @col_cont   ; [3] -> continue scanning columns
+  LDY IRQTmp      ; [3] restore keyscan row
+  BPL @row_cont   ; [3] -> ALWAYS: continue scanning rows (Y in [0..8])
+; ...
+@mods:
+  STX ModKeys     ; [3] update ModKeys (X=col_bitmap)
+  BNE @row_cont   ; [2] -> ALWAYS: scan next row (X!=0) [+1]
+@is_curr:         ; found CurrKey during scan (set Hit.C)
+  LDA IRQTmp2     ; get key-hit flags (N=Hit.C | V=Hit.D)
+  ORA #128        ; set Hit.C=1
+  STA IRQTmp2     ; update key-hit flags
+  BNE @cont_bsf   ; -> ALWAYS: continue scan (X=col_bitmap Y=scantab_ofs IRQTmp=row)
+@is_dead:         ; found DeadKey during scan (set Hit.D)
+  LDA IRQTmp2     ; get key-hit flags (N=Hit.C | V=Hit.D)
+  ORA #64         ; set Hit.D=1
+  STA IRQTmp2     ; update key-hit flags
+  BNE @cont_bsf   ; -> ALWAYS: continue scan (X=col_bitmap Y=scantab_ofs IRQTmp=row)
+
+DB "END"
 
 ; keymap tables
 ; must be within a page to avoid boundary cross (uses 2x64 = 128 bytes)
@@ -3294,10 +2977,10 @@ readline:         ; uses A,X,Y,B,C -> LineBuf, Y=length (EQ if zero)
   BMI @esc
   JSR readchar    ; from keyboard (uses A,X,Y -> A,ZF)
   BEQ @wait       ; if no char -> @wait
-  TAX
+  TAX             ; save key
   JSR hide_cursor ; uses A,Y; Y=0
   CLI             ; re-enable IRQ
-  TXA
+  TXA             ; restore key
 @cont:
   CMP #32         ; is it a control code?
   BCC @ctrl       ; -> char < 32, control code
@@ -3464,9 +3147,9 @@ txt_fill:          ; fill with A
   RTS
 
 
-; @@ mcopy
+; @@ mem_copy
 ; copy memory from (Src) to (Dst) with XY=size                (17b)    [17+31+37 = 85]
-mcopy:                   ; (uses A,X,Y,F,Src,Dst)
+mem_copy:                ; (uses A,X,Y,F,Src,Dst)
   LDA DstH               ; [3]
   CMP SrcH               ; [3]
   BCC mcopyf             ; [2] -> DstH < SrcH (copy forwards)
@@ -3603,7 +3286,38 @@ irq_rom:
 nmi_vec:
   RTI
 
-; @@ Vector Table
+testkey:
+mem_fill:
+file_save:
+file_load:
+file_open:
+file_close:
+gfx_color:
+sys_opt:
+
+; @@ System Vectors
+ORG SYSVEC
+JMP wrchr           ; $FFB0  print char or control code in A              (JSR preserves Y)
+JMP print           ; $FFB3  print string, len-prefix, X=page Y=offset    (JSR uses A,B,X,Y)
+JMP testkey         ; $FFB6  test a keyboard key A=code                   (JSR uses A,X,Y) -> CS=down CC=up
+JMP readchar        ; $FFB9  read a character from the keyboard           (JSR uses A,X,Y) -> A=char/zero ZF
+JMP readline        ; $FFBC  read a line into LineBuf (zero-terminated)   (JSR uses A,X,Y) -> Y=length
+JMP mem_fill        ; $FFC0  fill DST with A size X,Y                     (JSR uses A,X,Y)
+JMP mem_copy        ; $FFC3  copy SRC to DST size X,Y                     (JSR uses A,X,Y)
+JMP file_save       ; $FFC6  save SRC size X,Y name at PTR                (JSR uses A,X,Y)
+JMP file_load       ; $FFC9  load to DST name at PTR                      (JSR uses A,X,Y)
+JMP file_open       ; $FFCC  open file name at PTR for read/write         (JSR uses A,X,Y)
+JMP file_close      ; $FFD0  close the open file                          (JSR uses A,X,Y)
+JMP gfx_color       ; $FFD3  set graphics color / operation               (JSR uses A,X,Y)
+JMP gfx_plot        ; $FFD6  draw a line to X,Y                           (JSR uses A,X,Y)
+JMP gfx_line        ; $FFD9  draw a line to X,Y                           (JSR uses A,X,Y)
+JMP sys_opt         ; $FFDC  set option X to A                            (JSR uses A,X,Y)
+JMP vid_mode        ; $FFE0  set screen mode, clear the screen            (JSR uses A,X,Y)
+JMP vid_cls         ; $FFE3  clear the screen                             (JSR uses A,X,Y)
+JMP txt_tab         ; $FFE6  move text cursor to X,Y within text window   (JSR uses A,X,Y)
+JMP basic           ; $FFE9  enter BASIC                                  (JMP)
+
+; @@ CPU Vectors
 ORG VEC
 DW nmi_vec       ; $FFFA, $FFFB ... NMI vector
 DW reset         ; $FFFC, $FFFD ... Reset vector
