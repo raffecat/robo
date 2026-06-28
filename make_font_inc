@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+clang font/convert_inc.c font/Chroma_1.c -o font/Chroma_inc
+./font/Chroma_inc >font/font_1.inc

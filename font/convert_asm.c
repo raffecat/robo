@@ -1,11 +1,11 @@
 #include <stdio.h>
 
-#include "ASCIIv4.c"
+#include "Chroma_1.c"
 
 int main() {
     uint32_t stride = 128; // canvas width
     uint32_t row_stride = stride * 8; // one row of chars
-    const uint32_t* row = &asciiv4_data[0][0];
+    const uint32_t* row = &chroma_1_data[0][0];
     int ch = 0;
     // 16 rows of characters (starting at 0)
     for (int y=0; y<16; y++) {
