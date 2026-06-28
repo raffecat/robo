@@ -367,7 +367,10 @@ tok_syn:
   JMP report_err
 
 emit_str:
-  RTS
+  LDA #83            ; 'S' [DEBUG]
+  JSR wrchr          ; A=char; (uses A,X,F,Src,Dst) preserves Y
+  INY
+  JMP tok_loop       ; -> ALWAYS
 
 ; @@ tokenize
 ; tokenize BASIC statements (in-place in LineBuf/EmitBuf)
@@ -410,6 +413,7 @@ tok_emitx:
   TXA                ; emit literal character
 tok_emitc:
   JSR tok_emit       ; output character (uses X=0; preserves A,Y; sets PL)
+  INY                ; advance input
   BPL tok_loop       ; -> ALWAYS: continue tokenize
 
 tok_data:
@@ -432,25 +436,24 @@ tok_let:             ; assumed LET when a line starts with a VAR
   BPL emit_var       ; -> ALWAYS: copy VAR to output
 
 tok_ltgt:            ; less than / greater than
-  TXA                ; A=(60|62) ('<'|'>')
+  TXA                ; A=(60|62) (<|>)
   ASL                ; A=(120|124)
   AND #$1F           ; A=(24|28)
   STA B              ; A -> B
+  INY                ; advance input (<|>)
   LDA LineBuf,Y      ; next input char
-  INY                ; advance input
   SEC                ;
   SBC #60            ; '<'
   CMP #3             ; '<'=0 '='=1 '>'=2
-  BCS @undo          ; -> no match (A >= 3)
+  BCS tok_emitx      ; -> no match, just emit (<|>) (A >= 3)
+  INY                ; advance input (<|=|>)
   ORA B              ; A = (24|28)|(0-2) = 24:<< 25:<= 26:<> 28:>< 29:>= 30:>>
   BNE tok_emitc      ; -> ALWAYS: emit and continue (A!=0)
-@undo
-  DEY                ; undo advance
-  BNE tok_emitx      ; -> ALWAYS: emit X and continue (Y!=0)
 
 emit_num:
-  LDA #37            ; 'N' [DEBUG]
+  LDA #78            ; 'N' [DEBUG]
   JSR wrchr          ; A=char; (uses A,X,F,Src,Dst) preserves Y
+  INY
   JMP tok_loop       ; -> ALWAYS
 
 tok_kwv:             ; AND,OR,EOR,DIV,MOD,THEN,ELSE,TO,STEP,FN,(functions)
@@ -807,6 +810,7 @@ match_kws:       ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,C,
   CLC            ; [2] no match found
   RTS            ; [6] Y=ofs (restored) X=0
 @found:
+  DEY            ; [2] undo last INY (pre-increment)
   SEC            ; [2] set carry: keyword was found
   RTS            ; [6] A=hi-byte (top bit set) X=0
 
