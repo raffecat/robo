@@ -285,12 +285,29 @@ basic_esc:         ; <- entry point after Escape
   ; tokenize and evaluate direct BASIC statements
 @direct:
   JSR tokenize     ; [6] tokenize BASIC statements (X=ln-ofs)
-  JMP repl         ; [6] return to repl (XXX DEBUG do_stmt is out of date)
-  LDA #>EmitBuf    ; [2] EmitBuf page
-  STA CODEH        ; [3] set CODE page
-  LDY #0           ; [2] code offset
-  STY CODE         ; [3] set CODE low
-  JMP do_stmt      ; [3] -> execute the line
+;  LDA #>EmitBuf    ; [2] EmitBuf page
+;  STA CODEH        ; [3] set CODE page
+;  LDY #0           ; [2] code offset
+;  STY CODE         ; [3] set CODE low
+;  JMP do_stmt      ; [3] -> execute the line
+@dumpcode:
+  LDY EmitOfs       ; [DEBUG]
+  LDA #0            ; [DEBUG]
+  STA EmitBuf,Y     ; [DEBUG]
+  TAY               ; [DEBUG]
+@debug:
+  LDA EmitBuf,Y      ; [DENUG]
+  BEQ repl           ; [DEBUG]
+  STA Acc0           ; [DEBUG]
+  LDA #0             ; [DEBUG]
+  STA Acc1           ; [DEBUG]
+  STA Acc2           ; [DEBUG]
+  STA AccE           ; [DEBUG]
+  JSR num_print      ; [DEBUG] print number in Acc (uses A,X)
+  LDA #32            ; [DEBUG]
+  JSR wrchr          ; [DEBUG] A=char; (uses A,X,F,Src,Dst) preserves Y
+  INY                ; [DEBUG]
+  BNE @debug         ; [DEBUG]
 
   ; tokenize and append/edit the BASIC program
 @haveline:         ; X = after line number
@@ -302,7 +319,18 @@ basic_esc:         ; <- entry point after Escape
   BMI err_bounds   ; [2]
   JSR tokenize     ; [6] tokenize BASIC statements (X=ln-ofs)
                    ;     XXX insert the tokenized line into the BASIC program
-  JMP repl         ; [6] return to repl
+  JMP @dumpcode         ; [6] return to repl
+
+; @@ escape
+; must wait for ESC to be released
+escape:           ; A = msg address low
+  JSR hide_cursor ; uses A,Y; Y=0
+  LDY #<msg_esc   ;
+  JSR printmsgln  ; Y=msg (uses A,B,X,Y,Ptr,Src,Dst)
+@wait:            ; wait for Escape to be released
+  LDA ModKeys     ; check key state
+  BMI @wait       ; -> ESC still down
+  BPL basic_esc   ; -> re-enter repl, MUST reset stack
 
 
 ; ------------------------------------------------------------------------------
@@ -321,15 +349,6 @@ report_e1:
   JSR printmsgln  ; Y=ptr -> 
   JMP repl
 
-; @@ report_bad
-; Report an error and return to BASIC repl.
-; report_bad:       ; Y = msg address low
-;   STY E
-;   LDY #<msg_bad
-;   JSR printmsgln  ; Y=ptr -> 
-;   LDY E
-;   BNE report_e1   ; -> report it (ASSUMES Y<>0)
-
 ; @@ err_expect
 ; Report "Missing [char]"
 err_expect:       ; A = expected character
@@ -341,19 +360,6 @@ err_expect:       ; A = expected character
   JSR newline     ; uses A,X
   JMP repl
 
-; @@ escape
-; called from keyboard scan ISR
-; must wait for ESC to be released
-; re-enable interrupts, reset the stack (at basic_e1)
-escape:           ; A = msg address low
-  JSR hide_cursor ; uses A,Y; Y=0
-  LDY #<msg_esc   ;
-  JSR printmsgln  ; Y=msg (uses A,B,X,Y,Ptr,Src,Dst)
-@wait:            ; wait for Escape to be released
-  LDA ModKeys     ; check key state
-  BMI @wait       ; -> ESC still down
-  JMP basic_esc   ; -> re-enter repl
-
 
 ; ------------------------------------------------------------------------------
 ; BASIC Tokenizer
@@ -364,7 +370,7 @@ escape:           ; A = msg address low
 ; report syntax error
 tok_syn:
   LDY #<msg_syn
-  JMP report_err
+  BNE report_err
 
 ; emit a string literal
 emit_str:
@@ -382,121 +388,10 @@ emit_str:
   BEQ @copy          ; -> emit one `"` and continue
   TXA                ; restore `"`
   JSR tok_emit       ; emit closing `"` (uses X=0; preserves A,Y; sets PL)
-  JMP tok_loop       ; -> ALWAYS
+  BPL tok_loop       ; -> ALWAYS (PL)
 @miss:               ; at end of line, missing quote
   LDA #34            ; `"`
-  JMP err_expect     ; error: missing `"`
-
-; @@ tokenize
-; tokenize BASIC statements (in-place in LineBuf/EmitBuf)
-tok_stmt:
-  JSR tok_emit       ; output `:` (uses X=0; preserves A,Y; sets PL)
-  INY                ; advance
-  ; next stmt...
-tokenize:            ; Y=ofs
-  JSR skip_spc       ; Y=ofs -> Y, A=next-char (uses X)
-  JSR is_alpha       ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
-  BCS tok_syn        ; -> non-alpha (XXX or FN return '=')
-  TAX                ; A-Z as index (0-25)
-  LDA stmt_idx,X     ; offset in stmt_page (A-Z)
-  LDX #>stmt_page    ; stmt table page
-  JSR match_kws      ; Y=ofs XA=table -> CS=found, Y=ofs, A=high-byte (uses A,X,Y,B,C,D,Src)
-  BCC tok_let        ; -> no match, assume LET
-  ORA #$C0           ; set top bits (match_kws uses d7,d6)
-  JSR tok_emit       ; output token with top-bit set (uses X=0; preserves A,Y; sets PL)
-  CMP #OP_IF         ; an IF statement?
-  BEQ tok_if         ; -> handle IF
-  CMP #OP_ELSE       ; an ELSE statement?
-  BEQ tok_else       ; -> handle ELSE
-  CMP #OP_DATA       ; a DATA statement?
-  BEQ tok_data       ; -> handle DATA
-; rest of line (args, etc)
-tok_loop:
-  JSR skip_spc       ; Y=ofs -> Y, A=next-char (uses X)
-  TAX                ; save A
-  BEQ tok_done       ; -> end of line
-  JSR is_alpha       ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
-  BCC tok_kwv        ; -> emit KEYWORD or VAR
-  TXA                ; restore A
-  JSR is_digit       ; A=char -> A=digit, CC=is_digit (preserves X,Y)
-  BCC emit_num       ; -> emit NUMBER
-  TXA                ; restore A
-  CMP #34            ; `"`
-  BEQ emit_str       ; -> emit STRING
-  CMP #58            ; `:`
-  BEQ tok_stmt       ; -> emit `:` then expect statement
-  CMP #60            ; <> <= <
-  BEQ tok_ltgt       ; -> tokenize less than
-  CMP #62            ; >= >
-  BEQ tok_ltgt       ; -> tokenize greater than
-  ; output character: ^ + - * / ( ) # , ; :
-tok_emitx:
-  TXA                ; emit X
-tok_emitc:
-  JSR tok_emit       ; output character (uses X=0; preserves A,Y; sets PL)
-  INY                ; advance input
-  BPL tok_loop       ; -> ALWAYS: continue tokenize
-
-tok_data:
-  JSR tok_emit_pl    ; emit length placeholder (uses X; preserves A,Y; sets PL)
-  JSR skip_spc       ;
-  ; copy rest of line (data)
-@copy:
-  LDA LineBuf,Y      ; next input char
-  BEQ tok_done       ; -> end of line
-  INY                ; advance input
-  JSR tok_emit       ; emit code (uses X=0; preserves A,Y; PL)
-  BPL @copy          ; -> ALWAYS: until end of line
-  ; fall through...
-tok_done:
-  JMP tok_patch_pl   ; patch length placeholder (uses A preserves X,Y) -> return
-
-tok_let:             ; assumed LET when a line starts with a VAR
-  JMP emit_var       ; -> ALWAYS: copy VAR to output
-
-tok_ltgt:            ; less than / greater than
-  ASL                ; A=(60|62) (<|>) x2 = (120|124)
-  AND #$1F           ; A=(24|28)
-  STA B              ; A -> B
-  INY                ; advance input (<|>)
-  LDA LineBuf,Y      ; next input char
-  SEC                ;
-  SBC #60            ; '<'
-  CMP #3             ; '<'=0 '='=1 '>'=2
-  BCS tok_emitx      ; -> no match, just emit (<|>) (A >= 3)
-  INY                ; advance input (<|=|>)
-  ORA B              ; A = (24|28)|(0-2) = 24:<< 25:<= 26:<> 28:>< 29:>= 30:>>
-  BNE tok_emitc      ; -> ALWAYS: emit and continue (A!=0)
-
-emit_num:
-  LDA #78            ; 'N' [DEBUG]
-  JSR wrchr          ; A=char; (uses A,X,F,Src,Dst) preserves Y
-  INY
-  JMP tok_loop       ; -> ALWAYS
-
-tok_kwv:             ; AND,OR,EOR,DIV,MOD,THEN,ELSE,TO,STEP,FN,(functions)
-  TAX                ; A-Z as index (0-25)
-  LDA expr_idx,X     ; offset in expr_page (A-Z)
-  LDX #>expr_page    ; expr table page
-  JSR match_kws      ; Y=ofs XA=table -> CS=found, Y=ofs, A=high-byte (uses A,X,Y,B,C,D,Src)
-  BCC emit_var       ; -> emit VAR, continue
-  AND #$BF           ; clear bit 6 ($40)
-  JSR tok_emit       ; output token with top-bit set (uses X=0; preserves A,Y; sets PL)
-  BPL tok_loop       ; -> ALWAYS: continue
-
-tok_if:              ; XXX length of THEN goes with IF?
-  JSR tok_emit_pl    ; emit length placeholder (uses X=0; preserves Y; sets PL)
-  BPL tok_loop       ; -> ALWAYS: tokenize expression
-
-tok_then:            ; XXX no, ELSE patches IF
-  JSR tok_patch_pl   ; patch last length placeholder (uses A preserves X,Y)
-  ; fall through...
-tok_else:
-  JSR tok_emit_pl    ; emit length placeholder (uses X=0; preserves Y; sets PL)
-  JSR skip_spc       ; Y=ofs -> Y, A=next-char (uses X)
-  JSR is_digit       ; A=char -> A=digit, CC=is_digit (preserves X,Y)
-  BCC emit_num       ; -> DIGIT: emit line number
-  JMP tokenize       ; -> ALWAYS: tokenize next statement
+  BNE err_expect     ; error: missing `"` (A!=0)
 
 ; @@ emit_var
 ; copy VAR[$] to output (assumes 1st char is alpha)
@@ -514,11 +409,152 @@ emit_var:
   DEY              ; [2] undo advance (didn't match)
   TXA              ; [2]
   CMP #36          ; [2] '$'
-  BNE @ret         ; [2] -> not '$'
+  BNE tok_loop     ; [2] -> return (NE)
   JSR tok_emit     ; [6] output '$' (uses X=0; preserves A,Y; sets PL)
   INY              ; [2] consume '$'
-@ret:
-  JMP tok_loop     ; [3] -> ALWAYS: continue
+  BNE tok_loop     ; [2] -> return (Y!=0)
+
+; @@ tokenize
+; tokenize BASIC statements (in-place in LineBuf/EmitBuf)
+tok_stmt:
+  JSR tok_emit       ; output `:` (uses X=0; preserves A,Y; sets PL)
+  INY                ; advance
+  ; next stmt...
+tokenize:            ; Y=ofs
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char (uses X)
+  JSR is_alpha       ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
+  BCS tok_syn        ; -> non-alpha (XXX or FN return '=')
+  TAX                ; A-Z as index (0-25)
+  LDA stmt_idx,X     ; offset in stmt_page (A-Z)
+  LDX #>stmt_page    ; stmt table page
+  JSR match_kws      ; Y=ofs XA=table -> CS=found, Y=ofs, A=high-byte (uses A,X,Y,B,C,D,Src)
+  BCC emit_var       ; -> no match, emit VAR
+  ORA #$C0           ; set top bits (match_kws uses d7,d6)
+  JSR tok_emit       ; output token with top-bit set (uses X=0; preserves A,Y; sets PL)
+  CMP #OP_IF         ; an IF statement?
+  BEQ tok_if         ; -> handle IF
+  CMP #OP_THEN       ; a THEN statement?
+  BEQ tok_then       ; -> handle THEN
+  CMP #OP_ELSE       ; an ELSE statement?
+  BEQ tok_else       ; -> handle ELSE
+  CMP #OP_DATA       ; a DATA statement?
+  BEQ tok_data       ; -> handle DATA
+; rest of line (args, etc)
+tok_loop:
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char (uses X)
+  TAX                ; save A
+  BEQ tok_done       ; -> end of line
+  JSR is_alpha       ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
+  BCC tok_kwv        ; -> emit KEYWORD or VAR
+  TXA                ; restore A
+  CMP #34            ; `"`
+  BEQ emit_str       ; -> emit STRING
+  JSR is_digit       ; A=char -> A=digit, CC=is_digit (preserves X,Y)
+  BCC emit_num       ; -> emit NUMBER
+  TXA                ; restore A
+  CMP #58            ; `:`
+  BEQ tok_stmt       ; -> emit `:` then expect statement
+  CMP #60            ; <> <= <
+  BEQ tok_ltgt       ; -> tokenize less than
+  CMP #62            ; >= >
+  BEQ tok_ltgt       ; -> tokenize greater than
+  ; output character: ^ + - * / ( ) # , ;
+tok_emitx:
+  TXA                ; emit X
+tok_emitc:
+  JSR tok_emit       ; output character (uses X=0; preserves A,Y; sets PL)
+  INY                ; advance input
+  BPL tok_loop       ; -> ALWAYS: continue tokenize
+
+tok_kwv:             ; AND,OR,EOR,DIV,MOD,THEN,ELSE,TO,STEP,FN,(functions)
+  TAX                ; A-Z as index (0-25)
+  LDA expr_idx,X     ; offset in expr_page (A-Z)
+  LDX #>expr_page    ; expr table page
+  JSR match_kws      ; Y=ofs XA=table -> CS=found, Y=ofs, A=high-byte (uses A,X,Y,B,C,D,Src)
+  BCC emit_var       ; -> emit VAR, continue
+  AND #$BF           ; clear bit 6 ($40)
+  JSR tok_emit       ; output token with top-bit set (uses X=0; preserves A,Y; sets PL)
+  BPL tok_loop       ; -> ALWAYS: continue
+
+tok_data:
+  JSR tok_emit_pl    ; emit length placeholder (uses X; preserves A,Y; sets PL)
+  JSR skip_spc       ;
+@copy:
+  LDA LineBuf,Y      ; copy rest of the line
+  BEQ tok_done       ; -> end of line
+  INY                ; advance input
+  JSR tok_emit       ; emit code (uses X=0; preserves A,Y; PL)
+  BPL @copy          ; -> ALWAYS: until end of line
+tok_done:
+  JMP tok_patch_pl   ; patch length placeholder (uses A preserves X,Y) -> return
+
+tok_ltgt:            ; less than / greater than
+  ASL                ; A=(60|62) (<|>) x2 = (120|124)
+  AND #$1F           ; A=(24|28)
+  STA B              ; A -> B
+  INY                ; advance input (<|>)
+  LDA LineBuf,Y      ; next input char
+  SEC                ;
+  SBC #60            ; '<'
+  CMP #3             ; '<'=0 '='=1 '>'=2
+  BCS tok_emitx      ; -> no match, just emit (<|>) (A >= 3)
+  INY                ; advance input (<|=|>)
+  ORA B              ; A = (24|28)|(0-2) = 24:<< 25:<= 26:<> 28:>< 29:>= 30:>>
+  BNE tok_emitc      ; -> ALWAYS: emit and continue (A!=0)
+
+tok_if:              ; XXX length of THEN goes with IF?
+  JSR tok_emit_pl    ; emit length placeholder (uses X=0; preserves Y; sets PL)
+  BPL tok_loop       ; -> ALWAYS: tokenize expression
+
+tok_then:            ; XXX no, ELSE patches IF
+  JSR tok_patch_pl   ; patch last length placeholder (uses A preserves X,Y)
+  ; fall through...
+tok_else:
+  JSR tok_emit_pl    ; emit length placeholder (uses X=0; preserves Y; sets PL)
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char (uses X)
+  JSR is_digit       ; A=char -> A=digit, CC=is_digit (preserves X,Y)
+  BCC emit_num       ; -> DIGIT: emit line number
+  JMP tokenize       ; -> ALWAYS: tokenize next statement
+
+; assumes next char is digit
+emit_num:
+@loop:
+  JSR num_u24        ; from LineBuf,Y-> Y,Acc,CS=ovf (uses A,X,Term)
+  BCS @ovf           ; -> overflow
+  LDA Acc2
+  BNE @int4          ; -> 3 bytes plus opcode
+  LDA Acc1
+  BNE @int3          ; -> 2 bytes plus opcode
+  LDA Acc0
+  CMP #10            ; CS if >= 10
+  BCS @int2          ; -> 1 byte plus opcode
+; single-digit number
+  ORA #$F0           ; 0xF0 - 0xF9 (nums >= 0xF0)
+  JMP @done          ; -> ALWAYS
+@int2:
+  LDA #OP_INT2       ; 2-byte integer (with opcode)
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+  JMP @out1
+@int3:
+  LDA #OP_INT3       ; 3-byte integer (with opcode)
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+  JMP @out2
+@int4:
+  LDA #OP_INT4       ; 4-byte integer (with opcode)
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+;out3:
+  LDA Acc2
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+@out2:
+  LDA Acc1
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+@out1:
+  LDA Acc0
+@done:
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+  JMP tok_loop       ; -> ALWAYS
+@ovf:
+  JMP err_overflow
 
 skip_spc:          ; tokenize - skip spaces ()           - Y OK
 @loop:
@@ -1052,17 +1088,8 @@ tok_patch_pl:       ; (uses A preserves X,Y)
   CLC               ; [2] minus 1 (exclude patched byte)
   SBC EmitPtch      ; [3] A = emit_ofs - patch_addr (i.e. length)
   STA EmitBuf,Y     ; [5] write length at patch address
-  STA Acc0           ; [DEBUG]
   LDA #0            ; [2] no patch address
   STA EmitPtch      ; [3] clear "last length placeholder"
-  STX C              ; [DEBUG]
-  STA Acc1           ; [DEBUG]
-  STA Acc2           ; [DEBUG]
-  STA AccE           ; [DEBUG]
-  JSR num_print      ; [DEBUG] print number in Acc (uses A,X)
-  LDA #32            ; [DEBUG]
-  JSR wrchr          ; [DEBUG] A=char; (uses A,X,F,Src,Dst) preserves Y
-  LDX C              ; [DEBUG]
 @done:
   LDY B             ; [3] restore Y (ln_ofs)
   RTS
@@ -1077,18 +1104,8 @@ tok_emit_pl:         ; (uses X; preserves A,Y; sets PL)  [30]
 ; @@ tok_emit
 ; Emit an opcode at Emit,X and advance EmitOfs.
 tok_emit:            ; (uses X; preserves A,Y; sets PL)  [21]
-  PHA                ; [DEBUG]
   LDX EmitOfs        ; [3] get emit offset
   STA EmitBuf,X      ; [5] emit token
-  STA Acc0           ; [DEBUG]
-  LDA #0             ; [DEBUG]
-  STA Acc1           ; [DEBUG]
-  STA Acc2           ; [DEBUG]
-  STA AccE           ; [DEBUG]
-  JSR num_print      ; [DEBUG] print number in Acc (uses A,X)
-  LDA #32            ; [DEBUG]
-  JSR wrchr          ; [DEBUG] A=char; (uses A,X,F,Src,Dst) preserves Y
-  PLA                ; [DEBUG]
   INC EmitOfs        ; [5] advance emit offset
   BMI err_overflow   ; [2] -> overflowed emit buffer [+1]
   RTS                ; [6]
@@ -2193,7 +2210,7 @@ num_neg:
 
 ; @@ num_u24
 ; parse an unsigned 24-bit number
-num_u24:         ; from LineBuf,Y-> Y,Acc,CS=ovf (uses A,X,Y,Term)
+num_u24:         ; from LineBuf,Y-> Y,Acc,CS=ovf (uses A,X,Term)
   LDA #0         ; [2] length of num
   STA Acc0       ; [3] clear result
   STA Acc1       ; [3]
