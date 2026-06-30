@@ -385,7 +385,7 @@ emit_str:
   LDA #34            ; `"`
   BNE err_expect     ; error: missing `"` (A!=0)
 
-; @@ emit_let
+; @@ emit_let        (so we can report syntax error for unknown keywords)
 emit_let:            ; Y -> Y,EQ
   JSR emit_var       ; -> recognise and emit VAR
   JSR skip_spc       ; Y=ofs -> Y, A=next-char
@@ -409,6 +409,8 @@ tokenize:            ; Y=ofs, uses A,X,B,C,D,Src
   STA D              ; D=0, no LET until `:`
 tok_stmt:
   JSR skip_spc       ; Y=ofs -> Y, A=next-char
+  CMP #61            ; `=`
+  BEQ tok_fnret      ; -> FN return
   JSR is_alpha       ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
   BCS tok_syn        ; -> syntax error
   TAX                ; A-Z as index (0-25)
@@ -442,13 +444,16 @@ tok_loop:
   BEQ tok_ltgt       ; -> tokenize less than
   CMP #62            ; >= >
   BEQ tok_ltgt       ; -> tokenize greater than
-
 tok_emitx:
   TXA                ; emit X
 tok_emitc:           ; output character: ^ + - * / ( ) # , ; $
   JSR tok_emit       ; output character (uses X=0; preserves A,Y; sets PL)
   INY                ; advance input
   BPL tok_loop       ; -> ALWAYS: continue tokenize
+
+tok_fnret:
+  LDA #OP_FNRET
+  BNE tok_emitc
 
 tok_kwv:             ; AND,OR,EOR,DIV,MOD,THEN,ELSE,TO,STEP,FN,(functions)
   TAX                ; A-Z as index
@@ -459,12 +464,12 @@ tok_kwv:             ; AND,OR,EOR,DIV,MOD,THEN,ELSE,TO,STEP,FN,(functions)
   AND #$BF           ; clear bit 6 ($40)
   CMP #OP_THEN       ; a THEN statement? ($A5)
   BEQ tok_then       ; -> handle THEN
-  CMP #OP_ELSEA       ; an ELSE statement? ($86)
+  CMP #OP_ELSEA      ; an ELSE statement? ($86)
   BEQ tok_else       ; -> handle ELSE
   JSR tok_emit       ; output token with top-bit set (uses X=0; preserves A,Y; sets PL)
   BPL tok_loop       ; -> ALWAYS: continue
 @var:
-  JSR emit_var_ex     ; -> recognise and emit VAR
+  JSR emit_var_ex    ; -> recognise and emit VAR
   JMP tok_loop       ; -> ALWAYS: continue
 
 tok_data:            ; copy rest of line verbatim
@@ -475,7 +480,6 @@ tok_data:            ; copy rest of line verbatim
   INY                ; advance input
   JSR tok_emit       ; emit code (uses X=0; preserves A,Y; PL)
   BPL @copy          ; -> ALWAYS: until end of line
-
 tok_done:
   RTS
 
@@ -581,10 +585,10 @@ skip_spc:          ; tokenize - skip spaces
 
 ; @@ is_alpha
 is_alpha:          ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
-  AND #$DF         ; [2] lower -> upper (clear bit 5) detect alpha char
+  AND #$DF         ; [2] lower -> upper (clear bit 5)
   SEC              ; [2] for subtract
-  SBC #65          ; [2] make 'A' be 0
-  CMP #26          ; [2] 26 letters (CS if >= 26)
+  SBC #64          ; [2] make '@' be 0
+  CMP #27          ; [2] 27 letters including `@` (CS if >= 27)
   RTS              ; [6] -> A=az-index CC=alpha [14]
 
 ; @@ is_digit
@@ -598,11 +602,10 @@ is_digit:          ; A=char -> A=[0..9], CC=found (preserves X,Y)
 ; DIM <var> '(' <expr> ')'                               -> {DIM}<var><expr_n>
 ; FOR <var> '=' <expr_n> 'TO' <expr_n> ['STEP' <expr_n>] -> {FOR}<var><expr_n><expr_n><expr_n|$00>
 ; NEXT [<var>|$00]                                       -> {NEXT}<var|$00>
-; IF <expr_n> THEN <line>/<stmts> [ELSE <line>/<stmts>]  -> {IF}<expr_n><len> | {IFLN}<expr_n><n16>
 ; ELSE <line>/<stmts>                                    -> {ELSE}<len>       | {ELLN}<n16>
 ; READ {<var> ','}                                       -> {READ}<len>{<var>}
-; INPUT { [,;'] "str" | <var> }                          -> {INPUT}<len>{<op|lit|var>}
 ; PRINT { [,;'] "str" | <expr_n> | <expr_s> } [;]        -> {PRINT|PRINT;}<len>{<op|lit|expr>}
+; INPUT { [,;'] "str" | <var> }                          -> {INPUT}<len>{<op|lit|var>}
 ; DEF FN <name> '(' {<var>} ')'                          -> {DEFFN}<name><len>{<var>}
 ; OPEN #<n> ',' <expr_s>                                 -> {OPEN}<n><expr_s>
 ; CLOSE #<n>                                             -> {CLOSE}<n>
@@ -611,15 +614,16 @@ is_digit:          ; A=char -> A=[0..9], CC=found (preserves X,Y)
 ; RETURN                                                 -> {RETURN}
 ; REPEAT                                                 -> {REPEAT}
 ; CLS                                                    -> {CLS}
-; GOTO <expr>                                            -> {GOTO}<expr_n>
-; GOSBU <expr>                                           -> {GOSUB}<expr_n>
+; IF <expr_n> THEN <line>/<stmts> [ELSE <line>/<stmts>]  -> {IF}<expr_n><len> | {IFLN}<expr_n><n16>
+; GOTO <expr_n>                                          -> {GOTO}<expr_n>
+; GOSUB <expr_n>                                         -> {GOSUB}<expr_n>
 ; RESTORE <expr_n>                                       -> {RESTORE}<n16>
 ; UNTIL <expr_n>                                         -> {UNTIL}<expr_n>
 ; MODE <expr_n>                                          -> {MODE}<expr_n>
 ; WAIT <expr_n>                                          -> {WAIT}<expr_n>
 ; POKE <expr_n> ',' <expr_n>                             -> {POKE}<expr_n><expr_n>
 ; OPT <expr_n> ',' <expr_n>                              -> {OPT}<expr_n><expr_n>
-; SOUND <pitch><vol><len>[<dp>[<dv>]]                    -> {SOUND}<expr_n><expr_n><expr_n><expr_n|$00><expr_n|$00>
+; SOUND <pitch>,<vol>,<len>,[<dp>,[<dv>]]                -> {SOUND}<expr_n><expr_n><expr_n><expr_n|$00><expr_n|$00>
 ; PLOT <expr_n> ',' <expr_n>                             -> {PLOT}<expr_n><expr_n>
 ; LINE <expr_n> ',' <expr_n> ',' <expr_n> ',' <expr_n>   -> {PLOT}<expr_n><expr_n><expr_n><expr_n>
 ; '=' <expr>                                             -> {RETFN}<expr>   (not a keyword)
@@ -681,6 +685,7 @@ stmt_page = $F400
 
 ; Statement Index (must be at offset 0)
 stmt_idx:
+  DB (kws_at - stmt_page) ; @
   DB (kws_a - stmt_page) ; A
   DB (kws_b - stmt_page) ; B
   DB (kws_c - stmt_page) ; C
@@ -747,6 +752,7 @@ OP_WAIT    = $DF
 
 stmt_count = 32  ; $20
 
+kws_at:
 kws_a:
 kws_b:
 kws_c:
@@ -800,11 +806,10 @@ kws_u:
 kw_until  DB "UNTIL",    OP_UNTIL  -$40
 kws_v:
 kws_w:
-kw_wait   DB "WAIT",     OP_WAIT   -$40
 kws_x:
 kws_y:
 kws_z:
-  DB 0 ; end of list
+kw_wait   DB "WAIT",     OP_WAIT   -$40
 
 ; Statement Reverse Lookup
 stmt_rev:                     ; [34] indices MUST match OPCODEs
@@ -884,6 +889,7 @@ kwtab:
 
 ; Expression Index (must be at offset 0)
 expr_idx:
+  DB (expr_at - expr_page) ; @
   DB (expr_a - expr_page) ; A
   DB (expr_b - expr_page) ; B
   DB (expr_c - expr_page) ; C
@@ -951,6 +957,7 @@ OP_TOP = $99
 OP_USR = $9A
 OP_VAL = $9B
 OP_VPOS = $9C
+OP_FNRET = $A6
 
 OP_I0    = $F0       ; 1-byte
 OP_I9    = $F9       ; 1-byte
@@ -971,6 +978,7 @@ OP_LE    = 25        ; binary
 OP_GT    = 62        ; binary `>`
 OP_GE    = 29        ; binary
 
+expr_at:
 expr_a:
 ex_abs  DB "ABS",     OP_ABS    +$40     ; fn (0,0)  bit 6 set for more ($80+$40)
 ex_asc  DB "ASC",     OP_ASC    +$40     ; fn (0,1)  bit 6 clear to end ($80)
@@ -1029,13 +1037,14 @@ ex_top  DB "TOP",     OP_TOP    +0       ; no-arg (0,0)
 expr_u:
 ex_usr  DB "USR",     OP_USR    +0       ; fn (0,1)
 expr_v:
-ex_val  DB "VAL",     OP_VAL    +$40     ; fn (0,1)
-ex_vps  DB "VPOS",    OP_VPOS   +0       ; no-arg (3,0)   cursor y
 expr_w:
 expr_x:
 expr_y:
 expr_z:
-  DB 0
+ex_val  DB "VAL",     OP_VAL    +$40     ; fn (0,1)
+ex_vps  DB "VPOS",    OP_VPOS   +0       ; no-arg (3,0)   cursor y
+
+ex_fnret: DB "=", $80
 
 ; context keywords (keep on one page for Y indexing)
 ; note: `kwtab` is at start of page
@@ -1084,30 +1093,8 @@ expr_rev:                  ; [38]
   DB (ex_step - expr_page) ; "STEP",$A3  keyword
   DB (ex_to - expr_page)   ; "TO",$A4    keyword
   DB (ex_then - expr_page) ; "THEN",$A5  keyword
+  DB (ex_fnret - expr_page); "=",$A6     special
 
-
-; @@ tok_patch_pl
-; patch "last length placeholder" with (emit_ofs - patch_addr)
-tok_patch_pl:       ; (uses A preserves X,Y)
-  STY B             ; [3] save Y (ln_ofs)
-  LDY EmitPtch      ; [3] Y = emit patch address
-  BEQ @done         ; [2] -> no patch address [+1]
-  LDA EmitOfs       ; [3] A = emit_ofs
-  CLC               ; [2] minus 1 (exclude patched byte)
-  SBC EmitPtch      ; [3] A = emit_ofs - patch_addr (i.e. length)
-  STA EmitBuf,Y     ; [5] write length at patch address
-  LDA #0            ; [2] no patch address
-  STA EmitPtch      ; [3] clear "last length placeholder"
-@done:
-  LDY B             ; [3] restore Y (ln_ofs)
-  RTS
-
-; @@ tok_emit_pl
-; Emit a placeholder byte at (Emit) and advance (Emit).
-tok_emit_pl:         ; (uses X; preserves A,Y; sets PL)  [30]
-  LDX EmitOfs        ; [3] get current EmitOfs
-  STX EmitPtch       ; [3] set "last length placeholder" for patching
-  ; +++ fall through to @@ tok_emit +++
 
 ; @@ tok_emit
 ; Emit an opcode at Emit,X and advance EmitOfs.
