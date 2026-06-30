@@ -257,7 +257,7 @@ basic_esc:         ; <- entry point after Escape
   STY EmitOfs      ; [3] reset EmitOfs for code gen
   STY EmitPtch     ; [3] ensure no EmitPtch
   ; parse line number
-  JSR skip_spc     ; [24+] Y=ofs -> Y, A=next-char (uses A,X)
+  JSR skip_spc     ; [24+] Y=ofs -> Y, A=next-char
   CMP #0           ; [2] end of line? (must CMP)
   BEQ repl         ; [2] -> empty line, go back to repl [+1]
   JSR num_u16      ; [6] parse number at Y -> Y,Acc,NE=found (uses A,B,X)
@@ -266,7 +266,7 @@ basic_esc:         ; <- entry point after Escape
   ; try matching a repl command
   LDA #<repl_tab   ; [2] repl commands offset
   LDX #>repl_tab   ; [2] repl commands page
-  JSR match_kws    ; [6] Y=ofs XA=table -> CS=found, Y=ofs, A=high-byte (uses A,X,Y,B,C,D,Src)
+  JSR match_kws    ; [6] Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,Src)
   BCC @direct      ; [3] -> no match, parse direct
   JSR @docmd       ; [6] run the command
   JMP repl         ; [3] -> back to repl
@@ -367,126 +367,126 @@ err_expect:       ; A = expected character
 ; Y = current LineBuf offset at (Ptr)
 ; A,X = temporaries
 
-; report syntax error
-tok_syn:
-  LDY #<msg_syn
-  BNE report_err
-
 ; emit a string literal
 emit_str:
 @copy:
   JSR tok_emit       ; emit char (uses X=0; preserves A,Y; sets PL)
   INY                ; advance
-  LDA LineBuf,Y      ; get next char                  closing "
+  LDA LineBuf,Y      ; get next char
   BEQ @miss          ; -> at end of line, missing quote
   CMP #34            ; is it `"`?
   BNE @copy          ; -> continue
-  TAX                ; save `"`
   INY                ; advance
-  LDA LineBuf,Y      ; get next char            (after closing ")
-  CMP #34            ; is it `"`?
+  CMP LineBuf,Y      ; is next char `"` ?
   BEQ @copy          ; -> emit one `"` and continue
-  TXA                ; restore `"`
   JSR tok_emit       ; emit closing `"` (uses X=0; preserves A,Y; sets PL)
   BPL tok_loop       ; -> ALWAYS (PL)
 @miss:               ; at end of line, missing quote
   LDA #34            ; `"`
   BNE err_expect     ; error: missing `"` (A!=0)
 
-; @@ emit_var
-; copy VAR[$] to output (assumes 1st char is alpha)
-emit_var:
-@copy:
-  LDA LineBuf,Y    ; [4] next input char
-  INY              ; [2] advance input (assume match)
-  TAX              ; [2] save X=char
-  JSR is_alpha     ; [6] A=char -> A=az-index, CC=alphabetic (preserves X,Y)
-  BCS @done        ; [2] -> end of VAR [+1]
-  TXA              ; [2] restore A=char
-  JSR tok_emit     ; [6] output VAR char (uses X=0; preserves A,Y; sets PL)
-  BPL @copy
-@done:
-  DEY              ; [2] undo advance (didn't match)
-  TXA              ; [2]
-  CMP #36          ; [2] '$'
-  BNE tok_loop     ; [2] -> return (NE)
-  JSR tok_emit     ; [6] output '$' (uses X=0; preserves A,Y; sets PL)
-  INY              ; [2] consume '$'
-  BNE tok_loop     ; [2] -> return (Y!=0)
+; @@ emit_let
+emit_let:            ; Y -> Y,EQ
+  JSR emit_var       ; -> recognise and emit VAR
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char
+  CMP #61            ; is it `=`?
+  BEQ tok_loop       ; -> expect an expression (not enforced)
+  ; ...
+tok_syn:             ; report syntax error
+  LDY #<msg_syn
+  BNE report_err
+
+tok_colon:
+  INY                ; consume `:`
+  SEC                ; 
+  ROR D              ; set D=128
+  BNE tok_stmt       ; -> ALWAYS: require a statement
 
 ; @@ tokenize
 ; tokenize BASIC statements (in-place in LineBuf/EmitBuf)
+tokenize:            ; Y=ofs, uses A,X,B,C,D,Src
+  LDA #0
+  STA D              ; D=0, no LET until `:`
 tok_stmt:
-  JSR tok_emit       ; output `:` (uses X=0; preserves A,Y; sets PL)
-  INY                ; advance
-  ; next stmt...
-tokenize:            ; Y=ofs
-  JSR skip_spc       ; Y=ofs -> Y, A=next-char (uses X)
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char
   JSR is_alpha       ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
-  BCS tok_syn        ; -> non-alpha (XXX or FN return '=')
+  BCS tok_syn        ; -> syntax error
   TAX                ; A-Z as index (0-25)
   LDA stmt_idx,X     ; offset in stmt_page (A-Z)
   LDX #>stmt_page    ; stmt table page
-  JSR match_kws      ; Y=ofs XA=table -> CS=found, Y=ofs, A=high-byte (uses A,X,Y,B,C,D,Src)
-  BCC emit_var       ; -> no match, emit VAR
+  JSR match_kws      ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,Src)
+  BCC emit_let       ; -> no match, emit LET
   ORA #$C0           ; set top bits (match_kws uses d7,d6)
   JSR tok_emit       ; output token with top-bit set (uses X=0; preserves A,Y; sets PL)
-  CMP #OP_IF         ; an IF statement?
-  BEQ tok_if         ; -> handle IF
-  CMP #OP_THEN       ; a THEN statement?
-  BEQ tok_then       ; -> handle THEN
-  CMP #OP_ELSE       ; an ELSE statement?
-  BEQ tok_else       ; -> handle ELSE
-  CMP #OP_DATA       ; a DATA statement?
-  BEQ tok_data       ; -> handle DATA
-; rest of line (args, etc)
+  CMP #OP_DATA       ; a DATA statement? ($C3)
+  BEQ tok_data       ; -> handle DATA/REM
+  CMP #OP_REM        ; a REM statement? ($DC)
+  BEQ tok_data       ; -> handle DATA/REM
+  CMP #OP_ELSE       ; an ELSE statement? ($C6)
+  BEQ tok_then       ; -> handle THEN/ELSE (NOT tok_else, opcode already emitted)
 tok_loop:
-  JSR skip_spc       ; Y=ofs -> Y, A=next-char (uses X)
-  TAX                ; save A
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char
+  TAX                ; save A (set flags for BEQ)
   BEQ tok_done       ; -> end of line
   JSR is_alpha       ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
   BCC tok_kwv        ; -> emit KEYWORD or VAR
   TXA                ; restore A
   CMP #34            ; `"`
   BEQ emit_str       ; -> emit STRING
-  JSR is_digit       ; A=char -> A=digit, CC=is_digit (preserves X,Y)
+  JSR is_digit       ; A=char -> A=[0..9], CC=found (preserves X,Y)
   BCC emit_num       ; -> emit NUMBER
   TXA                ; restore A
   CMP #58            ; `:`
-  BEQ tok_stmt       ; -> emit `:` then expect statement
+  BEQ tok_colon      ; -> expect statement
   CMP #60            ; <> <= <
   BEQ tok_ltgt       ; -> tokenize less than
   CMP #62            ; >= >
   BEQ tok_ltgt       ; -> tokenize greater than
-  ; output character: ^ + - * / ( ) # , ;
+
 tok_emitx:
   TXA                ; emit X
-tok_emitc:
+tok_emitc:           ; output character: ^ + - * / ( ) # , ; $
   JSR tok_emit       ; output character (uses X=0; preserves A,Y; sets PL)
   INY                ; advance input
   BPL tok_loop       ; -> ALWAYS: continue tokenize
 
 tok_kwv:             ; AND,OR,EOR,DIV,MOD,THEN,ELSE,TO,STEP,FN,(functions)
-  TAX                ; A-Z as index (0-25)
+  TAX                ; A-Z as index
   LDA expr_idx,X     ; offset in expr_page (A-Z)
   LDX #>expr_page    ; expr table page
-  JSR match_kws      ; Y=ofs XA=table -> CS=found, Y=ofs, A=high-byte (uses A,X,Y,B,C,D,Src)
-  BCC emit_var       ; -> emit VAR, continue
+  JSR match_kws      ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,Src)
+  BCC @var           ; -> no match, emit VAR
   AND #$BF           ; clear bit 6 ($40)
+  CMP #OP_THEN       ; a THEN statement? ($A5)
+  BEQ tok_then       ; -> handle THEN
+  CMP #OP_ELSEA       ; an ELSE statement? ($86)
+  BEQ tok_else       ; -> handle ELSE
   JSR tok_emit       ; output token with top-bit set (uses X=0; preserves A,Y; sets PL)
   BPL tok_loop       ; -> ALWAYS: continue
+@var:
+  JSR emit_var_ex     ; -> recognise and emit VAR
+  JMP tok_loop       ; -> ALWAYS: continue
 
-tok_data:
-  JSR tok_emit_pl    ; emit length placeholder (uses X; preserves A,Y; sets PL)
-  JSR skip_spc       ;
+tok_data:            ; copy rest of line verbatim
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char
 @copy:
   LDA LineBuf,Y      ; copy rest of the line
   BEQ tok_done       ; -> end of line
   INY                ; advance input
   JSR tok_emit       ; emit code (uses X=0; preserves A,Y; PL)
   BPL @copy          ; -> ALWAYS: until end of line
+
 tok_done:
-  JMP tok_patch_pl   ; patch length placeholder (uses A preserves X,Y) -> return
+  RTS
+
+tok_else:
+  LDA #OP_ELSE       ; emit OP_ELSE ($C6)
+  JSR tok_emit       ; emit code (uses X=0; preserves A,Y; PL)
+tok_then:            ; handle THEN/ELSE
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char
+  JSR is_digit       ; A=char -> A=[0..9], CC=found (preserves X,Y)
+  BCC emit_num       ; -> DIGIT: emit line number
+  JMP tok_stmt       ; -> ALWAYS: require a statement
 
 tok_ltgt:            ; less than / greater than
   ASL                ; A=(60|62) (<|>) x2 = (120|124)
@@ -501,20 +501,6 @@ tok_ltgt:            ; less than / greater than
   INY                ; advance input (<|=|>)
   ORA B              ; A = (24|28)|(0-2) = 24:<< 25:<= 26:<> 28:>< 29:>= 30:>>
   BNE tok_emitc      ; -> ALWAYS: emit and continue (A!=0)
-
-tok_if:              ; XXX length of THEN goes with IF?
-  JSR tok_emit_pl    ; emit length placeholder (uses X=0; preserves Y; sets PL)
-  BPL tok_loop       ; -> ALWAYS: tokenize expression
-
-tok_then:            ; XXX no, ELSE patches IF
-  JSR tok_patch_pl   ; patch last length placeholder (uses A preserves X,Y)
-  ; fall through...
-tok_else:
-  JSR tok_emit_pl    ; emit length placeholder (uses X=0; preserves Y; sets PL)
-  JSR skip_spc       ; Y=ofs -> Y, A=next-char (uses X)
-  JSR is_digit       ; A=char -> A=digit, CC=is_digit (preserves X,Y)
-  BCC emit_num       ; -> DIGIT: emit line number
-  JMP tokenize       ; -> ALWAYS: tokenize next statement
 
 ; assumes next char is digit
 emit_num:
@@ -556,8 +542,36 @@ emit_num:
 @ovf:
   JMP err_overflow
 
-skip_spc:          ; tokenize - skip spaces ()           - Y OK
-@loop:
+; @@ emit_var
+; copy VAR[$] to output (assumes 1st char is alpha)
+emit_var:
+  BIT D            ; [3] N=1 after `:`
+  BPL emit_var_ex  ; [2] -> no LET prefix [+1]
+  LDX #OP_LET      ; [2]
+emvr_lp:
+  TXA              ; [2] X -> A
+  JSR tok_emit     ; [6] output byte (uses X=0; preserves A,Y; sets PL)
+emit_var_ex:       ; <- start VAR emit
+  LDA LineBuf,Y    ; [4] next input char
+  INY              ; [2] advance input (assume match)
+  TAX              ; [2] save X=char
+  JSR is_alpha     ; [6] A=char -> A=az-index, CC=alphabetic (preserves X,Y)
+  BCC emvr_lp      ; [2] -> is alpha, continue [+1]
+  TXA              ; [2] restore A
+  JSR is_digit     ; [6] A=char -> A=[0..9], CC=found (preserves X,Y)
+  BCC emvr_lp      ; [2] -> is digit, continue [+1]
+  TXA              ; [2] restore A
+  DEY              ; [2] undo advance (didn't match)
+  CMP #36          ; [2] is it `$` ?
+  BNE @nostr       ; [2] -> no [+1]
+  JSR tok_emit     ; [6] output `$` (uses X=0; preserves A,Y; sets PL)
+  INY              ; [2] consume `$`
+@nostr:
+  RTS              ; [2] -> return
+
+; @@ skip_spc
+skip_spc:          ; tokenize - skip spaces
+@loop:             ; Y=ofs -> Y, A=next-char
   LDA LineBuf,Y    ; [4] next input char
   INY              ; [2] advance input (assume match)
   CMP #32          ; [2] was it space?
@@ -574,11 +588,11 @@ is_alpha:          ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
   RTS              ; [6] -> A=az-index CC=alpha [14]
 
 ; @@ is_digit
-is_digit:          ; A=char -> A=digit, CC=is_digit (preserves X,Y)
+is_digit:          ; A=char -> A=[0..9], CC=found (preserves X,Y)
   SEC              ; [2] for subtract
   SBC #48          ; [2] make '0' be 0
   CMP #10          ; [2] 10 digits (CS if >= 10)
-  RTS              ; [6] -> A=digit CC=is_digit [12]
+  RTS              ; [6] -> A=digit CC=found [12]
 
 ; LET <var> '=' <expr>                                   -> {LETn|LETs|LETa}<var><expr> (x2?)
 ; DIM <var> '(' <expr> ')'                               -> {DIM}<var><expr_n>
@@ -733,12 +747,6 @@ OP_WAIT    = $DF
 
 stmt_count = 32  ; $20
 
-; extras
-OP_STEP    = $E0
-OP_THEN    = $E1
-OP_THENLN  = $E2
-OP_ELSELN  = $E3
-
 kws_a:
 kws_b:
 kws_c:
@@ -749,7 +757,7 @@ kw_data   DB "DATA",     OP_DATA   -0
 kw_dim    DB "DIM",      OP_DIM    -0
 kw_def    DB "DEF",      OP_DEFFN  -$40
 kws_e:
-kw_else   DB "ELSE",     OP_ELSE   -0
+kw_else   DB "ELSE",     OP_ELSE   -0     ; match yields $C6 (-0)
 kw_end    DB "END",      OP_END    -$40
 kws_f:
 kw_for    DB "FOR",      OP_FOR    -$40
@@ -837,7 +845,7 @@ stmt_rev:                     ; [34] indices MUST match OPCODEs
 ; find matching keyword, terminated by a byte with top-bit set (8x,9x,Ax,Bx)
 ; if no match, continue until bit 6 is set (Cx,Dx,Ex,Fx)
 ; note: XA table cannot cross a page boundary (INC/DEC Src would wrap)
-match_kws:       ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,C,D,Src)
+match_kws:       ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,Src)
   STY B          ; [3] save start of input
   STA Src        ; [3] table-low (offset)
   STX SrcH       ; [3] table-high (page)
@@ -907,42 +915,42 @@ expr_idx:
 
 OP_ABS = $80
 OP_ASC = $81
-OP_AND = $9C       ; binary op
+OP_AND = $9D       ; binary op
 OP_BTN = $82
 OP_CHR = $83
-OP_DIV = $9D       ; binary op
+OP_DIV = $9E       ; binary op
 OP_EOF = $84
-OP_EOR = $9E       ; binary op
-OP_ELSE = $A2      ; `IF` keyword
+OP_EOR = $9F       ; binary op
 OP_FN  = $85
-OP_GET = $86
-OP_INSTR = $87
-OP_INT = $88
-OP_JOY = $89
-OP_KEY = $8A
-OP_LEN = $8B
-OP_LEFT = $8C
-OP_MID = $8D
-OP_MOD = $9F       ; binary op
-OP_NOT = $A0       ; unary op
-OP_OR  = $A1       ; binary op
-OP_POS = $8E
-OP_PI = $8F
-OP_RIGHT = $90
-OP_RND = $91
-OP_SCN = $92
-OP_STRING = $93
-OP_STR = $94
-OP_SQR = $95
-OP_SGN = $96
+OP_ELSEA = $86     ; to match OP_ELSE $C6 (i.e. $86 + $40)
+OP_GET = $87
+OP_INSTR = $88
+OP_INT = $89
+OP_JOY = $8A
+OP_KEY = $8B
+OP_LEN = $8C
+OP_LEFT = $8D
+OP_MID = $8E
+OP_MOD = $A0       ; binary op
+OP_NOT = $A1       ; unary op
+OP_OR  = $A2       ; binary op
+OP_POS = $8F
+OP_PI = $90
+OP_RIGHT = $91
+OP_RND = $92
+OP_SCN = $93
+OP_STRING = $94
+OP_STR = $95
+OP_SQR = $96
+OP_SGN = $97
 OP_STEP = $A3      ; `FOR` keyword
-OP_TIME = $97
+OP_TIME = $98
 OP_TO = $A4        ; `FOR` keyword
 OP_THEN = $A5      ; `IF` keyword
-OP_TOP = $98
-OP_USR = $99
-OP_VAL = $9A
-OP_VPOS = $9B
+OP_TOP = $99
+OP_USR = $9A
+OP_VAL = $9B
+OP_VPOS = $9C
 
 OP_I0    = $F0       ; 1-byte
 OP_I9    = $F9       ; 1-byte
@@ -976,7 +984,7 @@ ex_div  DB "DIV",     OP_DIV    +0       ; binary op
 expr_e:
 ex_eof  DB "EOF",     OP_EOF    +$40     ; # function (2,0)
 ex_eor  DB "EOR",     OP_EOR    +$40     ; binary op
-ex_else DB "ELSE",    OP_ELSE   +0       ; `IF` keyword
+ex_else DB "ELSE",    OP_ELSEA  +0       ; keyword
 expr_f:
 ex_fn   DB "FN",      OP_FN     +0       ; function-call (9)
 expr_g:
@@ -1044,35 +1052,35 @@ expr_rev:                  ; [38]
   DB (ex_chr - expr_page)  ; "CHR",$83
   DB (ex_eof - expr_page)  ; "EOF",$84
   DB (ex_fn  - expr_page)  ; "FN",$85
-  DB (ex_get - expr_page)  ; "GET",$86
-  DB (ex_ins - expr_page)  ; "INSTR",$87
-  DB (ex_int - expr_page)  ; "INT",$88
-  DB (ex_joy - expr_page)  ; "JOY",$89
-  DB (ex_key - expr_page)  ; "KEY",$8A
-  DB (ex_len - expr_page)  ; "LEN",$8B
-  DB (ex_lft - expr_page)  ; "LEFT",$8C
-  DB (ex_mid - expr_page)  ; "MID",$8D
-  DB (ex_pos - expr_page)  ; "POS",$8E
-  DB (ex_pi  - expr_page)  ; "PI",$8F
-  DB (ex_rgt - expr_page)  ; "RIGHT",$90
-  DB (ex_rnd - expr_page)  ; "RND",$91
-  DB (ex_scn - expr_page)  ; "SCN",$92
-  DB (ex_stri - expr_page) ; "STRING",$93
-  DB (ex_str - expr_page)  ; "STR",$94
-  DB (ex_sqr - expr_page)  ; "SQR",$95
-  DB (ex_sgn - expr_page)  ; "SGN",$96
-  DB (ex_time - expr_page) ; "TIME",$97
-  DB (ex_top - expr_page)  ; "TOP",$98
-  DB (ex_usr - expr_page)  ; "USR", $99
-  DB (ex_val - expr_page)  ; "VAL",$9A
-  DB (ex_vps - expr_page)  ; "VPOS",$9B
-  DB (ex_and - expr_page)  ; "AND",$9C   operator
-  DB (ex_div - expr_page)  ; "DIV",$9D   operator
-  DB (ex_eor - expr_page)  ; "EOR",$9E   operator
-  DB (ex_mod - expr_page)  ; "MOD",$9F   operator
-  DB (ex_not - expr_page)  ; "NOT",$A0   operator
-  DB (ex_or - expr_page)   ; "OR",$A1    operator
-  DB (ex_else - expr_page) ; "ELSE",$A2  keyword
+  DB (ex_else - expr_page) ; "ELSE",$86
+  DB (ex_get - expr_page)  ; "GET",$87
+  DB (ex_ins - expr_page)  ; "INSTR",$88
+  DB (ex_int - expr_page)  ; "INT",$89
+  DB (ex_joy - expr_page)  ; "JOY",$8A
+  DB (ex_key - expr_page)  ; "KEY",$8B
+  DB (ex_len - expr_page)  ; "LEN",$8C
+  DB (ex_lft - expr_page)  ; "LEFT",$8D
+  DB (ex_mid - expr_page)  ; "MID",$8E
+  DB (ex_pos - expr_page)  ; "POS",$8F
+  DB (ex_pi  - expr_page)  ; "PI",$90
+  DB (ex_rgt - expr_page)  ; "RIGHT",$91
+  DB (ex_rnd - expr_page)  ; "RND",$92
+  DB (ex_scn - expr_page)  ; "SCN",$93
+  DB (ex_stri - expr_page) ; "STRING",$94
+  DB (ex_str - expr_page)  ; "STR",$95
+  DB (ex_sqr - expr_page)  ; "SQR",$96
+  DB (ex_sgn - expr_page)  ; "SGN",$97
+  DB (ex_time - expr_page) ; "TIME",$98
+  DB (ex_top - expr_page)  ; "TOP",$99
+  DB (ex_usr - expr_page)  ; "USR", $9A
+  DB (ex_val - expr_page)  ; "VAL",$9B
+  DB (ex_vps - expr_page)  ; "VPOS",$9C
+  DB (ex_and - expr_page)  ; "AND",$9D   operator
+  DB (ex_div - expr_page)  ; "DIV",$9E   operator
+  DB (ex_eor - expr_page)  ; "EOR",$9F   operator
+  DB (ex_mod - expr_page)  ; "MOD",$A0   operator
+  DB (ex_not - expr_page)  ; "NOT",$A1   operator
+  DB (ex_or - expr_page)   ; "OR",$A2    operator
   DB (ex_step - expr_page) ; "STEP",$A3  keyword
   DB (ex_to - expr_page)   ; "TO",$A4    keyword
   DB (ex_then - expr_page) ; "THEN",$A5  keyword
