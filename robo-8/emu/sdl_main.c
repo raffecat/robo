@@ -18,11 +18,12 @@ int main(int argc, char *argv[]) {
     printf("dir %s\n", cwd);
 
     // load the ROM image.
-    memset(SysROM, 0xFF, sizeof(SysROM)); // FF! 17  01 02 03-0D! 1E F1 >16<
-    //size_t rom_size = 4096;
-    size_t rom_size = read_binary_file("rom4K.bin", (char*)SysROM, 4096);
-    memcpy(SysROM+4096, SysROM, 4096); // mirror it
-    printf("not loaded ROM %zu\n", rom_size);
+    memset(SysROM, 0xEE, sizeof(SysROM)); // FF! 17  01 02 03-0D! 1E F1 >16<
+    size_t rom_size = read_binary_file("rom6K.bin", (char*)SysROM, sizeof(SysROM));
+    memcpy(SysROM+0x3800, SysROM+0x1000, 0x800);  // 2K SysROM -> top 2K (main copy)
+    memcpy(SysROM+0x3000, SysROM+0x1000, 0x800);  // 2K SysROM -> top 4K (mirror)
+    memcpy(SysROM+0x1000, SysROM+0x0000, 0x1000); // 4K BasROM -> bottom 8K (mirror)
+    printf("loaded ROM %zu\n", rom_size);
 
     // create window.
     if (!init_render()) {
@@ -39,7 +40,7 @@ int main(int argc, char *argv[]) {
 
     // DEBUGGER
     dbg_enable = 0;
-    dbg_break = 0x0F1B9;
+    dbg_break = 0x0F000;
     Uint32 held_time = 0;
 
     // run the simulator.

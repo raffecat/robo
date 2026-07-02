@@ -2,37 +2,40 @@
 #include <stdio.h>
 
 enum io_reg {
-    IO_VCTL    = 0xFF,   // video control      (7:VSync 6:VRow 5:Blank 4:Grey 3:Bpp 2:Text 1:VRes 0:HRes)
-    IO_VPL2    = 0xFE,   // palette register   (7-4:C2 3-0:C3)
-    IO_VPL1    = 0xFD,   // palette register   (7-4:BG 3-0:~FG)
-    IO_VLIN    = 0xFC,   // current video line (read: V-counter >= 192 Blank)(write: IRQAck 7:VSync 6:VRow 5:KBInt)
-    IO_KEYB    = 0xFB,   // Keyboard scan      (write: 7-6:Volume 3-0:KBCol)(read: KBRow)
-    IO_PSGF    = 0xFA,   // PSG Frequency      (write: 7-0:Divider)(7860 Hz / divider)
+    IO_DATA = 0xF8, // OUT 8-bit (7-5:Volume 2:RTS 1:TXD 0:TapeOut) / IN (2:CTS 1:RXD 0:TapeIn)
+    IO_KEYB = 0xF9, // Keyboard column 4-bit (3:Strobe 2-0:KBCol) / read: KB row 8-bit
+    IO_LINE = 0xFA, // IRQAck 3-bit (7:VSync 6:VRow 5:KBInt) / read: vertical line (>= 192 in vblank)
+    IO_PSGF = 0xFB, // PSG frequency 8-bit (write: 7-0:Divider)(7860 Hz / divider)
+    IO_PAL1 = 0xFC, // palette for APA 8-bit (7-4:BG 3-0:~FG)
+    IO_PAL2 = 0xFD, // palette for APA 8-bit (7-4:C2 3-0:C3)
+    IO_VPGC = 0xFE, // video page 8-bit (video base page, page counter)
+    IO_VCTL = 0xFF, // video mode 8-bit (7:VSync 6:VRow 5:Parallel 4:? 3:Grey 2:2Bpp 1-0:VMux)
 };
 
 uint8_t OpenBus[8*1024] = { 0xEE };
-uint8_t SysROM[8*1024];
+uint8_t SysROM[16*1024];
 uint8_t MainRAM[8*1024];
 uint8_t CartRAM[8*1024];
 
 extern uint16_t vdp_vcount; // 9-bit vertical line count
 
-uint8_t  VidCtl    = 0x2E;   // 8-bit video control (4:Width 3:Height 2:Grey 1:APA 0:Color)
+uint8_t  VidCtl    = 0x2E;   // 8-bit video control ()
+uint8_t  VidPgC    = 0x23;   // 5-bit video page counter
 uint8_t  VidPal1   = 0x3E;   // 8-bit register      (7-4:BG 3-0:~FG)
 uint8_t  VidPal2   = 0xC1;   // 8-bit register      (7-4:C2 3-0:C3)
 uint8_t  KbdCol    = 0x03;   // 4-bit register
 uint8_t  PSGVol    = 0x03;   // 2-bit register
 uint8_t  PSGFrq    = 0x28;   // 8-bit register
 
-static uint8_t* MemMap[8] = {
+uint8_t* MemMap[8] = {
     MainRAM,               // Base 8K RAM
     CartRAM,               // 8K RAM Cart
     OpenBus,               // RAM Expansion (16K RAM Cart)
     OpenBus,               // RAM Expansion (32K RAM Cart)
     OpenBus,               // RAM Expansion (32K RAM Cart)
-    OpenBus,               // Expansion Port
-    OpenBus,               // Expansion Port
-    SysROM,                // System ROM (4K, mirrored twice)
+    OpenBus,               // RAM Expansion (32K RAM Cart)
+    SysROM,                // BASIC ROM (4K, mirrored twice in bottom 8K)
+    SysROM+0x2000,         // System ROM (2K, mirrored twice in top 4K)
 };
 
 static uint8_t MemMapWR[8] = {
@@ -54,18 +57,17 @@ static uint8_t ula_io_read(uint16_t address) {
     // now read the IO port
     switch (address) {
         // F-page
-        case IO_VLIN:       // $FC: (0-191 are visible lines)
-            value = vdp_vcount & 0xFF;
-            break;
-        case IO_KEYB: {     // $FB: (read: KBRow)
+        case IO_KEYB: {     // (read: KBRow)
             value = scanKeyCol(KbdCol);
             break;
         }
+        case IO_LINE:       // (0-191 are visible lines)
+            value = vdp_vcount & 0xFF;
+            break;
         default:
-            // Read-through to RAM.
-            return MainRAM[address];
+            return 0xEE;    // open bus
     }
-    if (address == IO_VLIN) {
+    if (address != IO_KEYB) {
         printf("IO Read: [$%02X] -> $%02X\n", address, value);
     }
     return value;
@@ -77,30 +79,34 @@ static void ula_io_write(uint16_t address, uint8_t value) {
     // now write the IO value
     switch (address) {
         // F-page
-        case IO_VCTL:       // $FF: (7:VSync 6:VRow 5:Blank 4:Grey 3:Bpp 2:Text 1:VRes 0:HRes)
+        case IO_VCTL:       // (7:VSync 6:VRow 5:Parallel 4:Grey 3:Bpp 2:Text 1:VRes 0:HRes)
             VidCtl = value;
             break;
-        case IO_VPL2:       // $FE: (7-4:C2 3-0:C3)
+        case IO_VPGC:
+            VidPgC = value; // Video page counter (8-bit)
+            break;
+        case IO_PAL2:       // Palette (7-4:C2 3-0:C3)
             VidPal2 = value;
             break;
-        case IO_VPL1:       // $FD: (7-4:BG 3-0:~FG)
+        case IO_PAL1:       // Palette (7-4:BG 3-0:~FG)
             VidPal1 = value;
             break;
-        case IO_VLIN:       // $FC: (IRQAck 7:VSync 6:VRow 5:KBInt)
-            break;
-        case IO_KEYB:       // $FB: (7-6:Volume 3-0:KBCol)
-            KbdCol = value & 0x0F;
-            PSGVol = value >> 6;
-            break;
-        case IO_PSGF: {     // $FC: PSG Divider (read: last write)
+        case IO_PSGF:       // PSG Divider (read: last write)
             PSGFrq = value;
             break;
-        }
+        case IO_LINE:       // (IRQAck 7:VSync 6:VRow 5:KBInt)
+            break;
+        case IO_KEYB:       // (3-0:KBCol)
+            KbdCol = value & 0x0F;
+            break;
+        case IO_DATA:       // (7-6:Volume 2:RTS 1:TXD 0:TapeOut)
+            PSGVol = value >> 6;
+            break;
     }
     // write-through to RAM.
     MainRAM[address] = value;
     // log IO writes (except keyboard row / irq ack)
-    if (address != IO_KEYB && address != IO_VLIN) {
+    if (address != IO_KEYB && address != IO_LINE) {
         printf("IO Write: [$%02X] <- $%02X\n", address, value);
     }
 }

@@ -92,7 +92,7 @@ int init_render() {
     }
     SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS);
     window = SDL_CreateWindow(
-        "Frontier Research Pixie-4",
+        "Frontier Chroma-4",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         width, height,
         0
@@ -213,9 +213,9 @@ void advance_vdp() {
         // load a character every bus cycle when fetch is enabled (0px)
         if ( vdp_hsub == 4) { // vdp_hfetch == 1
             // HAddress: low 5 bits (0-31); VAddress: 5 bits above that (0-23)
-            // Base: $0200 (this will access up to 1KB, only 768 displayed)
-            uint16_t addr = 0x200 + ((((vdp_vcount>>3)&31)<<5)|((vdp_hcount>>3)&31)); // [0,1024)
-            vdp_latch = MainRAM[addr]; // Char
+            // Base: VidPgC (this will access up to 1KB, only 768 displayed)
+            uint16_t address = (VidPgC<<8) + ((((vdp_vcount>>3)&7)<<5)|((vdp_hcount>>3)&31)); // [0,767]
+            vdp_latch = MemMap[address >> 13][address & 0x1fff]; // 8K Banks
         }
 
         // Clock in the new HCount, VCount, and decodes.
@@ -252,6 +252,18 @@ void advance_vdp() {
 
             // NTSC Vert: 192 + 25 + 9 + 3 + 8 + 25 = 262
             vdp_vcount++;
+
+            // advance page counter
+            // Text    H=0 (H:43210) VV=00 (V:6543) 2^6  Text = NOR(V1,V0)
+            // 128x96  H=1 (H:14321) VV=01 (V:5432) 2^5     H = AND(~V1,V0)
+            // 256x96  H=0 (H:43210) VV=10 (V:4321) 2^4
+            // 256x192 H=0 (H:43210) VV=11 (V:3210) 2^3
+            if (!vdp_vborder) {
+                int page_mask = (64 >> (VidCtl&3)) - 1;
+                if ((vdp_vcount & page_mask) == 0) VidPgC++;
+            }
+
+            // vertical decodes
             if (vdp_vcount == 192) {
                 vdp_vborder = 1; // turn on vertical border
             }

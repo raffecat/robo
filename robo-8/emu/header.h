@@ -14,10 +14,11 @@ enum vdp_const {
 };
 
 // Memory
-extern uint8_t SysROM[8*1024];
+extern uint8_t SysROM[16*1024];
 extern uint8_t MainRAM[8*1024];
 extern uint8_t CartRAM[8*1024];
 extern uint8_t CharROM[256*8];
+extern uint8_t* MemMap[8];
 
 // Fake6502
 void reset6502();
@@ -40,6 +41,7 @@ void dbg_decode_next_op(uint16_t pc);
 uint8_t read6502(uint16_t address);
 void write6502(uint16_t address, uint8_t value);
 extern uint8_t VidCtl;
+extern uint8_t VidPgC;
 extern uint8_t VidPal1;
 extern uint8_t VidPal2;
 extern uint8_t KbdCol;

@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
-
-asm6 font/font.asm font2K.bin
+clang font/convert_asm.c font/Chroma_1.c -o font/Chroma_asm
+./font/Chroma_asm >font/font_1.asm
+asm6 font/font_1.asm font2K.bin
