@@ -19,29 +19,42 @@
 ;                 -----------
 ; 256+231+103+106+85+79+164
 
-; 3 pages left:
+; 5 pages Bas ROM:
 ; • floating point
 ; • square root
 ; • string heap
 ; • string functions
-; • line drawing
-; • APA graphics
-; • Casette code
+
+; 4 pages Sys ROM:
+; • Line drawing
+; • Cassette code
 ; • Sound interrupt
 ; • Color zones
+; • Serial and parallel
+; • Number conversion
+; • Graphics font? 3x5: 5 * 96 / 2 = 240 bytes
 
-ROM      = $F000  ; 4K = $1000 from F000-FFFF
-VEC      = $FFFA  ; vector table, 6 bytes
+BasROM   = $C000  ; 4K/8K BASIC ROM
+DiskROM  = $E000  ; 4K DISK ROM
+SysROM   = $F800  ; 2K SYSTEM ROM (twice)
+SizeIMG  = $1800  ; size of 6K file
+
+HWVEC    = $FFFA  ; vector table, 6 bytes
 SYSVEC   = $FFC0  ; system vector table
 
 ; ------------------------------------------------------------------------------
 ; Address Space
 
-ZeroPg   = $0000  ; zero page
-StackPg  = $0100  ; stack page
-ScreenPg = $0200  ; screen memory (3/6/12/24 pages)
-Base4K   = $0500  ; start of free memory
-End4K    = $1000  ; end of memory
+; Moved VRAM to the end of detected memory: dynamic VidBase.
+; Otherwise, on a screen mode change, we would need to
+; move the BASIC program (breaking pointers on the stack)
+; and machine code programs would need to be compiled
+; for a specific screen mode?!
+
+ZeroPg   = $00  ; zero page (constant)
+StackPg  = $01  ; stack page (constant)
+BasePg   = $02  ; start of free memory (constant)
+End4K    = $10  ; end of 4KB memory (minimum RAM fitted)
 
 ; ------------------------------------------------------------------------------
 ; Zero Page $00-7F - BASIC WORKSPACE
@@ -60,8 +73,8 @@ VarPtrs  = $40    ; 26 x BASIC variable pointers (A-Z)
 
 ; -- $74-7F BASIC Pointers (12; 6 pointers)
 
-OpTop    = $74    ; top of OperStk (stack pointer)
-BasePage = $75    ; BASIC base address ($3500/$2500/$0500 text; $3800/$2800/$0800 APA)
+OpTop    = $74    ; Top of OperStk (stack pointer)
+; XXX    = $75    ; unused
 TopPtr   = $76    ; TOP of the BASIC program (variables start)
 TopPtrH  = $77
 FreePtr  = $78    ; BASIC end of variables (free space)            [LineNo]
@@ -124,7 +137,7 @@ Term2    = $C1    ; ALIAS SrcH: term byte 2
 Term1    = $C2    ; ALIAS Dst:  term byte 1
 Term0    = $C3    ; ALIAS DstH: term byte 0
 
-; -- $D0-DF OS Vars
+; -- $D0-DF System Vars
 
 KeyHd    = $D0    ; keyboard buffer head (owned by User)
 KeyTl    = $D1    ; keyboard buffer tail (owned by IRQ)
@@ -136,14 +149,14 @@ KeyRep   = $D5    ; keyboard auto-repeat timer
 WinT     = $D6    ; text window top
 WinH     = $D7    ; text window height
 
-;;WinRem   = $Dx    ; remaining space on this line
 TXTP     = $D8    ; text write address
 TXTPH    = $D9    ; text write address high
 CurTime  = $DA    ; cursor flash timer
 CurChar  = $DB    ; character under cursor
 CurVis   = $DC    ; cursor visible flag
 
-EndPage  = $DD    ; end of memory (page)
+VidBase  = $DD    ; base of video memory in pages
+MemSize  = $DE    ; size of memory fitted (detected memory) in pages
 
 ; DE-DF free (2)
 
@@ -161,16 +174,19 @@ IrqVec   = $ED    ; IRQ vector in RAM {JMP,Low,High} (for ROM override)
 
 ; -- $F0-FF  IO Area
 
-; F0-F3 Accessory Registers (Expansion slot 3)
-; F4-F7 Disk Controller Registers (Expansion slot 4)
-
-; F9-FF IO Registers
-IO_PSGF  = $FA    ; PSG frequency (write: 7-0:Divider)(7860 Hz / divider)
-IO_KEYB  = $FB    ; Keyboard scan (write: 7-6:Volume 2-0:KBCol; read: KBRow)
-IO_VLIN  = $FC    ; vertical line count (>= 192 in vborder/vblank) (write: IRQAck 7:VSync 6:VRow 5:KBInt)
-IO_VPL1  = $FD    ; palette for APA (7-4:BG 3-0:~FG)
-IO_VPL2  = $FE    ; palette for APA (7-4:C2 3-0:C3)
-IO_VCTL  = $FF    ; video mode (7:VSync 6:VRow 5:Blank 4:Grey 3:Bpp 2:Text 1:VRes 0:HRes)
+IO_MMAP  = $F0    ; expansion mapping 4-bit (write)
+IO_DSK0  = $F4    ; disk expansion 0
+IO_DSK1  = $F5    ; disk expansion 1
+IO_DSK2  = $F6    ; disk expansion 2
+IO_DSK3  = $F7    ; disk expansion 3
+IO_DATA  = $F8    ; OUT 8-bit (7-6:Volume 2:RTS 1:TXD 0:TapeOut) / IN (2:CTS 1:RXD 0:TapeIn)
+IO_KEYB  = $F9    ; Keyboard column 4-bit (3:Strobe 2-0:KBCol) / read: KB row 8-bit
+IO_LINE  = $FA    ; IRQAck 3-bit (7:VSync 6:VRow 5:KBInt) / read: vertical line (>= 192 in vblank)
+IO_PSGF  = $FB    ; PSG frequency 8-bit (write: 7-0:Divider)(7860 Hz / divider)
+IO_PAL1  = $FC    ; palette for APA 8-bit (7-4:BG 3-0:~FG)
+IO_PAL2  = $FD    ; palette for APA 8-bit (7-4:C2 3-0:C3)
+IO_VPGC  = $FE    ; video page counter 5-bit
+IO_VCTL  = $FF    ; video mode 8-bit (7:VSync 6:VRow 5:Parallel 4:? 3:Grey 2:2Bpp 1-0:VMux)
 
 
 ; ------------------------------------------------------------------------------
@@ -200,36 +216,35 @@ ModCol   = $08    ; COL key is down
 ; ------------------------------------------------------------------------------
 ; PAGE 0 - Boot
 
-ORG ROM
+ORG BasROM
 
 reset:
-  SEI             ; disable interrupts
-  CLD             ; disable BCD mode
-  LDX #$FF        ; reset stack
-  TXS             ; stack init
-  INX             ; screen mode 0 (text)
-  JSR vid_mode    ; set mode, clear screen
-  LDY #<msg_boot
-  JSR printmsgln  ; (uses A,B,C,D,X,Y,Src,Dst)
+  SEI              ; disable interrupts
+  CLD              ; disable BCD mode
+  LDA #End4K       ; end of memory (page)
+  STA MemSize      ; set size of memory (in pages)
+  LDX #$FF         ; reset stack
+  TXS              ; SP=$FF
+  INX              ; X=0 (text mode)
+  JSR vid_mode     ; set mode, clear screen
+  LDY #<msg_boot   ; display welcome message
+  JSR printmsgln   ; (uses A,B,C,D,X,Y,Src,Dst)
 
   ; detect memory installed
   ; XXX scan memory
-  LDA #>End4K      ; page
-  STA EndPage      ; set end of memory (will be dynamic)
-  LDA #>Base4K     ; page
-  STA BasePage     ; set BASIC start address (will be dynamic)
-  STA TopPtrH      ; also reset TOP
-  LDX #0           ; low
-  STX TopPtr       ; page-aligned
+  LDA #BasePg      ; page $02 (constant)
+  STA TopPtrH      ; reset TOP
+  LDX #0           ; X0=0
+  STX TopPtr       ; reset TOP
 
   ; display free memory
   STX AccE         ; AccE=0 to display free memory
   STX Acc2         ; Acc2=0 to display free memory
   STX Acc0         ; Acc0=0 to display free memory
-  SEC
-  LDA EndPage
-  SBC BasePage
-  STA Acc1         ; Acc1=(number of pages)
+  LDX VidBase      ; bottom of video memory (page)
+  DEX              ; minus $02 (BasePg, constant)
+  DEX
+  STX Acc1         ; Acc1=(number of pages)
   JSR num_print    ; (uses A,X)
   LDY #<msg_freemem
   JSR printmsgln   ; (uses A,B,C,D,X,Y,Src,Dst)
@@ -242,7 +257,8 @@ reset:
 ; enter the basic command-line interface
 basic:
   CLD              ; disable BCD mode (for re-entry)
-  LDY #<msg_ready
+  JSR cmd_new      ; initialize BASIC program (XXX maybe?)
+  LDY #<msg_ready  ; 
   JSR printmsgln   ; (uses A,B,C,D,X,Y,Src,Dst)
 repl:              ; <- entry point after parse error
 basic_esc:         ; <- entry point after Escape
@@ -628,11 +644,98 @@ is_digit:          ; A=char -> A=[0..9], CC=found (preserves X,Y)
 ; LINE <expr_n> ',' <expr_n> ',' <expr_n> ',' <expr_n>   -> {PLOT}<expr_n><expr_n><expr_n><expr_n>
 ; '=' <expr>                                             -> {RETFN}<expr>   (not a keyword)
 
+; ------------------------------------------------------------------------------
+; LINE insert
+
+; @@ ins_line
+; insert EmitBuf into the program at LineNo
+
+; find_line -> Ptr (start of line, or start of first greater line, or end marker)
+; InsPtr = Ptr (save it)
+; NewLen = EmitOfs + 5 (add header)
+; IF replacing:
+;   OldLen = existing Line Length
+;   Ptr += OldLen (advance to start of next line)
+; ELSE
+;   OldLen = 0 (always do insert)
+; IF NewLen > OldLen:
+;   Ins = NewLen - OldLen (insert length)
+;   IF Top + Ins >= EndPage -> No Room
+;   Src = Ptr       (move up data above Ptr)
+;   Dst = Ptr + Ins (move up by Ins)
+;   Len = Top - Src (length moved)
+;   Top += Ins      (update Top)
+;   COPY Len from Src -> Dst
+; IF NewLen < OldLen:
+;   Del = OldLen - NewLen (delete length)
+;   Src = Ptr       (move down data above Ptr)
+;   Dst = Ptr - Del (move down by Del)
+;   Len = Top - Src (length moved)
+;   Top -= Del      (update Top)
+;   COPY Len from Src -> Dst
+; COPY EmitOfs from EmitBuf -> InsPtr
+
+ins_line:           ; LineNo
+  LDA LineNo        ; [3] tokenized line number
+  STA Acc0          ; [3]
+  LDA LineNoH       ; [3] tokenized line number high
+  STA Acc1          ; [3]
+  JSR find_line     ; [6] find matching line (Acc -> Ptr, CS=found)
+  BCS @replace      ; [2] -> replace line at Ptr
+; insert line
+
+
+@replace:
+  LDY #3            ; OPLN, NoL, NoH, Len, Pre
+  LDA (Ptr),Y       ; get line length (including header)
+  STA B             ; save line length
+; 
+
+  SEC
+  SBC #5            ; minus header
+  STA C             ; save new length
+  CMP EmitOfs       ; compare new length
+  BEQ @copyin       ; -> same length, no need to shift program
+
+  LDA Ptr
+  STA Src           ; Dst = Ptr
+  CLC
+  ADC B             ; add 
+  LDA PtrH
+  STA DstH
+  JSR mem_copy      ; from (Src) to (Dst) with XY=size (uses A,X,Y,F,Src,Dst)
+@copyin:
+
+; ------------------------------------------------------------------------------
+; LIST Output
+
+list:               ; CODE,Y at start of first line
+  LDY #0            ;
+  STY Acc2          ; clear
+  STY AccE          ; clear
+  INY               ; point at LineL
+  LDA (CODE),Y      ; get LineL
+  STA Acc0          ; set Acc
+  INY               ; point at LineH
+  LDA (CODE),Y      ; get LineH
+  STA Acc1          ; set Acc
+  AND Acc0          ; (Acc0 AND Acc1)
+  CMP #255        ; is it 0xFFFF
+;  BEQ list_end      ; -> end of program
+  JSR num_print     ; print a number on the stack (uses A,X)
+  LDA #32           ; space
+  JSR wrchr         ; print char (A=char, uses A,X)
+  INY               ; skip LineLen
+  INY               ; skip PrevLen
+list_stmt:
+list_end:
+  RTS
+
 
 ; ------------------------------------------------------------------------------
 ; PAGE 3 - Messages
 
-ORG $F300
+ORG BasROM+$300
 messages:    ; must be within one page for Y indexing
 
 msg_boot:    ; red orange yellow green cyan
@@ -680,8 +783,8 @@ msg_esc:  DB 8,13,13,"Escape"
 ; ------------------------------------------------------------------------------
 ; PAGE 4 - Statement Tokens
 
-ORG $F400
-stmt_page = $F400
+ORG BasROM+$400
+stmt_page = BasROM+$400
 
 ; Statement Index (must be at offset 0)
 stmt_idx:
@@ -883,7 +986,7 @@ match_kws:       ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,Sr
 ; ------------------------------------------------------------------------------
 ; PAGE 5 - Expression Tokens
 
-ORG $F500
+ORG BasROM+$500
 expr_page:
 kwtab:
 
@@ -1137,26 +1240,34 @@ repl_cmd:            ; 8 entries
   DW cmd_old      -1 ;
 
 cmd_list:
-cmd_del:
-cmd_auto:
-  RTS
+  JSR ldprog        ; set up CODE -> Y=0, NE=no_program
+  BNE cmdret        ; -> no program
+  ; XXX parse start[,end] lines
+  JMP list          ; -> print listing
 
 cmd_run:            ; 27 bytes
   ; skip space
   ; is open-quote? -> JSR cmd_load -> run it
-  LDY #0
-  STY CODE
-  LDA BasePage      ; copy BasePage into CODE
-  STA CODEH
-  LDA (CODE),Y      ; get first byte
-  CMP #OP_LN        ; is there a program?
-  BNE @noprog       ; -> nothing to run
-  STY Data          ; no data yet
-  STY DataH         ; no data yet
-  STY OpTop         ; clear operator stack
+  JSR ldprog        ; set up CODE -> Y=0, NE=no_program
+  BNE cmdret        ; -> no program
   JSR cmd_clear     ; clear all vars (uses A,X preserves Y)
   JMP do_ln_op      ; -> expect first line (OP_LN)
-@noprog:
+
+ldprog:
+  LDA #BasePg       ; copy BasePg into CODE ($02)
+  STA CODEH         ; CODE page
+  LDY #0            ; Y=0
+  STY CODE          ; CODE offset
+  STY Data          ; clear data pointer
+  STY DataH         ; clear data pointer
+  STY OpTop         ; clear operator stack
+  LDA (CODE),Y      ; get first byte of program
+  CMP #$E9          ; BASIC marker
+cmdret:
+  RTS
+
+cmd_del:
+cmd_auto:
   RTS
 
 cmd_clear:          ; clear all variables (uses A,X preserves Y)  10 bytes
@@ -1174,8 +1285,8 @@ cmd_clear:          ; clear all variables (uses A,X preserves Y)  10 bytes
   RTS
 
 cmd_art:            ; 29 bytes
-  LDA #0            ; text mode
-  JSR vid_mode      ; set mode (A=mode, uses A,X,Y,B)
+  LDX #0            ; text mode
+  JSR vid_mode      ; set mode (X=mode, uses A,X,Y,B)
   LDY #<msg_art
   JSR printmsg
   JSR txt_home
@@ -1200,7 +1311,7 @@ cmd_art:            ; 29 bytes
 ; delete line-range
 ; cmd_del:
 ;  JSR num_u16       ; Y=ofs (uses A,Y,B,C,Term) -> Acc,Y,NE=found
-;  JSR find_line     ; find matching line (Acc -> Ptr, addr of 1st statement) or error (XXX CODE must be valid)
+;  JSR find_line     ; find matching line (Acc -> Ptr, CS=found)
 ; move code down over it
 ; update next line's prev length
 
@@ -1211,20 +1322,20 @@ cmd_save:
   RTS
 
 cmd_new:           ; 26 bytes
-  LDA BasePage     ; bottom of BASIC memory
+  LDA #BasePg      ; bottom of BASIC memory ($02)
   STA TopPtrH      ; end of BASIC program
-  LDX #0           ; const X=0
-  STX TopPtr       ; page-aligned
-  LDY #4
+  LDY #0           ; offset = 0
+  STY TopPtr       ; initially zero
 @lp:
   LDA @tpl,Y
-  STA (TopPtr,X)
-  INC TopPtr
-  DEY
-  BPL @lp
+  STA (TopPtr),Y
+  INY
+  CPY #7
+  BNE @lp
+  STY TopPtr       ; set program length
   RTS
 @tpl:
-  DB 0, 0, $FF, $FF, OP_LN
+  DB $E9, OP_LN, $FF, $FF, 1, 0, OP_END
 
 cmd_old:
   ; XX walk old program and verify valid lines
@@ -1518,7 +1629,7 @@ do_elseln:
 do_goto:           ; A=next-tok
   JSR do_expr_u16  ; evaluate integer expression (Ptr)
 go_line:
-  JSR find_line    ; find matching line (Acc -> Ptr, addr of 1st statement) or error
+  JSR find_line    ; find matching line (Acc01 -> Ptr, CS=found)
   LDA Ptr
   STA CODE
   LDA PtrH
@@ -1583,7 +1694,7 @@ do_read:
 ;         set the data-ptr
 do_restore:
   JSR do_expr_u16   ; evaluate int16 expression (to Ptr)
-  JSR find_line     ; find matching line (Acc -> Ptr, addr of 1st statement) or error
+  JSR find_line     ; find matching line (Acc01 -> Ptr, CS=found)
   LDA Ptr
   STA Data          ; pointer to next data, low
   LDA PtrH
@@ -1747,7 +1858,8 @@ do_fnret:
 do_mode:
   STY E            ; save CODE offset
   JSR do_expr_i8   ; A = mode
-  JSR vid_mode     ; set mode (A=mode, uses A,X,Y,B)
+  TAX
+  JSR vid_mode     ; set mode (X=mode, uses A,X,Y,B)
   LDY E            ; restore CODE offset
   JMP do_stmt      ; -> next stmt
 
@@ -1758,11 +1870,11 @@ do_wait:
   BNE @loop        ; -> non-zero
   INX              ; wait 0 -> wait 1
 @loop:
-  LDA IO_VLIN      ; get vertical line counter
+  LDA IO_LINE      ; get vertical line counter
   CMP #192       ; at bottom of screen?
   BNE @loop        ; wait for line == 192
 @stall:
-  LDA IO_VLIN      ; get vertical line counter
+  LDA IO_LINE      ; get vertical line counter
   CMP #192       ; at bottom of screen?
   BEQ @stall       ; wait for line != 192
   DEX
@@ -1916,10 +2028,10 @@ push_code:        ; uses (A,Y) -> Y=0
 
 
 ; @@ find_line
-; find matching line (Acc01) -> addr of 1st stmt (Ptr) or error
+; find matching line (Acc01) -> Ptr, CS=found
 find_line:
 ; TODO starts from current CODE and searches towards target
-; TODO report error if line not found
+; TODO if not found, return first line greater than LineNo (for insertion)
   RTS
 
 
@@ -2407,9 +2519,27 @@ gfx_line:          ; uses (A,X,Y)
 
 
 
+
+
 ; ------------------------------------------------------------------------------
-; PAGE C - SYSTEM
-ORG $FC60
+; ------------------------------------------------------------------------------
+; SYSTEM ROM - 2K
+
+ORG BasROM+$1000
+BASE SysROM
+
+; Number conversion
+; Graphics routines
+; Sound routines
+; Cassette routines
+; Serial routines
+; Parallel routines
+
+; ------------------------------------------------------------------------------
+; OS Routines
+
+; last 1KB
+ORG SysROM+$400
 
 ; @@ key_scan     (139b code; 267b including tables)
 ; scan the keyboard matrix for a keypress
@@ -2647,10 +2777,11 @@ newline:          ; (uses A,X,F,Src,Dst) preserves Y
   STX TXTP        ; [3]
   BNE nl_npg      ; [2] -> no page-cross [+1]
 nl_page:          ; crossed a page boundary (uses A,X,F,Src,Dst preserves Y)
-  LDA TXTPH       ; [3] test TXTPH
-  CMP #$04        ; [2] at bottom of screen?    [$02 $03 $04]
+  LDX TXTPH       ; [3] test TXTPH
+  INX             ; [2] plus 1, to start of next page
+  CPX MemSize     ; [3] off bottom of screen?
   BEQ nl_scrup    ; [2] -> scroll up [+1]
-  INC TXTPH       ; [5] go down one page
+  STX TXTPH       ; [3] go down one page
 nl_npg:
   RTS             ; [6] -> NE (unless scrolled, assumes no 64K wraparound)
 
@@ -2675,22 +2806,23 @@ nl_scrup:          ; (uses A,X,F,Src,Dest) preserves Y
   LDY WinT         ; 
   INY              ; row = WinT-1
   TYA              ;
-  JSR txt_row      ; A=row -> XY=addr (uses A,X,Y,F)
-  STX SrcH
+  JSR txt_row      ; A=row -> AY=addr (uses A,X,Y,F)
+  STA SrcH
   STY Src
 ; set up Dst
   LDA WinT         ; row = WinT
-  JSR txt_row      ; A=row -> XY=addr (uses A,X,Y,F)
-  STX DstH
+  JSR txt_row      ; A=row -> AY=addr (uses A,X,Y,F)
+  STA DstH
   STY Dst
 ; scroll up one line
   LDY WinH
   DEY              ; rows = WinH - 1
   BEQ @noscr       ; -> height = 1, no scroll
   TYA              ; 
-  JSR txt_row      ; A=rows -> XY=size+$200 (uses A,X,Y,F)
-  DEX              ; X -= 2
-  DEX
+  JSR txt_row      ; A=rows -> AY=size+VidBase (uses A,X,Y,F)
+  SEC
+  SBC VidBase      ; AY=size (subtract VidBase)
+  TAX
   JSR mcopyf       ; copy forwards XY=size (uses A,X,Y,F,Src,Dst)
 @noscr:
 ; clear the bottom row
@@ -2699,7 +2831,7 @@ nl_scrup:          ; (uses A,X,F,Src,Dest) preserves Y
   ADC WinH         ; bottom of window (too far)
   ADC #$FF         ; minus 1
   LDX #0
-  JSR txt_addr_tp  ; A=row X=0 -> XY=TXTP (uses A,X,Y,F)
+  JSR txt_addr_tp  ; A=row X=0 -> AY=TXTP (uses A,X,Y,F)
   JSR txt_clr      ; clear row at TXTP (uses A,Y)
 ; return
   PLA              ; restore Y for caller
@@ -2850,16 +2982,28 @@ readline:         ; uses A,X,Y,B,C -> LineBuf, Y=length (EQ if zero)
 ; ------------------------------------------------------------------------------
 ; MODE, CLS, TAB, text_addr_xy
 
+; Mode table:
+;           0    1      2      3      4       5
+;           Text 128x96 128x96 256x96 128x192 256x192
+;           1bpp 1bpp   2bpp   1bpp   2bpp    1bpp
+mode_ctl DB $80, $81,   $86,   $82,   $87,    $83
+mode_siz DB 3,   6,     12,    12,    24,     24    ; in pages
+
 ; @@ vid_mode
-; mode 0 is text mode 32 x 24
-; mode 1 is APA mode 128 x 96
-vid_mode:        ; set screen mode, A=mode (uses A,X,Y,F)
-  CMP #5         ; modes 0-4
-  BCS vid_ret    ; -> out of range
+vid_mode:        ; set screen mode, X=mode (uses A,X,Y,F)
+  CPX #6         ; modes 0-5
+  BCS vid_ret    ; -> bad mode
+  LDA MemSize    ; get end of memory             $10
+  SEC            ; for SBC
+  SBC mode_siz,X ; subtract mode size in pages   $10 - 3 = $0D
+  BCC vid_ret    ; -> not enough memory
+  STA VidBase    ; set base of video memory
+  STA IO_VPGC    ; set video page counter
+  LDA mode_ctl,X ; get mode control
   STA IO_VCTL    ; set video mode
-  LDA #$0F       ; BG=black FG=white (for APA mode)
-  STA IO_VPL1    ; set palette
-  LDA #0
+  LDA #0         ; BG=black FG=white (for APA mode)
+  STA IO_PAL1    ; reset palette
+  STA IO_PAL2    ; reset palette
   STA WinT       ; reset text window top
   LDA #24        ;
   STA WinH       ; reset text window height
@@ -2870,7 +3014,7 @@ vid_mode:        ; set screen mode, A=mode (uses A,X,Y,F)
 vid_cls:                 ; (uses A,X,Y,F)
   LDA WinT               ; [3] text window top
   LDX #0                 ; [2] col=0
-  JSR txt_addr_tp        ; [6] A=row X=col -> TXTP(XY) (uses A,X,Y,F)
+  JSR txt_addr_tp        ; [6] A=row X=col -> TXTP(AY) (uses A,X,Y,F)
   LDX WinH               ; [3] number of rows
 @row:
   JSR txt_clr            ; [6] clear row at TXTP (uses A,Y)
@@ -2919,21 +3063,21 @@ tab_e2:
 ; @@ txt_addr_tp
 ; calculate VRAM address for A=row X=col in text mode; set TXTP
 txt_addr_tp:       ; A=row X=col -> TXTP(XY) (uses A,X,Y)
-  JSR txt_addr_ax  ; AX -> XY
-  STX TXTPH        ; set TXTPH
+  JSR txt_addr_ax  ; AX -> AY
+  STA TXTPH        ; set TXTPH
   STY TXTP         ; set TXTP
 vid_ret:
   RTS              ; 
 
 ; @@ txt_row
 ; calculate screen row address
-txt_row:           ; A=row -> XY=addr (uses A,X,Y,F)
+txt_row:           ; A=row -> AY=addr (uses A,X,Y,F)
   LDX #0           ; col = 0
   ; +++ fall through to @@ txt_addr_ax +++
 
 ; @@ txt_addr_ax
 ; calculate screen address
-txt_addr_ax:       ; A=row X=col -> XY=addr (uses A,X,Y,F)   (19b) [36]
+txt_addr_ax:       ; A=row X=col -> AY=addr (uses A,X,Y,F)   (19b) [36]
   STX F            ; [3] [000XXXXX] -> F (tmp)
   ROR              ; [2] [0000YYYY]Y
   ROR              ; [2] [Y0000YYY]Y
@@ -2945,10 +3089,9 @@ txt_addr_ax:       ; A=row X=col -> XY=addr (uses A,X,Y,F)   (19b) [36]
   TAY              ; [2] -> Y (low)
   TXA              ; [2] [YY0000YY] <- X (tmp)
   AND #3           ; [2] [000000YY]
-  TAX              ; [2] -> X (high)
-  INX              ; [2] add $02 VRAM base address
-  INX              ; [2] add 2
-  RTS              ; [6] -> XY=addr
+  CLC              ; [2] for ADC
+  ADC VidBase      ; [2] add video base page
+  RTS              ; [6] -> AY=addr
 
 
 ; @@ txt_clr
@@ -2963,6 +3106,8 @@ txt_fill:          ; fill with A
   BPL @loop        ; -> until Y=-1
   RTS
 
+; ------------------------------------------------------------------------------
+; Memory Copy
 
 ; @@ mem_copy
 ; copy memory from (Src) to (Dst) with XY=size                (17b)    [17+31+37 = 85]
@@ -3037,7 +3182,7 @@ mcopyb:                  ; uses (A,X,Y,F,Src,Dst)
 
 
 ; ------------------------------------------------------------------------------
-; PAGE
+; Cursor
 
 ; @@ cursor_off
 ; turn off and inhibit cursor
@@ -3087,6 +3232,8 @@ cur_ret:
 cur_inh:
   RTS             ; [6]
 
+; ------------------------------------------------------------------------------
+; IRQ
 
 ; @@ irq_init
 ; set up IRQ vector in zero page, init keyboard, enable interrupts
@@ -3115,7 +3262,12 @@ irq_rom:
   PHA            ; save X
   TYA
   PHA            ; save Y
-  STA IO_VLIN    ; acknowledge interrupt
+; reset video base address
+  LDA VidBase    ; video mode base page
+  STA IO_VPGC    ; set video page counter
+; keyboard scan
+  LDA #32        ; acknowledge 5:KBInt
+  STA IO_LINE    ; acknowledge interrupt
   JSR keyscan
 ; cursor blink
   DEC CurTime     ; [5]
@@ -3130,14 +3282,14 @@ irq_rom:
 nmi_vec:
   RTI
 
-testkey:
-mem_fill:
-file_save:
-file_load:
-file_open:
-file_close:
-gfx_color:
-sys_opt:
+; testkey:
+; mem_fill:
+; file_save:
+; file_load:
+; file_open:
+; file_close:
+; gfx_color:
+; sys_opt:
 
 ; @@ System Vectors
 ; ORG SYSVEC
@@ -3162,7 +3314,7 @@ sys_opt:
 ; JMP basic           ; $FFE9  enter BASIC                                  (JMP)
 
 ; @@ CPU Vectors
-ORG VEC
+ORG SysROM+$800-6
 DW nmi_vec       ; $FFFA, $FFFB ... NMI vector
 DW reset         ; $FFFC, $FFFD ... Reset vector
 DW IrqVec        ; $FFFE, $FFFF ... BRK/IRQ vector
