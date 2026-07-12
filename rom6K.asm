@@ -221,14 +221,6 @@ ModCol   = $08    ; COL key is down
 
 
 
-
-
-
-
-
-
-
-
 ; ------------------------------------------------------------------------------
 ; PAGE 0 - BASIC REPL
 
@@ -271,8 +263,9 @@ repl:
   JSR num_u16       ; [6] parse number at Y -> Y,Acc,NE=found (uses A,B,X)
   BNE @haveline     ; [2] -> found line number [+1]
 ; try commands
-  LDA #<kwi_Cmds    ; [3] A=index
-  JSR match_kw      ; [6] Y=ofs A=index X=page -> Y, CF=found, A=hi-byte (uses A,X,Src)
+  LDA #<tab_cmds    ; [3] A=index
+  LDX #>cmds_page   ; [2] X=page
+  JSR match_kws     ; [6] Y=ofs XA=table -> Y, CS=found, A=hi-byte (uses A,X,B,Src)
   BCC @direct       ; [2] -> no match, try direct statement
   JSR @callcmd      ; [6] -> call it
   JMP repl          ; [3] -> return to repl
@@ -286,18 +279,24 @@ repl:
   JMP skip_spc      ; [3] -> skip_spc, then RTS to the command
 @direct:            ; try a direct statement
   JSR tokenize      ; [6] tokenize the line
+  JSR debug
   LDA #>EmitBuf     ; EmitBuf page ($01)
   JSR set_prog      ; set up for execution
 ;;  JMP do_stmt       ; -> execute the statement  (XXX how does this return without OP_END?)
   JMP repl
 @haveline:          ; have a line number
+  JSR set_lno       ; copy Acc to LineNo
+  JSR tokenize      ; [6] tokenize the line
+  JSR debug
+;;  JSR ins_line      ; [6] insert the line into the BASIC program
+  JMP repl          ; [3] -> return to repl
+
+set_lno:            ; copy Acc to LineNo
   LDA Acc0
   STA LineNo        ; [3] set LineNo for ins_line
   LDA Acc1
   STA LineNoH
-  JSR tokenize      ; [6] tokenize the line
-;;  JSR ins_line      ; [6] insert the line into the BASIC program
-  JMP repl          ; [3] -> return to repl
+  RTS
 
 ; @@ report_err
 report_err:         ; Y=message
@@ -318,8 +317,8 @@ err_expect:         ; A=char
 ; must wait for ESC to be released
 escape:             ; A = msg address low
   JSR hide_cursor   ; uses A,Y; Y=0
-  LDY #<msg_esc     ; 4b vs 2b  +2
-  JSR printmsgln    ;
+  LDY #<msg_esc     ; 
+  JSR printmsgln    ; 
 @wait:              ; wait for Escape to be released  (XXX -> opcode? 6b vs 4b)  -2
   LDA ModKeys       ; check key state
   BMI @wait         ; -> ESC still down
@@ -328,201 +327,273 @@ escape:             ; A = msg address low
 
 
 ; ------------------------------------------------------------------------------
-; Matching Routines
+; BASIC Tokenizer
+;
+; Y = current LineBuf offset at (Ptr)
+; A,X = temporaries
 
-DB "MAT"
+; emit a string literal
+emit_str:
+@copy:
+  JSR tok_emit       ; emit char (uses X=0; preserves A,Y; sets PL)
+  INY                ; advance
+  LDA LineBuf,Y      ; get next char
+  BEQ @missing       ; -> at end of line, missing quote
+  CMP #34            ; is it `"`?
+  BNE @copy          ; -> continue
+  INY                ; advance
+  CMP LineBuf,Y      ; is next char `"` ?
+  BEQ @copy          ; -> emit one `"` and continue
+  JSR tok_emit       ; emit closing `"` (uses X=0; preserves A,Y; sets PL)
+  BPL tok_loop       ; -> expect an expression
+@missing:            ; at end of line, missing quote
+  LDA #34            ; `"`
+  BNE err_expect     ; error: missing `"` (A!=0)
 
+; @@ emit_let        (so we can report syntax error for unknown keywords)
+emit_let:            ; Y -> Y,EQ
+  JSR emit_var       ; -> recognise and emit VAR[$][(..)]
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char
+  CMP #61            ; is it `=`?
+  BEQ tok_loop       ; -> tokenize expression
+tok_syn:             ; report syntax error
+  LDY #<msg_syn
+  BNE report_err
 
-; @@ tok_req_sp
-; skip spaces, require matching char
-tok_req_sp:
-  JSR skip_spc      ; spaces before token
-tok_req:            ; Y=ofs, A=char -> Y (+NE)
-  CMP LineBuf,Y     ; [4] does input match?
-  BNE @nomatch      ; [2] -> no, report error [+1]
-  INY               ; [2] advance input (NE: ASSUMES X never wraps)
-  RTS               ; [6] return -> NE
-@nomatch:
-  JMP err_expect    ; [3] -> Expecting <A>
+tok_colon:
+  INY                ; consume `:`
+  SEC                ; 
+  ROR D              ; set D=128 (insert OP_LET for `:`)
+  BNE tok_stmt       ; -> ALWAYS: require a statement
 
+; @@ tokenize
+; tokenize BASIC statements (in-place in LineBuf/EmitBuf)
+tokenize:            ; Y=ofs, uses A,X,B,C,D,Src
+  LDA #0
+  STA D              ; D=0, no LET until `:`
+tok_stmt:
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char
+  JSR is_alpha       ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
+  BCS tok_fnret      ; -> fn return or syntax error
+  TAX                ; A-Z as index (0-25)
+  LDA stmt_page,X    ; look up KW offset (A-Z)
+  LDX #>stmt_page    ; stmt table page
+  JSR match_kws      ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,Src)
+  BCC emit_let       ; -> no match, emit LET
+  ORA #$C0           ; set top bits (match_kws uses d7,d6)
+  JSR tok_emit       ; output token with top-bit set (uses X=0; preserves A,Y; sets PL)
+  CMP #OP_DATA       ; a DATA statement? ($C3)
+  BEQ tok_data       ; -> handle DATA/REM
+  CMP #OP_REM        ; a REM statement? ($DC)
+  BEQ tok_data       ; -> handle DATA/REM
+  CMP #OP_ELSE       ; an ELSE statement? ($C6)
+  BEQ tok_then       ; -> handle THEN/ELSE (NOT tok_else, opcode already emitted)
+tok_loop:
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char
+  TAX                ; save A (set flags for BEQ)
+  BEQ tok_done       ; -> end of line
+  JSR is_alpha       ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
+  BCC tok_kwv        ; -> emit KEYWORD or VAR
+  TXA                ; restore A
+  CMP #34            ; `"`
+  BEQ emit_str       ; -> emit STRING
+  JSR is_digit       ; A=char -> A=[0..9], CC=found (preserves X,Y)
+  BCC emit_num       ; -> emit NUMBER
+  TXA                ; restore A
+  CMP #58            ; `:`
+  BEQ tok_colon      ; -> expect statement
+  CMP #60            ; <> <= <
+  BEQ tok_ltgt       ; -> tokenize less than
+  CMP #62            ; >= >
+  BEQ tok_ltgt       ; -> tokenize greater than
+tok_emitx:
+  TXA                ; emit X
+tok_emitc:           ; output character: ^ + - * / ( ) # , ; $
+  JSR tok_emit       ; output character (uses X=0; preserves A,Y; sets PL)
+  INY                ; advance input
+  BPL tok_loop       ; -> ALWAYS: continue tokenize
 
-; @@ match_kw
-; match a keyword from `tabs_page`
-match_kw:
-  PHA               ; [3] save A
-  JSR skip_spc      ; [6] skip leading spaces
-  PLA               ; [4] restore A
-  LDX #>tabs_page   ; [2] X=page
+; ------------------------------------------------------------------------------
+; PAGE 1
+
+tok_fnret:
+  CMP #61            ; `=`
+  BNE tok_syn        ; -> syntax error
+  LDA #OP_FNRET
+  BNE tok_emitc
+
+tok_kwv:             ; AND,OR,EOR,DIV,MOD,THEN,ELSE,TO,STEP,FN,(functions)
+  TAX                ; A-Z as index
+  LDA expr_page,X    ; look up KW offset (A-Z)
+  LDX #>expr_page    ; expr table page
+  JSR match_kws      ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,Src)
+  BCC tok_var        ; -> no match, emit VAR
+  AND #$BF           ; clear bit 6 ($40)
+  CMP #OP_THEN       ; a THEN statement? ($A5)
+  BEQ tok_then       ; -> handle THEN
+  CMP #OP_ELSEA      ; an ELSE statement? ($86)
+  BEQ tok_else       ; -> handle ELSE
+  JSR tok_emit       ; output token with top-bit set (uses X=0; preserves A,Y; sets PL)
+  BPL tok_loop       ; -> ALWAYS: continue
+
+tok_else:
+  LDA #OP_ELSE       ; emit OP_ELSE ($C6)
+  JSR tok_emit       ; emit code (uses X=0; preserves A,Y; PL)
+tok_then:            ; handle THEN/ELSE
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char
+  JSR is_digit       ; A=char -> A=[0..9], CC=found (preserves X,Y)
+  BCC emit_num       ; -> DIGIT: emit line number
+  JMP tok_stmt       ; -> ALWAYS: require a statement
+
+tok_var:
+  JSR emit_var_ex    ; -> recognise and emit VAR (expr context)
+  JMP tok_loop       ; -> ALWAYS: continue
+
+tok_data:            ; copy rest of line verbatim
+  JSR skip_spc       ; Y=ofs -> Y, A=next-char
+@copy:
+  LDA LineBuf,Y      ; copy rest of the line
+  BEQ tok_done       ; -> end of line
+  INY                ; advance input
+  JSR tok_emit       ; emit code (uses X=0; preserves A,Y; PL)
+  BPL @copy          ; -> ALWAYS: until end of line
+tok_done:
+  RTS
+
+tok_ltgt:            ; less than / greater than
+  ASL                ; A=(60|62) (<|>) x2 = (120|124)
+  AND #$1F           ; A=(24|28)
+  STA B              ; A -> B
+  INY                ; advance input (<|>)
+  LDA LineBuf,Y      ; next input char
+  SEC                ;
+  SBC #60            ; '<'
+  CMP #3             ; '<'=0 '='=1 '>'=2
+  BCS tok_emitx      ; -> no match, just emit (<|>) (A >= 3)
+  INY                ; advance input (<|=|>)
+  ORA B              ; A = (24|28)|(0-2) = 24:<< 25:<= 26:<> 28:>< 29:>= 30:>>
+  BNE tok_emitc      ; -> ALWAYS: emit and continue (A!=0)
+
+; emit implied OP_GOTO
+emit_igoto:
+  LDA #OP_GOTO
+  JSR tok_emit
+  JSR num_u24        ; from LineBuf,Y-> Y,Acc,CS=ovf (uses A,X,Term)
+  BCS tok_ovf        ; -> overflow
   ; +++ fall through +++
+; assumes next char is digit
+emit_num:
+@loop:
+  JSR num_u24        ; from LineBuf,Y-> Y,Acc,CS=ovf (uses A,X,Term)
+  BCS tok_ovf        ; -> overflow
+  LDA Acc2
+  BNE @int4          ; -> 3 bytes plus opcode
+  LDA Acc1
+  BNE @int3          ; -> 2 bytes plus opcode
+  LDA Acc0
+  CMP #10            ; CS if >= 10
+  BCS @int2          ; -> 1 byte plus opcode
+; single-digit number
+  ORA #$F0           ; 0xF0 - 0xF9 (nums >= 0xF0)
+  JMP @done          ; -> ALWAYS
+@int2:
+  LDA #OP_INT2       ; 2-byte integer (with opcode)
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+  JMP @out1
+@int3:
+  LDA #OP_INT3       ; 3-byte integer (with opcode)
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+  JMP @out2
+@int4:
+  LDA #OP_INT4       ; 4-byte integer (with opcode)
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+;out3:
+  LDA Acc2
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+@out2:
+  LDA Acc1
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+@out1:
+  LDA Acc0
+@done:
+  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+  JMP tok_loop       ; -> ALWAYS
+
+; @@ emit_var
+; copy VAR[$] to output (assumes 1st char is alpha)
+emit_var:
+  BIT D            ; [3] N=1 after `:`
+  BPL emit_var_ex  ; [2] -> no LET prefix [+1]
+  LDX #OP_LET      ; [2]
+emvr_lp:
+  TXA              ; [2] X -> A
+  JSR tok_emit     ; [6] output byte (uses X=0; preserves A,Y; sets PL)
+emit_var_ex:       ; <- start VAR emit
+  LDA LineBuf,Y    ; [4] next input char
+  INY              ; [2] advance input (assume match)
+  TAX              ; [2] save X=char
+  JSR is_alpha     ; [6] A=char -> A=az-index, CC=alphabetic (preserves X,Y)
+  BCC emvr_lp      ; [2] -> is alpha, continue [+1]
+  TXA              ; [2] restore A
+  JSR is_digit     ; [6] A=char -> A=[0..9], CC=found (preserves X,Y)
+  BCC emvr_lp      ; [2] -> is digit, continue [+1]
+  TXA              ; [2] restore A
+  DEY              ; [2] undo advance (didn't match)
+  CMP #36          ; [2] is it `$` ?
+  BNE @nostr       ; [2] -> no [+1]
+  JSR tok_emit     ; [6] output `$` (uses X=0; preserves A,Y; sets PL)
+  INY              ; [2] consume `$`
+@nostr:
+  RTS              ; [2] -> return
+
+; @@ tok_emit
+; Emit an opcode at Emit,X and advance EmitOfs.
+tok_emit:            ; (uses X; preserves A,Y -> NE,PL)
+  LDX EmitOfs        ; [3] get emit offset
+  STA EmitBuf,X      ; [5] emit token
+  INC EmitOfs        ; [5] advance emit offset (NE)
+  BMI tok_ovf        ; [2] -> overflowed emit buffer [+1] -> MI
+  RTS                ; [6] -> NE,PL
+
+tok_ovf:
+  LDY #<msg_ovf
+  JMP report_err     ; [3] -> overlow
 
 ; @@ match_kws
 ; find matching keyword, terminated by a byte with top-bit set (8x,9x,Ax,Bx)
 ; if no match, continue until bit 6 is set (Cx,Dx,Ex,Fx)
-; note: table cannot cross a page boundary (INC/DEC Src would wrap)
-match_kws:       ; Y=ofs A=az-index X=page -> Y, CF=found, A=hi-byte (uses A,X,Src)
-  STY B          ; [3] save input ofs
-  STX SrcH       ; [3] SrcH = keyword page
-  TAY            ; [2] Y = letter index
-  LDX #0         ; [2] X = 0 const
-  STX Src        ; [3] Src = 0
-  LDA (Src),Y    ; [4] A = 1st KW ofs from page,Y
-  STA Src        ; [3] Src = 1st KW ofs
+; note: XA table cannot cross a page boundary (INC/DEC Src would wrap)
+match_kws:       ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,Src)
+  STY B          ; [3] save start of input
+  STA Src        ; [3] table-low (offset)
+  STX SrcH       ; [3] table-high (page)
+  LDX #0         ; [2] const X=0
 @next_kw:
-  LDY B          ; [3] Y = saved input ofs
   DEY            ; [2] set up for pre-increment
   DEC Src        ; [5] set up for pre-increment
 @match_lp:
   INY            ; [2] pre-increment input position
   INC Src        ; [5] pre-increment keyword position
   LDA (Src,X)    ; [6] next keyword char
-  BMI @matched   ; [2] -> matched keyword (found hi-byte) [+1] (MUST check LDA flags)
+  BMI @found     ; [2] -> matched keyword (top bit set) [+1] (MUST check LDA flags not CMP flags)
   CMP LineBuf,Y  ; [4] does it match input?
   BEQ @match_lp  ; [2] -> yes, next char [+1]
-@skip_lp:        ; no match
-  INC Src        ; [5] find hi-byte at end of KW
-  LDA (Src,X)    ; [6] get next KW byte
+; no match, skip rest of keyword (find top-bit)
+@skip_lp:
+  INC Src        ; [5] find end of this keyword
+  LDA (Src,X)    ; [6] check keyword byte
   BPL @skip_lp   ; [2] -> top bit clear, keep going [+1]
-  INC Src        ; [5] advance over hi-byte
-  ASL            ; [2] test bit 6 (continue bit)
+  INC Src        ; [5] advance to next keyword
+  LDY B          ; [3] restore Y = start of input
+  ASL            ; [2] shift left top-bit byte
   BMI @next_kw   ; [2] -> bit 6 set, try next keyword [+1]
-  CLC            ; [2] CC=not-found
-  RTS            ; [6] return
-@matched:        ; found match
-  SEC            ; [2] CS=found
-  RTS            ; [6] return
-
-
-; @@ tok_nexp_com
-; parse one numeric expression, followed by comma
-tok_nexp_com:
-  JSR tok_nexp     ; num expr
-  ; +++ fall through +++
-
-; @@ tok_comma
-; require a comma
-tok_comma:
-  LDA #44          ; `,`
-  JMP tok_req_sp   ; require `,`, then return
-
-
-; @@ op_comma
-; parse an optional comma
-opt_comma:
-  JSR skip_spc     ; A=next-char -> EQ=comma
-  INY              ; advance input (assume match)
-  CMP #44          ; is it `,`?
-  BEQ @found       ; -> EQ
-  DEY              ; undo advance (no match) -> NE (ASSUMES: not 1st char)
+  CLC            ; [2] no match found
+  RTS            ; [6] Y=ofs (restored) X=0
 @found:
-  RTS              ; return -> EQ=found
+  SEC            ; [2] set carry: keyword was found
+  RTS            ; [6] A=hi-byte (top bit set) X=0
 
 
-; @@ emit_if
-; match an optional character, emit if found
-emit_if:           ; A=char -> EQ=found
-  CMP LineBuf,Y    ; does next char match?
-  BNE tok_ret2     ; -> no match
-  INY              ; consume input
-  JMP emit_byte    ; -> emit it, then return (uses X; preserves A,Y; sets PL,NE)
-  LDX #0           ; -> EQ
-tok_ret2:
-  RTS              ; -> NE
-
-
-; @@ emit_lno
-; emit line number in Acc
-emit_lno:           ; emit opcode and line-number
-  JSR emit_byte
-  LDA #Acc0
-  JSR emit_byte
-  LDA #Acc1
-  JMP emit_byte
-
-
-; ------------------------------------------------------------------------------
-; Emit Routines
-
-DB "EMI"
-
-; @@ emit_place
-; emit a placeholder byte, set current placeholder
-emit_place:         ; (uses A,X; preserves Y; sets PL)
-  LDX EmitOfs       ; [3] get emit offset
-  STX EmitPtch      ; [3] set placeholder patch address
-  LDA #$FF          ; [2] emit $FF
-  ; +++ fall through +++
-
-; @@ emit_byte
-; Emit an opcode at Emit,X and advance EmitOfs.
-emit_byte:           ; (uses X; preserves A,Y -> NE,PL)
-  LDX EmitOfs        ; [3] get emit offset
-  STA EmitBuf,X      ; [5] emit token
-  INC EmitOfs        ; [5] advance emit offset (NE)
-  BMI @ovf           ; [2] -> overflowed emit buffer [+1] -> MI
-  RTS                ; [6] -> NE,PL
-@ovf:
-  LDY #<msg_ovf
-  JMP report_err     ; [3] -> overlow
-
-; @@ patch_len
-; patch current placeholder with emitted length
-patch_len:          ; (uses A,X; preserves Y) -> NE=found
-  LDA EmitOfs       ; [3] A = emit_ofs
-  CLC               ; [2] minus 1 (exclude patched byte)
-  SBC EmitPtch      ; [3] A = emit_ofs - patch_addr (i.e. length)
-  ; +++ fall through +++
-
-; @@ patch_byte
-; patch the current placeholder
-patch_byte:         ; A=patch (uses X) -> NE=found
-  LDX EmitPtch      ; [3] get placeholder patch address
-  BEQ @noplace      ; [2] -> no current patch address -> EQ
-  STA EmitBuf,X     ; [5] write fixup byte -> NE
-@noplace:
-  RTS               ; [6] return -> NE=found
-
-; @@ emit_str
-; match and emit a string literal (assume `"` already matched)
-emit_str:            ; Y=ofs -> Y, NE
-  LDA LineBuf,Y      ; next input char
-  CMP #34            ; is it `"`?
-  BEQ @start         ; -> start
-  CLC                ; [2] CC=not-found
-  RTS                ; [6] return
-@copy:
-  JSR emit_byte      ; emit char (uses X; preserves A,Y; sets PL)
-@start:
-  INX                ; advance input (prior already used)
-  LDA LineBuf,X      ; next input char
-  BEQ @missing       ; -> at end of line (missing quote), jump to <addr>
-  CMP #34            ; is it `"`?
-  BNE @copy          ; -> continue
-  INX                ; advance past first `"`
-  CMP LineBuf,X      ; is next char `"` ?
-  BEQ @copy          ; -> emit one `"` and continue
-  RTS                ; -> NE
-@missing:
-  LDA #34            ; `"`
-  JMP err_expect     ; -> report missing
-
-
-
-; CLS                                                    -> {CLS}
-; END                                                    -> {END}
-; REPEAT                                                 -> {REPEAT}
-; RETURN                                                 -> {RETURN}
-; GOTO <expr_n>                                          -> {GOTO}<expr_n>
-; GOSUB <expr_n>                                         -> {GOSUB}<expr_n>
-; RESTORE <expr_n>                                       -> {RESTORE}<n16>
-; UNTIL <expr_n>                                         -> {UNTIL}<expr_n>
-; MODE <expr_n>                                          -> {MODE}<expr_n>
-; WAIT <expr_n>                                          -> {WAIT}<expr_n>
-; POKE <expr_n> ',' <expr_n>                             -> {POKE}<expr_n><expr_n>
-; OPT <expr_n> ',' <expr_n>                              -> {OPT}<expr_n><expr_n>
-; PLOT <expr_n> ',' <expr_n>                             -> {PLOT}<expr_n><expr_n>
-; MOVE <expr_n> ',' <expr_n>                             -> {MOVE}<expr_n><expr_n>
-; DRAW <expr_n> ',' <expr_n>                             -> {DRAW}<expr_n><expr_n>
-; SOUND <pitch>,<vol>,<len>,[<dp>,[<dv>]]                -> {SOUND}<expr_n><expr_n><expr_n><expr_n|$00><expr_n|$00>
 ; LET <var> '=' <expr>                                   -> {LETn|LETs|LETa}<var><expr> (x2?)
 ; DIM <var> '(' <expr> ')'                               -> {DIM}<var><expr_n>
 ; FOR <var> '=' <expr_n> 'TO' <expr_n> ['STEP' <expr_n>] -> {FOR}<var><expr_n><expr_n><expr_n|$00>
@@ -536,506 +607,112 @@ emit_str:            ; Y=ofs -> Y, NE
 ; CLOSE #<n>                                             -> {CLOSE}<n>
 ; REM <text>                                             -> {REM}<len><data>
 ; DATA <text>                                            -> {DATA}<len><data>    (XXX "DATA 1.02e1" -> A$)
+; RETURN                                                 -> {RETURN}
+; REPEAT                                                 -> {REPEAT}
+; CLS                                                    -> {CLS}
 ; IF <expr_n> THEN <line>/<stmts> [ELSE <line>/<stmts>]  -> {IF}<expr_n><len> | {IFLN}<expr_n><n16>
+; GOTO <expr_n>                                          -> {GOTO}<expr_n>
+; GOSUB <expr_n>                                         -> {GOSUB}<expr_n>
+; RESTORE <expr_n>                                       -> {RESTORE}<n16>
+; UNTIL <expr_n>                                         -> {UNTIL}<expr_n>
+; MODE <expr_n>                                          -> {MODE}<expr_n>
+; WAIT <expr_n>                                          -> {WAIT}<expr_n>
+; POKE <expr_n> ',' <expr_n>                             -> {POKE}<expr_n><expr_n>
+; OPT <expr_n> ',' <expr_n>                              -> {OPT}<expr_n><expr_n>
+; SOUND <pitch>,<vol>,<len>,[<dp>,[<dv>]]                -> {SOUND}<expr_n><expr_n><expr_n><expr_n|$00><expr_n|$00>
+; PLOT <expr_n> ',' <expr_n>                             -> {PLOT}<expr_n><expr_n>
+; LINE <expr_n> ',' <expr_n> ',' <expr_n> ',' <expr_n>   -> {PLOT}<expr_n><expr_n><expr_n><expr_n>
 ; '=' <expr>                                             -> {RETFN}<expr>   (not a keyword)
 
-; ------------------------------------------------------------------------------
-; Tokenize Routines
-
-DB "TOK"
-
-
-; Statement Syntax Handlers
-
-disp_syn:
-  DB <syn_n0      ; OP_LN      = $C0   (no keyword)
-  DB <syn_n0      ; OP_CLS     = $C1
-  DB <syn_ch      ; OP_CLOSE   = $C2
-  DB <syn_data    ; OP_DATA    = $C3
-  DB <syn_dim     ; OP_DIM     = $C4   VAR[$](..)
-  DB <syn_def     ; OP_DEFFN   = $C5
-  DB <syn_else    ; OP_ELSE    = $C6
-  DB <syn_n0      ; OP_END     = $C7
-  DB <syn_for     ; OP_FOR     = $C8
-  DB <syn_n1      ; OP_GOTO    = $C9
-  DB <syn_n1      ; OP_GOSUB   = $CA
-  DB <syn_if      ; OP_IF      = $CB
-  DB <syn_input   ; OP_INPUT   = $CC
-  DB <syn_let     ; OP_LET     = $CD
-  DB <syn_n2      ; OP_LINE    = $CE
-  DB <syn_str     ; OP_LOAD    = $CF
-  DB <syn_n1      ; OP_MODE    = $D0
-  DB <syn_nvar    ; OP_NEXT    = $D1   VAR[(..)]
-  DB <syn_n2      ; OP_OPT     = $D2
-  DB <syn_ch_s    ; OP_OPEN    = $D3
-  DB <syn_n3      ; OP_PUT     = $D4
-  DB <syn_print   ; OP_PRINT   = $D5
-  DB <syn_n2      ; OP_PLOT    = $D6
-  DB <syn_n2      ; OP_POKE    = $D7
-  DB <syn_read    ; OP_READ    = $D8
-  DB <syn_n0      ; OP_REPEAT  = $D9
-  DB <syn_n1      ; OP_RESTORE = $DA
-  DB <syn_n0      ; OP_RETURN  = $DB
-  DB <syn_data    ; OP_REM     = $DC
-  DB <syn_snd     ; OP_SOUND   = $DD
-  DB <syn_n1      ; OP_UNTIL   = $DE
-  DB <syn_n1      ; OP_WAIT    = $DF
-
-
-
-typ_chk:           ; X=type (E=expected type)
-  CPX E            ; same type?
-  BNE e_type1      ; -> type mismatch
-  RTS              ; 
-
-tok_nexp:
-  JSR tok_exp      ; -> X=type
-  CPX #0           ; 0=num
-  BNE e_type1      ; -> type mismatch
-  RTS
-
-tok_sexp:
-  JSR tok_exp      ; -> X=type
-  CPX #1           ; 1=str
-  BNE e_type1      ; -> type mismatch
-  RTS
-
-e_type1:
-  LDY #<msg_typ
-  BNE e_rep2       ; -> ALWAYS
-
-
-; @@ tok_stmt
-; parse and emit a sigle statement
-; (located here for BCC syn_let)
-tok_stmt:
-  JSR skip_spc      ; Y=ofs -> Y, A=next-char
-  JSR is_alpha      ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
-  BCS @noalp        ; -> not a letter
-; match a keyword   ; U_KW,>stmt_page,<bKWLet,U_DUP,U_OUT
-  LDX #>stmt_page   ; [2] X=page
-  JSR match_kws     ; [6] Y=ofs A=index X=page -> Y, CS=found, A=hi-byte (uses A,X,Src)
-  BCC syn_to_let    ; [2] -> implied LET statement
-  JSR emit_byte     ; [6] emit opcode
-; dispatch syntax handler
-  AND #$3F          ; [2] clear top two bits (hi-byte)
-  TAX               ; [2] as index
-  LDA #>syn_page    ; [2] X = high byte (page)
-  PHA               ; [3] push high byte
-  LDA disp_syn,X    ; [4] A = syntax handler offset (NOTE minus 1)
-  PHA               ; [3] push low byte minus 1
-  JMP skip_spc      ; [3] -> skip_spc, then RTS to the command -> NE (from skip_spc)
-@noalp:             ; handle non-letter
-  CMP #61           ; `=`
-  BNE e_syn0        ; -> syntax error
-; function return statement
-tok_fnret:
-  INY               ; consume `=`
-  LDA #OP_FNRET
-  JSR emit_byte
-  JMP tok_nexp      ; expression, then return  (XXX any expr type?)
-
-syn_to_let:
-  JMP syn_let
-
-
-; syntax error
-e_syn0:
-  LDY #<msg_syn
-e_rep2:
-  JMP report_err
-
-
-; @@ tokenize
-; parse and emit a full line of BASIC
-; (located here for BCS syn_else)
-tokenize:
-@line:
-  JSR tok_stmt      ; parse one statement
-  JSR skip_spc      ; Y=ofs -> Y, A=next-char
-  TAX               ; is it zero? (set flags)
-  BEQ @eol          ; -> yes, end of line
-  CMP #58           ; `:`
-  BEQ @line         ; -> continue line
-; check for ELSE (can appear after any statement)
-  LDA #<kwi_ELSE    ; A=index
-  JSR match_kw      ; Y=ofs A=index X=page -> Y, CS=found, A=hi-byte (uses A,X,Src)
-  BCC e_syn0        ; -> no match, syntax error
-  JSR emit_byte     ; emit opcode (uses X; preserves A,Y -> PL)
-  BPL syn_else      ; -> found ELSE
-@eol:
-  JMP patch_len     ; patch length into IF or ELSE  (XXX needs own Patch addr)
-
-
 
 ; ------------------------------------------------------------------------------
-; Page 2 - Syntax Handler Page
-
-ORG BasROM+$200
-syn_page:
+; PAGE 2
 
 
+; @@ ins_line
+; insert EmitBuf into the program at LineNo
+
+; find_line -> Ptr (start of line, or start of first greater line, or end marker)
+; InsPtr = Ptr (save it)
+; NewLen = EmitOfs + 5 (add header)
+; IF replacing:
+;   OldLen = existing Line Length
+;   Ptr += OldLen (advance to start of next line)
 ; ELSE
-; (located here for BCS syn_else in tokenize)
-syn_else:
-  JSR patch_len     ; (uses A,X; preserves Y) -> NE=found
-  BEQ e_syn0        ; -> no matching IF
-  JSR emit_place    ; length placeholder for EOL
-; implied goto?
-  JSR num_u16       ; [6] Y=ofs (uses A,Y,B,C,Term) -> Acc,Y,NE=found
-  BEQ syn_to_stmt   ; -> no line number
-  LDA #OP_GOTO      ; opcode
-  JMP emit_lno      ; emit opcode and line-number, then return
+;   OldLen = 0 (always do insert)
+; IF NewLen > OldLen:
+;   Ins = NewLen - OldLen (insert length)
+;   IF Top + Ins >= EndPage -> No Room
+;   Src = Ptr       (move up data above Ptr)
+;   Dst = Ptr + Ins (move up by Ins)
+;   Len = Top - Src (length moved)
+;   Top += Ins      (update Top)
+;   COPY Len from Src -> Dst
+; IF NewLen < OldLen:
+;   Del = OldLen - NewLen (delete length)
+;   Src = Ptr       (move down data above Ptr)
+;   Dst = Ptr - Del (move down by Del)
+;   Len = Top - Src (length moved)
+;   Top -= Del      (update Top)
+;   COPY Len from Src -> Dst
+; COPY EmitOfs from EmitBuf -> InsPtr
+
+ins_line:           ; LineNo
+  LDA LineNo        ; [3] tokenized line number
+  STA Acc0          ; [3]
+  LDA LineNoH       ; [3] tokenized line number high
+  STA Acc1          ; [3]
+  JSR find_line     ; [6] find matching line (Acc -> Ptr, CS=found)
+  BCS @replace      ; [2] -> replace line at Ptr
+; insert line
 
 
-; FOR
-; (located here for e_syn0)
-syn_for:
-  JSR syn_nvar      ; parse numeric `VAR = expr`
-  LDA #<kwi_TO      ; [2] A=index
-  JSR match_kw      ; [6] Y=ofs A=index X=page -> Y, CS=found, A=hi-byte (uses A,X,Src)
-  BCC e_syn0        ; [2] -> missing TO
-  JSR tok_nexp      ; n_expr
-  LDA #<kwi_STEP    ; [2] A=index
-  JSR match_kw      ; [6] Y=ofs A=index X=page -> Y, CS=found, A=hi-byte (uses A,X,Src)
-  BCC syn_ret       ; [2] -> no STEP
-  JMP tok_nexp      ; n_expr, then return
-
-
-syn_to_stmt:
-  JMP tok_stmt
-
-
-; IF
-syn_if:
-  JSR emit_place    ; length placeholder for ELSE/EOL
-  JSR tok_nexp
-; check for THEN
-  LDA #<kwi_THEN    ; [2] A=index
-  JSR match_kw      ; [6] Y=ofs A=index X=page -> Y, CS=found, A=hi-byte (uses A,X,Src)
-  BCC syn_to_stmt   ; [2] -> no THEN, expect a stmt
-; implied goto?
-  JSR skip_spc      ; A=next-char
-  JSR num_u16       ; [6] Y=ofs (uses A,Y,B,C,Term) -> Acc,Y,NE=found
-  BEQ syn_to_stmt   ; [2] -> no number, expect a stmt
-  LDA #OP_GOTO
-  JSR emit_lno      ; emit opcode and line-number
-syn_n0:
-syn_ret:
-  RTS
-
-
-; LET
-syn_let:
-  JSR syn_var       ; parse and emit var -> E=type
-  LDA #61           ; `=`
-  JSR tok_req_sp    ; require `=`
-  JSR tok_exp       ; parse any expr -> X=type
-  JMP typ_chk       ; -> check X=E, return
-
-
-syn_n3:            ; 3 num args
-  JSR tok_nexp_com
-syn_n2:            ; 2 num args
-  JSR tok_nexp_com
-syn_n1:            ; 1 num arg
-  JMP tok_nexp     ; num expr, then return
-
-
-; READ
-syn_read:
-  JSR emit_place  ; placeholder
-  LDX #0
-  STX D           ; count = 0
-@lp:
-  JSR syn_var     ; require var
-  INC D           ; count++
-  JSR opt_comma    ; A=next-char -> EQ=comma
-  BEQ @lp         ; -> yes, go again
-  LDA D           ; final count
-  JSR patch_byte  ; fix up placeholder
-
-
-; SOUND
-syn_snd:
-  JSR syn_n3       ; 3 num args
-  JSR @twice       ; -> check twice
-@twice:
-  JSR opt_comma    ; A=next-char -> EQ=comma
-  BNE syn_ret      ; -> no, done
-  JMP tok_nexp     ; num expr, then return
-
-
-; NEXT
-syn_nvar:
-  JSR syn_var       ; parse and emit var -> E=type (EQ=num NE=str)
-  LDX #0            ; 0=num type
-  JMP typ_chk       ; -> check X=E, return
-
-
-; DIM
-syn_dim:
-  JSR syn_var     ; require var
-  LDA #36         ; `$`
-  JSR emit_if     ; consume match, emit -> EQ=found
-  LDA #40         ; `(`
-  JSR tok_req     ; require `(`
-  JMP tok_vardim  ; parse var dims, then return
-
-
-; DATA, REM
-syn_data:
-  JSR emit_place    ; emit placeholder
-  DEY               ; set up
-@lp:
-  INY               ; advance input
-  LDA LineBuf,Y     ; next input char
-  BNE @lp           ; -> continue copy
-  JMP patch_len     ; patch in length, then return
-
-
-; CLOSE
-syn_ch:
-  LDA #35          ; `#`
-  JSR tok_req_sp   ; require `#`
-  JSR num_u16      ; parse number at Y -> Y,Acc,NE=found (uses A,B,X)
-  BEQ e_syn1       ; -> syntax error
-  LDA Acc1         ; high byte
-  BNE e_range1     ; -> out of range
-  LDA Acc0         ; low byte
-  CMP #10          ; is it >= 10?
-  BCS e_range1     ; -> out of range
-  JMP emit_byte    ; emit {0-9} literal, then return
-
-
-; OPEN
-syn_ch_s:
-  JSR syn_ch       ; require #{0-9}
-  JSR tok_comma    ; require `,`
-syn_str:
-  JMP tok_sexp     ; parse string expr, then return
-
-
-; INPUT
-syn_inp_var:
-  JSR syn_var       ; (uses A,X,E) -> X/E=type (EQ=num NE=str)
-syn_input:
-  JSR skip_spc      ; A=next-char
-  BEQ @done         ; -> end of line
-  CMP #34           ; `"`
-  BEQ @str          ; -> string literal
-  CMP #44           ; `,`
-  BEQ @emit         ; -> emit it
-  CMP #59           ; `;`
-  BEQ @emit         ; -> emit it
-  CMP #58           ; `:`
-  BNE syn_inp_var   ; -> must be VAR
-@done:
-  RTS               ; -> done
-@str:
-  JSR emit_str      ; Y=ofs -> Y, NE
-  BNE syn_input     ; -> continue input
-@emit:
-  JSR emit_byte     ; emit `,` / `;` / `'` -> PL
-  BPL syn_input     ; -> continue input
-
-
-; syntax error
-e_syn1:
-  LDY #<msg_syn
-e_rep1:
-  JMP report_err
-
-; out of range
-e_range1:
-  LDY #<msg_rng
-  BNE e_rep1
-
-
-; DEF
-syn_def:
-  BNE syn_def1      ; -> next page (NE from skip_spc)
-
-
-; PRINT
-syn_pr_exp:
-  JSR tok_exp       ; parse and emit expression -> X=type  (XXX can this return CS=found? removes ELSE check)
-syn_print:
-  JSR skip_spc      ; A=next-char
-  BEQ @done         ; -> end of line
-  CMP #44           ; `,`
-  BEQ @emit         ; -> emit it
-  CMP #59           ; `;`
-  BEQ @emit         ; -> emit it
-  CMP #39           ; `'`
-  BEQ @emit         ; -> emit it
-  CMP #58           ; `:`
-  BEQ @done         ; -> end of stmt
-  LDA #<kwi_PrFn    ; A=index
-  JMP match_kw      ; Y=ofs A=index X=page -> Y, CS=found, A=hi-byte (uses A,X,Src)
-  BCC syn_pr_exp    ; -> must be an expression
-  JSR emit_byte     ; emit opcode (uses X; preserves A,Y -> NE,PL)
-  CMP #OP_ELSE      ; is it ELSE?
-  BEQ @else         ; -> found ELSE (can appear after any statement)
-  CMP #OP_AT        ; is it AT?
-  BEQ @args2        ; -> expect two args
-  JSR syn_n1        ; expect one argument
-  JMP syn_print     ; -> continue print
-@done:
-  RTS               ; -> done
-@emit:
-  JSR emit_byte     ; emit `,` / `;` / `'` -> PL
-  BPL syn_print     ; -> continue print
-@args2:
-  JSR syn_n2
-  JMP syn_print     ; -> continue print
-@else:
-  JMP syn_else      ; -> found ELSE  (can appear after any statement)
-
-
-; --------------------------------------------------------------------------
-; Page 3 - Syntax Handlers continued
-
-DB "PG"
-
-
-; DEF FN
-syn_def1:
-  LDA #<kwi_FN      ; A=index
-  JMP match_kw      ; Y=ofs A=index X=page -> Y, CS=found, A=hi-byte (uses A,X,Src)
-  BCC e_syn1        ; -> `FN` is required
-  JSR tok_svar      ; require VAR[$] name
-  JSR skip_spc      ; A=next-char
-  CMP #40           ; `(`
-  BNE @noargs       ; -> no arglist
-@lp:
-  JSR tok_svar      ; require VAR[$] name
-  JSR opt_comma     ; is there a `,`?
-  BEQ @lp           ; -> more vars
-  LDA #41           ; `)`
-  JSR tok_req_sp    ; require `)`
-@noargs:
-  JSR skip_spc      ; A=next-char
-  CMP #61           ; `=`
-  BNE tok_ret3      ; -> done
-  JMP tok_fnret     ; -> function return statement
-
-
-; @@ tok_var
-; require VAR name
-tok_var:            ; 
-  JSR skip_spc      ; A=next-char
-  JSR is_alpha      ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
-  BCS e_syn1        ; -> syntax error (expecting VAR)
-  ; 
-tok_ret3:
-  RTS
-
-
-; @@ tok_svar
-; require VAR name with optional `$`
-tok_svar:
-  JSR tok_var       ; require VAR name
-  LDA #36           ; `$`
-  JMP emit_if       ; consume match, emit, then return -> EQ=$
-
-
-; @@ syn_var
-; parse and emit a var name, and optional array indices
-; returns X=0 if a number (EQ), X=1 if a string (NE)
-; must start within page $200
-syn_var:            ; (uses A,X,E) -> X/E=type (EQ=num NE=str)
-  LDX #0            ; 0=num
-  STX E             ; var type
-  JSR tok_svar      ; require VAR name -> EQ=$
-  BNE @nostr        ; -> non-string
-  INC E             ; 1=str
-@nostr:
-  LDA #40           ; `(`
-  JSR emit_if       ; consume match, emit (EQ=found)
-  BNE @noarr        ; -> no array
-  JSR tok_vardim    ; parse var dims
-@noarr:
-  LDX E             ; load var type
-  RTS               ; -> X/E=type (EQ=num NE=str)
-
-
-; @@ tok_vardim
-; parse and emit a list of dimension expressions (caller has matched `(`)
-tok_vardim:
-  JSR emit_place    ; length placeholder  -- XXX conflicts with IF/ELSE placeholder (need a stack)
-  LDX #0            ; 
-  STX D             ; count = 0
-@lp:
-  JSR tok_nexp      ; numeric expression
-  JSR opt_comma     ; is there a `,`?
-  BEQ @lp           ; -> more vars
-  LDA D             ; get count
-  JSR patch_byte    ; patch in number of dims
-  LDA #41           ; `)`
-  JMP tok_req_sp    ; require `)`
-
-
-; Expression parser
-
-; aNNComma  DB  U_SP, ",",U_REQ  ; cont..
-; aNNExp    DB  U_ASUB,<aNExp, U_DECNZ,<aNNComma, U_RET     ; count N x NExprs
+@replace:
+  LDY #3            ; OPLN, NoL, NoH, Len, Pre
+  LDA (Ptr),Y       ; get line length (including header)
+  STA B             ; save line length
 ; 
-; aYExp     DB  U_RET    ; any expr
-; 
-; aNExp     DB  U_RET    ; numeric expr
-; 
-; aSExp     DB  U_RET    ; string expr
+
+  SEC
+  SBC #5            ; minus header
+  STA C             ; save new length
+  CMP EmitOfs       ; compare new length
+  BEQ @copyin       ; -> same length, no need to shift program
+
+  LDA Ptr
+  STA Src           ; Dst = Ptr
+  CLC
+  ADC B             ; add 
+  LDA PtrH
+  STA DstH
+  JSR mem_copy      ; from (Src) to (Dst) with XY=size (uses A,X,Y,F,Src,Dst)
+@copyin:
+  ; XXX
 
 
-; parse an expression
-tok_exp:            ; -> X=type (0=num 1=str), CS=found
-  LDX #0
-  RTS
 
-
-
-
-; ------------------------------------------------------------------------------
-; PAGE 4 - Tables and Commands
-
-ORG BasROM+$400
-cmds_page:
-
-; Commands Index (MUST be at offset 0)
-tabs_page:
-kwi_Cmds  DB <tab_cmds
-kwi_THEN  DB <tab_then
-kwi_ELSE  DB <tab_else
-kwi_TO    DB <tab_to
-kwi_STEP  DB <tab_step
-kwi_FN    DB <tab_fn
-kwi_PrFn  DB <tab_prfn
-
-; Context keywords
-tab_then  DB "THEN",$80         ; bit 6 clear to end (~$40)
-tab_else  DB "ELSE", OP_ELSE    ; bit 6 clear to end (~$40)
-tab_to    DB "TO",$80           ; bit 6 clear to end (~$40)
-tab_step  DB "STEP",$80         ; bit 6 clear to end (~$40)
-tab_fn    DB "FN",$80           ; bit 6 clear to end (~$40)
+cmds_page = BasROM+$200
+ORG BasROM+$2C8
 
 ; Commands Table (matches ud_cmds)
 tab_cmds:
   DB "LIST",   $80 +$40  ; bit 6 set for more ($40)
   DB "RUN",    $81 +$40
   DB "ART",    $82 +$40
-  DB "SAVE",   $83 +$40
-  DB "AUTO",   $84 +$40
-  DB "DEL",    $85 +$40
-  DB "NEW",    $86 +$40
-  DB "OLD",    $87 +$40
-  DB "CLEAR",  $88 +0    ; bit 6 clear to end (~$40)
+  DB "LOAD",   $83 +$40
+  DB "SAVE",   $84 +$40
+  DB "AUTO",   $85 +$40
+  DB "DEL",    $86 +$40
+  DB "NEW",    $87 +$40
+  DB "OLD",    $88 +$40
+  DB "CLEAR",  $89 +0    ; bit 6 clear to end (~$40)
 
 ; Commands Dispatch (matches cmd_tab)
 disp_cmds:
   DB <cmd_list  -1
   DB <cmd_run   -1
   DB <cmd_art   -1
+  DB <cmd_load  -1
   DB <cmd_save  -1
   DB <cmd_auto  -1
   DB <cmd_del   -1
@@ -1043,17 +720,29 @@ disp_cmds:
   DB <cmd_old   -1
   DB <cmd_clear -1
 
+
+; ------------------------------------------------------------------------------
+; PAGE 3 - Commands
+
+ORG BasROM+$300
+
+; Context keywords
+; tab_then  DB "THEN",$80         ; bit 6 clear to end (~$40)
+; tab_else  DB "ELSE", OP_ELSE    ; bit 6 clear to end (~$40)
+; tab_to    DB "TO",$80           ; bit 6 clear to end (~$40)
+; tab_step  DB "STEP",$80         ; bit 6 clear to end (~$40)
+; tab_fn    DB "FN",$80           ; bit 6 clear to end (~$40)
+
 ; Print Function Table (matches ud_prfn)
-tab_prfn  DB "SPC", OP_SPC+$40  ; bit 6 set, continue (+$40)
-          DB "TAB", OP_TAB+$40  ; bit 6 set, continue (+$40)
-          DB "AT",  OP_AT       ; bit 6 clear to end (~$40)
+; tab_prfn  DB "SPC", OP_SPC+$40  ; bit 6 set, continue (+$40)
+;           DB "TAB", OP_TAB+$40  ; bit 6 set, continue (+$40)
+;           DB "AT",  OP_AT       ; bit 6 clear to end (~$40)
 
 ; Print Function Dispatch (matches tab_prfn)
 ; ud_prfn:
 ;   DB <bPrFnArg1
 ;   DB <bPrFnArg1
 ;   DB <bPrFnArg2
-
 
 ; aAuto     DB  U_N16,<aAutoNoL, U_N16,<aAutoNoS
 ; aAutoLp   DB  U_LIFT16, U_PRNUM, 32,U_CH, U_RDLN, 13,U_CH, U_SP, 0,U_IF,<aRet
@@ -1066,20 +755,67 @@ tab_prfn  DB "SPC", OP_SPC+$40  ; bit 6 set, continue (+$40)
 ; aDelNoL   DB  0, 0, U_G,<aDelLn
 
 
-cmd_list:
+cmd_load:
   RTS
+
 cmd_save:
   RTS
+
 cmd_auto:
+  LDA #10
+  STA LineNo        ; set default start line
+  STA AutoInc       ; set default increment
+  LDA #0
+  STA LineNoH
+  STA B             ; 2nd-arg flag
+  JSR ln_range      ; parse line-range -> Acc
+  LDA B             ; check 2nd arg
+  BEQ @lp           ; -> no 2nd arg
+  LDA Acc1
+  BNE cmd_range
+  LDA Acc0
+  BEQ @lp
+  STA AutoInc
+@lp:
+  LDA LineNo
+  STA Acc0
+  LDA LineNoH
+  STA Acc1
+  JSR print_u16
+  LDA #32
+  JSR wrchr
+  JSR readline
+  LDY #0            ; [2] input offset
+  STY EmitOfs       ; [3] reset EmitOfs for code gen
+  STY EmitPtch      ; [3] reset EmitPtch for code gen
+  JSR tokenize      ; [6] tokenize the line
+  JSR debug
+;;  JSR ins_line      ; [6] insert the line into the BASIC program
+; next line
+  LDA AutoInc
+  CLC
+  ADC LineNo
+  STA LineNo
+  BCC @lp           ; -> continue
+  INC LineNoH
+  BNE @lp           ; -> continue (unless line number wraps around)
   RTS
+
+cmd_range:
+  LDY #<msg_rng
+  JMP report_err     ; [3] -> out of range
+
 cmd_del:
+  JSR ln_range      ; parse line-range
   RTS
+
 cmd_new:
   RTS
+
 cmd_old:
   RTS
 
-; @@ run_basic
+; @@ RUN
 ; run the BASIC program
 cmd_run:            ; 
   JSR cmd_clear     ; clear all vars
@@ -1099,7 +835,7 @@ set_prog:
   STY OpTop         ; clear operator stack
   RTS
 
-; @@ clear_vars
+; @@ CLEAR
 ; clear all BASIC variables
 cmd_clear:          ; 
   LDA #0
@@ -1119,6 +855,8 @@ cmd_clear:          ;
   STA FreePtrH
   RTS
 
+; @@ ART
+; clear all BASIC variables
 cmd_art:            ; 29 bytes
   LDX #0            ; text mode
   JSR vid_mode      ; set mode (X=mode, uses A,X,Y,B)
@@ -1143,12 +881,78 @@ cmd_art:            ; 29 bytes
 @esc:
   JMP escape
 
+cmd_syn:
+  JMP tok_syn
+
+; @@ ln_range
+; parse line-number [, line-number]
+ln_range:           ; Y -> Y,Acc,NE=found
+  JSR num_u16       ; parse number at Y -> Y,Acc,NE=found (uses A,B,X)
+  BEQ @ret          ; -> no args (EQ)
+  JSR set_lno       ; copy Acc -> LineNo
+  JSR tok_comma     ; comma?
+  BNE @ret          ; -> no comma (NE)
+  JSR num_u16       ; parse number at Y -> Y,Acc,NE=found (uses A,B,X)
+  BEQ cmd_syn       ; -> syntax error
+  INC B             ; 2 args found (NE)
+@ret:
+  RTS               ; -> NE=found (first arg)
+
+tok_comma:
+  JSR skip_spc      ; A=next-char
+  INY               ; assume match
+  CMP #44           ; is it `,`?
+  BEQ @ret          ; -> found (EQ)
+  DEY               ; undo (no match) (NE unless start of line)
+@ret:
+  RTS
+
+cmd_nosuch:
+  LDY #<msg_rng
+  JMP report_err
+
+; @@ LIST
+; display program listing
+cmd_list:            ; CODE,Y at start of first line
+;  JSR set_prog      ; set CODE = start of program
+;  JSR num_u16       ; parse number at Y -> Y,Acc,NE=found (uses A,B,X)
+;  BEQ @list         ; -> no arg, start listing
+;  JSR find_line     ; find matching line (Acc01 -> Ptr, CS=found)
+;  LDA Ptr           ; copy found (or subsequent) line pointer
+;  STA CODE          ; 
+;  LDA PtrH          ; 
+;  STA CODEH         ; 
+;  JSR tok_comma     ; comma?
+;  BNE @list         ; -> no comma, start listing
+;  JSR num_u16       ; parse number at Y -> Y,Acc,NE=found (uses A,B,X) [else Acc=0]  XXX want $FFFF ?
+;@list:
+;  LDY #0            ;
+;  STY Acc2          ; clear
+;  STY AccE          ; clear
+;  INY               ; point at LineL
+;  LDA (CODE),Y      ; get LineL
+;  STA Acc0          ; set Acc
+;  INY               ; point at LineH
+;  LDA (CODE),Y      ; get LineH
+;  STA Acc1          ; set Acc
+;  AND Acc0          ; (Acc0 AND Acc1)
+;  CMP #255        ; is it 0xFFFF
+;;  BEQ list_end      ; -> end of program
+;  JSR num_print     ; print a number on the stack (uses A,X)
+;  LDA #32           ; space
+;  JSR wrchr         ; print char (A=char, uses A,X)
+;  INY               ; skip LineLen
+;  INY               ; skip PrevLen
+;list_stmt:
+;list_end:
+;  RTS
+
 
 
 ; ------------------------------------------------------------------------------
-; PAGE 5 - Messages
+; PAGE 4 - Messages
 
-ORG BasROM+$500
+ORG BasROM+$400
 messages:    ; page-aligned
 
 msg_boot:    ; red orange yellow green cyan
@@ -1181,22 +985,22 @@ msg_stop:
 
 ; ~64 bytes error messages
 msg_exp:  DB 8,"Missing "
-msg_syn:  DB 6,"Syntax" ; Error
-msg_div:  DB 3,"DIV"    ; Error
-msg_ovf:  DB 3,"OVF"    ; Error
-msg_prg:  DB 3,"PRG"    ; Error
-msg_var:  DB 3,"VAR"    ; Error
-msg_typ:  DB 3,"TYP"    ; Error
-msg_rng:  DB 3,"RNG"    ; Error
-msg_err:  DB 7," Error",13
+msg_syn:  DB 7,"Problem"
+msg_div:  DB 8,"Div by 0"
+msg_ovf:  DB 7,"Too big"
+msg_prg:  DB 7,"Corrupt"
+msg_var:  DB 9,"Not set: "
+msg_typ:  DB 10,"Wrong type"
+msg_rng:  DB 6,"Range?"
+msg_huh   DB 4,"Huh?"
 msg_blk:  DB 5,"Block"
 msg_esc:  DB 8,13,13,"Escape"
 
 
 ; ------------------------------------------------------------------------------
-; PAGE 6 - Statement Tokens
+; PAGE 5 - Statement Tokens
 
-ORG BasROM+$600
+ORG BasROM+$500
 
 ; Statement Index (MUST be at offset 0)
 stmt_page:
@@ -1360,21 +1164,14 @@ stmt_rev:                     ; [34] indices MUST match OPCODEs
 
 
 ; @@ skip_spc
-skip_spc:           ; Y=ofs -> Y, A=next-char, NE
-  DEY               ; [2] set up
-@lp: 
-  INY               ; [2] advance
-  LDA LineBuf,Y     ; [4] next input char
-  CMP #32           ; [2] is it space?
-  BEQ @lp           ; [2] -> yes, go again [+1]
-  RTS               ; [6] return -> NE
-
-; @@ is_digit
-is_digit:          ; A=char -> A=[0..9], CC=found (preserves X,Y)
-  SEC              ; [2] for subtract
-  SBC #48          ; [2] make '0' be 0
-  CMP #10          ; [2] 10 digits (CS if >= 10)
-  RTS              ; [6] -> A=digit CC=found [12]
+skip_spc:          ; tokenize - skip spaces
+@loop:             ; Y=ofs -> Y, A=next-char
+  LDA LineBuf,Y    ; [4] next input char
+  INY              ; [2] advance input (assume match)
+  CMP #32          ; [2] was it space?
+  BEQ @loop        ; [2] -> loop [+1]
+  DEY              ; [2] undo advance (didn't match)
+  RTS              ; [6]
 
 ; @@ is_alpha
 is_alpha:          ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
@@ -1383,6 +1180,13 @@ is_alpha:          ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
   SBC #64          ; [2] make '@' be 0
   CMP #27          ; [2] 27 letters including `@` (CS if >= 27)
   RTS              ; [6] -> A=az-index CC=alpha [14]
+
+; @@ is_digit
+is_digit:          ; A=char -> A=[0..9], CC=found (preserves X,Y)
+  SEC              ; [2] for subtract
+  SBC #48          ; [2] make '0' be 0
+  CMP #10          ; [2] 10 digits (CS if >= 10)
+  RTS              ; [6] -> A=digit CC=found [12]
 
 ; @@ print_u16
 ; print a U16 in Acc
@@ -1394,9 +1198,9 @@ print_u16:          ; Acc=U16 (uses A,X)
 
 
 ; ------------------------------------------------------------------------------
-; PAGE 7 - Expression Tokens
+; PAGE 6 - Expression Tokens
 
-ORG BasROM+$700
+ORG BasROM+$600
 kwtab: ; ??
 
 ; Expression Index (MUST be at offset 0)
@@ -1614,19 +1418,39 @@ expr_rev:                  ; [38]
   DB (ex_fnret - expr_page); "=",$A6     special
 
 
+; ------------------------------------------------------------------------------
+; PAGE 8 - Debug
+
+ALIGN 16
+DB "DBG"
+
+; DEBUG routine
+debug:
+  LDY EmitOfs       ; [DEBUG]
+  LDA #0            ; [DEBUG]
+  STA EmitBuf,Y     ; [DEBUG]
+  TAY               ; [DEBUG]
+@lp:
+  LDA EmitBuf,Y     ; [DENUG]
+  BEQ @repl         ; [DEBUG]
+  STA Acc0          ; [DEBUG]
+  LDA #0            ; [DEBUG]
+  STA Acc1          ; [DEBUG]
+  STA Acc2          ; [DEBUG]
+  STA AccE          ; [DEBUG]
+  JSR dbghex        ; [DEBUG] (uses A,X,F,Src,Dst) preserves Y
+  INY               ; [DEBUG]
+  BNE @lp           ; [DEBUG]
+@repl:
+  JMP repl
+
+
 ; @@ dbghex
 dbghex:
   JSR prhex         ; [DEBUG] A=byte; (uses A,X,F,Src,Dst) preserves Y
   LDA #32           ; [DEBUG]
   JSR wrchr         ; [DEBUG] A=char; (uses A,X,F,Src,Dst) preserves Y
   RTS
-
-
-; ------------------------------------------------------------------------------
-; PAGE 8 - Support Routines
-
-DB "SUP"
-
 
 ; @@ prhex
 ; print a byte in hex
@@ -1651,98 +1475,6 @@ prhex:              ; A=byte; (uses A,X,F,Src,Dst) preserves Y
 
 
 ; ------------------------------------------------------------------------------
-; Insert Line
-
-; @@ ins_line
-; insert EmitBuf into the program at LineNo
-
-; find_line -> Ptr (start of line, or start of first greater line, or end marker)
-; InsPtr = Ptr (save it)
-; NewLen = EmitOfs + 5 (add header)
-; IF replacing:
-;   OldLen = existing Line Length
-;   Ptr += OldLen (advance to start of next line)
-; ELSE
-;   OldLen = 0 (always do insert)
-; IF NewLen > OldLen:
-;   Ins = NewLen - OldLen (insert length)
-;   IF Top + Ins >= EndPage -> No Room
-;   Src = Ptr       (move up data above Ptr)
-;   Dst = Ptr + Ins (move up by Ins)
-;   Len = Top - Src (length moved)
-;   Top += Ins      (update Top)
-;   COPY Len from Src -> Dst
-; IF NewLen < OldLen:
-;   Del = OldLen - NewLen (delete length)
-;   Src = Ptr       (move down data above Ptr)
-;   Dst = Ptr - Del (move down by Del)
-;   Len = Top - Src (length moved)
-;   Top -= Del      (update Top)
-;   COPY Len from Src -> Dst
-; COPY EmitOfs from EmitBuf -> InsPtr
-
-ins_line:           ; LineNo
-  LDA LineNo        ; [3] tokenized line number
-  STA Acc0          ; [3]
-  LDA LineNoH       ; [3] tokenized line number high
-  STA Acc1          ; [3]
-  JSR find_line     ; [6] find matching line (Acc -> Ptr, CS=found)
-  BCS @replace      ; [2] -> replace line at Ptr
-; insert line
-
-
-@replace:
-  LDY #3            ; OPLN, NoL, NoH, Len, Pre
-  LDA (Ptr),Y       ; get line length (including header)
-  STA B             ; save line length
-; 
-
-  SEC
-  SBC #5            ; minus header
-  STA C             ; save new length
-  CMP EmitOfs       ; compare new length
-  BEQ @copyin       ; -> same length, no need to shift program
-
-  LDA Ptr
-  STA Src           ; Dst = Ptr
-  CLC
-  ADC B             ; add 
-  LDA PtrH
-  STA DstH
-  JSR mem_copy      ; from (Src) to (Dst) with XY=size (uses A,X,Y,F,Src,Dst)
-@copyin:
-
-; ------------------------------------------------------------------------------
-; LIST Output
-
-list:               ; CODE,Y at start of first line
-  LDY #0            ;
-  STY Acc2          ; clear
-  STY AccE          ; clear
-  INY               ; point at LineL
-  LDA (CODE),Y      ; get LineL
-  STA Acc0          ; set Acc
-  INY               ; point at LineH
-  LDA (CODE),Y      ; get LineH
-  STA Acc1          ; set Acc
-  AND Acc0          ; (Acc0 AND Acc1)
-  CMP #255        ; is it 0xFFFF
-;  BEQ list_end      ; -> end of program
-  JSR num_print     ; print a number on the stack (uses A,X)
-  LDA #32           ; space
-  JSR wrchr         ; print char (A=char, uses A,X)
-  INY               ; skip LineLen
-  INY               ; skip PrevLen
-list_stmt:
-list_end:
-  RTS
-
-
-
-
-
-
-; ------------------------------------------------------------------------------
 ; PAGE 8 - BASIC Runtime
 
 ; ORG BasROM+$800
@@ -1753,6 +1485,7 @@ list_end:
 ; BASIC Interpreter
 ; Y = code offset (persistent)
 
+ALIGN 16
 DB "RUN"
 
 ; jump table
@@ -2504,7 +2237,8 @@ do_expr_s::
 ; ------------------------------------------------------------------------------
 ; Numeric Evaluator
 
-  DB "EVAL"
+ALIGN 16
+DB "EVAL"
 
 badprg:
   LDY #<msg_prg
@@ -2597,9 +2331,6 @@ fntabh:          ; BASIC function pointers high  (XXX or single-page?)
 ; ------------------------------------------------------------------------------
 ; Numerics
 
-DB "NUMS"
-
-
 ; @@ num_add
 ; add two 32-bit numbers on the stack (pushed BE->LE)
 ; [A3][A2][A1][A0][T3][T2][T1][T0][PCH][PCL]
@@ -2651,14 +2382,41 @@ num_sub:         ; (uses A,X)
   RTS            ; [6] // 71 (was 60)          +6
 
 
+
+; ----------------------------------------------------------------------
+; Integer Parse / Print
+
+ALIGN 16
+DB "INT"
+
+; @@ num_print
+; print a number in Acc (TODO floating point)
+num_print:       ; from Acc (uses A,X,B,Acc) preserves Y
+  LDA #0         ; [2]
+  PHA            ; [3] sentinel
+@loop:
+  LDA #10        ; [2] divisor = 10
+  JSR div_u8     ; [733] Acc=dividend, A=divisor -> Acc=quotient, A=remainder (uses A,X,B,Acc)
+  ORA #48        ; [2] 0-9 -> '0'-'9'
+  PHA            ; [3] pushes once or more
+  LDA Acc0       ; [3]
+  ORA Acc1       ; [3]
+  ORA Acc2       ; [3]
+  BNE @loop      ; [2] -> until zero [+1]
+  PLA            ; [4]
+@print:
+  JSR wrchr      ; [X] print it (uses A,X,F,Src,Dst) preserves Y
+  PLA            ; [4]
+  BNE @print     ; [2] -> until sentinel [+1]
+  RTS
+
 ; @@ num_u16
 ; tokenize a line number (0-65535)
 num_u16:         ; Y=ofs (uses A,Y,B,C,Term) -> Acc,Y,NE=found
+  JSR skip_spc   ;
   STY C          ; save ofs
-  JSR num_u24    ; from LineBuf,Y -> Y,Acc,CS=found (uses A,Y,B,C,Term)
-  BCS num_range  ; -> out of range
+  JSR num_u24_lb ; from LineBuf,Y -> Acc,Y=end (uses A,X,Y,Acc,Term,Ptr)
   LDA Acc2       ; high byte is non-zero (or number is negative)
-  ORA AccE       ; exponent is non-zero (a float)
   BNE num_range  ; -> out of range, negative, on non-integer
   CPY C          ; NE if found; EQ not-found
   RTS
@@ -2667,103 +2425,88 @@ num_range:
   LDY #<msg_rng
   JMP report_err
 
-tok_clc:
-  CLC
-  RTS            ; CC=not-found
-
 ; @@ num_val
-; parse a 24-bit number with optional sign prefix (TODO: floating point) (TODO: from (Ptr),Y ?)
-num_val:         ; from LineBuf,Y -> Y,Acc,CS=ovf (uses A,B,X,Term)
-  LDA #0
-  STA B          ; [3] sign=$00
-  LDA LineBuf,Y  ; [5] get first char
+; parse a signed 24-bit number (TODO: floating point)
+num_val:         ; from (Ptr),Y -> Y,Acc (uses A,B,X,Term)
+  DEY            ; [2]
+@skip:
+  INY            ; [2]
+  LDA (Ptr),Y    ; [5] get first char
+  CMP #32        ; [2] space?
+  BEQ @skip      ; -> skip it
   CMP #$2D       ; [2] '-'
-  BEQ @minus     ; [2] -> negative [+1]
-@cont:
-  JSR num_u24    ; [6] -> (Src),Y -> Acc,Y,CS=ovf,A=Acc3 (uses A,X,Term)
-  BCS @ovf       ; [2] -> unsigned overflow
-  LDA B          ; [3] get negate flag
-  BNE num_neg    ; [6] negate Acc (uses A) -> Acc,CS=ovf
-  BIT Acc2       ; [3] test top byte [NZV]
-  BPL @ret       ; [2] -> ok
-@ovf:
-  SEC            ; [2] positive overflow
-@ret:
-  RTS            ; [6] -> Acc,Y,CS=ovf
-@minus:
+  BEQ @neg       ; [2] -> negative [+1]
+  JSR num_u24    ; [6] -> (Ptr),Y -> Acc,Y (uses A,X,Y,Acc,Term,Ptr)
+  BIT Acc2       ; [3] test top bit [N:7 V:6]
+  BMI err_ovf    ; [2] -> overflow
+  RTS            ; [6] return
+@neg:
   INY            ; [2] consume '-'
-  INC B          ; [5] set negate flag
-  BNE @cont      ; [3] -> always (B=1)
+  JSR num_u24    ; [6] -> (Ptr),Y -> Acc,Y (uses A,X,Y,Acc,Term,Ptr)
+  ; +++ fall through +++
 
 ; @@ num_neg
 ; one minus Acc (uses A) -> Acc,CS=ovf
 num_neg:
   SEC            ; [2]
   LDA #0         ; [2]
+  TAX            ; [2]
   SBC Acc0       ; [3]
   STA Acc0       ; [3]
-  LDA #0         ; [2]
+  TXA            ; [2]
   SBC Acc1       ; [3]
   STA Acc1       ; [3]
-  LDA #0         ; [2]
+  TXA            ; [2]
   SBC Acc2       ; [3]
   STA Acc2       ; [3]
-  RTS  
+  BCC err_ovf    ; [2] -> overflow (Acc >= 2^23)
+num_done:
+  RTS
 
 ; @@ num_u24
 ; parse an unsigned 24-bit number
-num_u24:         ; from LineBuf,Y-> Y,Acc,CS=ovf (uses A,X,Term)
-  LDA #0         ; [2] length of num
+num_u24_lb:      ; from LineBuf,Y -> Acc,Y=end (uses A,X,Y,Acc,Term,Ptr)
+  LDA #>LineBuf  ; [2] LineBuf page
+  STA PtrH       ; [3] set source page (VARs also use Ptr)
+  LDA #0         ; [2]
+  STA Ptr        ; [3] set source ofs  (VARs also use Ptr)
+num_u24:         ; from (Ptr),Y -> Acc,Y=end (uses A,X,Y,Acc,Term)
+  LDA #0         ; [2]
   STA Acc0       ; [3] clear result
   STA Acc1       ; [3]
   STA Acc2       ; [3]
   STA AccE       ; [3]
+  DEY            ; [2] for pre-increment
 @loop:           ; -> 14+76+25 [115]
-  LDA LineBuf,Y  ; [5] get next char
+  INY            ; [2] pre-increment
+  LDA (Ptr),Y    ; [5] get next char
   SEC            ; [2]
   SBC #48        ; [2] make '0' be 0
   CMP #10        ; [2]
-  BCS @done      ; [2] >= 10 -> @done
+  BCS num_done   ; [2] >= 10 -> done
   TAX            ; [2] save digit 0-9
-  JSR num_mul10  ; [12+64=76] (uses A,Term) Acc *= 10
-  BCS @ovf       ; [2] -> unsigned overflow [+1]
-  TXA            ; [2] restore digit -> A
-  CLC            ; [2]
-  ADC Acc0       ; [3] add digit 0-9
-  STA Acc0       ; [3]
-  LDA Acc1       ; [3]
-  ADC #0         ; [2] add carry
-  STA Acc1       ; [3]
-  LDA Acc2       ; [3]
-  ADC #0         ; [2] add carry
-  STA Acc2       ; [3]
-  BCS @ovf       ; [2] -> unsigned overflow [+1]
-  INY            ; [2] advance input
-  BNE @loop      ; [3] -> always (unless Y wraps around)
-@done:
-  CLC            ; [2] success, no overflow
-@ovf:
-  RTS            ; [6] return Acc, Y=end, CS=overflow
-
-; @@ num_mul10
-; multiply unsigned Acc by 10 (uses A,Term)
-num_mul10:      ; Uses A, preserves X,Y (+Term)
-  LDA Acc0      ; [3] Term = Val * 2
-  ASL           ; [2]
+; multiply Acc by 10 and add digit
+  ASL Acc0      ; [5] Acc = Acc*2 (=Val*2)
+  ROL Acc1      ; [5]
+  ROL Acc2      ; [5]
+  BCS err_ovf   ; [2] -> unsigned overflow
+  LDA Acc0      ; [3] Term = Acc (=Val*2)
   STA Term0     ; [3]
   LDA Acc1      ; [3]
-  ROL           ; [2]
   STA Term1     ; [3]
   LDA Acc2      ; [3]
-  ROL           ; [2]
   STA Term2     ; [3]
-  BCS @ovf      ; [2] -> unsigned overflow
-  ASL Term0     ; [5] Term *= 2 (=Val*4)
-  ROL Term1     ; [5]
-  ROL Term2     ; [5]
-  BCS @ovf      ; [2] -> unsigned overflow
+  ASL Acc0      ; [5] Acc *= 2 (=Val*4)
+  ROL Acc1      ; [5]
+  ROL Acc2      ; [5]
+  BCS err_ovf   ; [2] -> unsigned overflow
+  ASL Acc0      ; [5] Acc *= 2 (=Val*8)
+  ROL Acc1      ; [5]
+  ROL Acc2      ; [5]
+  BCS err_ovf   ; [2] -> unsigned overflow
   CLC           ; [2]
-  LDA Acc0      ; [3] Acc += Term (=Val*5)
+  TXA           ; [2] restore digit 0-9
+  ADC Acc0      ; [3] Acc += Term + Digit (=Val*10 + Digit)
   ADC Term0     ; [3]
   STA Acc0      ; [3]
   LDA Acc1      ; [3]
@@ -2772,66 +2515,132 @@ num_mul10:      ; Uses A, preserves X,Y (+Term)
   LDA Acc2      ; [3]
   ADC Term2     ; [3]
   STA Acc2      ; [3]
-  BCS @ovf      ; [2] -> unsigned overflow
-  ASL Acc0      ; [5] Acc *= 2 (=Val*10)
-  ROL Acc1      ; [5]
-  ROL Acc2      ; [5] sets CS on overflow
-@ovf:
-  RTS           ; [6] -> [106+6] CS=overflow
+  BCC @loop     ; [2] -> continue [+1]
+err_ovf:
+  LDY #<msg_ovf  ; [2]
+  JMP report_err ; [3] -> report overflow
 
 
-; @@ num_print
-; print a number in Acc (TODO floating point)
-num_print:       ; from Acc (uses A,X)
-  LDA #0
-  PHA            ; sentinel
+; ----------------------------------------------------------------------
+; Integer Multiply / Divide
+
+ALIGN 16
+DB "MUL"
+
+; @@ mul_u24
+; multiply BCD = Acc * Term (24-bit)
+mul_u24:         ; Acc=multiplier Term=multiplicand -> BCD=product (uses A,X,B,C,D)
+  LDA #0         ; [2]
+  STA B          ; [3] B partial product
+  STA C          ; [3] C partial product
+  STA D          ; [3] D partial product
+  LDX #24        ; [2] 24 bit multiplier
+  CLC            ; [2] CF=0
 @loop:
-  JSR num_div10  ; {Acc0,1} /= 10 -> A = remainder (uses X)
-  ORA #48        ; 0-9 -> '0'-'9'
-  PHA
-  LDA Acc0
-  ORA Acc1
-  ORA Acc2
-  BNE @loop      ; -> until zero
-@print:
-  PLA
-  BEQ @done
-  JSR wrchr      ; print it (uses A,X,F,Src,Dst) preserves Y
-  BNE @print     ; always (OK unless wrchr scrolled) XXX
-@done
-  RTS
+  BCS err_ovf    ; [2] -> overflow (multiplicand)
+; shift multiplier right, test each bit in turn
+  LSR Acc2       ; [5] 0 >> multiplier >> CF
+  ROR Acc1       ; [5] CF >> multiplier >> CF
+  ROR Acc0       ; [5] CF >> multiplier >> CF
+  BCC @skip      ; [2] -> zero bit, no add [+1]
+; partial += shifted multiplicand x low-bit of multiplier
+  CLC            ; [2] sadly CF=1
+  LDA B          ; [3] partial product
+  ADC Term0      ; [3] partial += multiplicand
+  STA B          ; [3]
+  LDA C          ; [3] partial product
+  ADC Term1      ; [3] partial += multiplicand
+  STA C          ; [3]
+  LDA D          ; [3] partial product
+  ADC Term2      ; [3] partial += multiplicand
+  STA D          ; [3]
+  BCS err_ovf    ; [2] -> overflow
+@skip:
+; shift multiplicand left (×2) into next higher place
+  ASL Term0      ; [2] CF << multiplicand << 0
+  ROL Term1      ; [5] CF << multiplicand << CF
+  ROL Term2      ; [5] XX << multiplicand << CF
+  DEX            ; [2]
+  BNE @loop      ; [3] -> continue
+  RTS            ; [6] -> BCD=product
 
-; @@ num_div10
-; divide {Acc0,1} by 10, returning A = remainder (uses X) (SLOW)
-; shifts dividend left into remainder
-; if remainder >= 10, subtracts 10 and shifts 1 left into quotient
-; else shifts 0 left into quotient
-num_div10:
-  LDX #24        ; [2] 24 bits
+
+; @@ div_u8
+; divide Acc by a 8-bit divisor (used for num_print)
+; long-division method
+div_u8:          ; Acc=dividend, A=divisor -> Acc=quotient, A=remainder (uses A,X,Acc,Term0)
+  STA Term0      ; [3] set divisor
+div_u8_en:
   LDA #0         ; [2] remainder
+  LDX #24        ; [2] 24-bit dividend
 @loop:
-  ASL Acc0       ; [5] CF << dividend << 0 (quotient bit0 = 0)
+; shift dividend bits left into remainder
+  ASL Acc0       ; [5] CF << dividend << 0  (shift 0 into quotient by default)
   ROL Acc1       ; [5] CF << dividend << CF
   ROL Acc2       ; [5] CF << dividend << CF
-  ROL A          ; [2] remainder << CF
-  CMP #10        ; [2] is remainder >= divisor?
-  BCS @ge10      ; [2] -> do subtraction (CF=1)  (~1/3 of the time)
+  ROL            ; [2] remainder << CF
+; until remainder >= divisor
+  CMP Term0      ; [3] is remainder >= divisor?
+  BCC @next      ; [2] -> no, skip subtraction (~2/3 of the time) [+2]
+; subtract divisor from remainder
+  SBC Term0      ; [3] subtract divisor (CF=1)
+; shift 1 into quotient (one times divisor found)
+  INC Acc0       ; [5] quotient bit0 = 1
+@next:
   DEX            ; [2]
-  BNE @loop      ; [3] -> @loop [21]
-  RTS            ; [6] return A = remainder
-@ge10:           ; CF=1
-  SBC #10        ; [2]
-  INC Acc0       ; [5] quotient bit0 = 1 (shift quotient into Acc0/1)
+  BNE @loop      ; [3] -> continue division
+  RTS            ; [6] return
+
+
+; @@ div_u24
+; divide Acc = Acc / Term remainder BCD (long-division method)
+div_u24:         ; Acc=dividend, Term=divisor -> Acc=quotient, BCD=remainder (uses A,X,B,Acc)
+  LDA Term1      ; [3]
+  ORA Term2      ; [3]
+  BEQ div_u8_en  ; [2] -> use div_u8 fast-path
+  LDA #0         ; [2] remainder = 0
+  STA B          ; [3] remainder = 0
+  STA C          ; [3] remainder = 0
+  STA D          ; [3] remainder = 0
+  LDX #24        ; [2] 24 bits
+@loop:
+; shift dividend bits left into remainder
+  ASL Acc0       ; [5] CF << dividend << 0  (shift 0 into quotient by default)
+  ROL Acc1       ; [5] CF << dividend << CF
+  ROL Acc2       ; [5] CF << dividend << CF
+  ROL B          ; [2] CF << remainder << CF
+  ROL C          ; [2] CF << remainder << CF
+  ROL D          ; [2] XX << remainder << CF
+; until remainder >= divisor
+  LDA D          ; [3] high byte
+  CMP Term2      ; [3] is remainder >= divisor?
+  BCC @next      ; [2] -> less, continue loop [+1]
+  BNE @ge10      ; [2] -> greater, do subtraction [+1] (otherwise equal)
+  LDA C          ; [3] mid byte
+  CMP Term1      ; [3] is remainder >= divisor?
+  BCC @next      ; [2] -> less, continue loop [+1]
+  BNE @ge10      ; [2] -> greater, do subtraction [+1] (otherwise equal)
+  LDA B          ; [3] low byte
+  CMP Term0      ; [3] is remainder >= divisor?
+  BCC @next      ; [2] -> less, continue loop [+1]
+@ge10:           ; 
+; subtract divisor from remainder
+  SEC            ; [2]
+  LDA B          ; [3] low byte
+  SBC Term0      ; [3] subtract divisor
+  STA B          ; [3] new remainder
+  LDA C          ; [3] mid byte
+  SBC Term1      ; [3] subtract divisor
+  STA C          ; [3] new remainder
+  LDA D          ; [3] high byte
+  SBC Term2      ; [3] subtract divisor
+  STA D          ; [3] new remainder
+; shift 1 into quotient (one times divisor found)
+  INC Acc0       ; [5] quotient bit0 = 1 (shift quotient into Acc)
+@next:
   DEX            ; [2]
-  BNE @loop      ; [3] -> @loop [29]
-  RTS            ; [6] return A = remainder [4+11*21+5*29+6 = ~386]
-
-
-
-
-
-
-
+  BNE @loop      ; [3] -> continue division
+  RTS            ; [6] return
 
 
 
@@ -3236,7 +3045,7 @@ nl_scrup:          ; (uses A,X,F,Src,Dest) preserves Y
 ; return
   PLA              ; restore Y for caller
   TAY               
-  RTS              ; [6]
+  RTS              ; [6] -> NE unless Y=0
 
 
 ; @@ wrctl       (105b wrctl)
