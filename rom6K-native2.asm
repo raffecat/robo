@@ -823,7 +823,7 @@ tab_jump:
 
 tab_prefx  DB "-", OP_UNEG       ; unary minus
            DB "+", tj_nud        ; unary plus
-           DB "(", OP_PAREN      ; parenthesis
+           DB "(", OP_LPAR       ; left parenthesis
            DB 34, tj_strl        ; `"` string literal
            DB $80+tj_nud         ; end of table, matches go to -> e_nud
 
@@ -1283,61 +1283,62 @@ expr_page:
 
 OP_ABS = $80
 OP_ASC = $81
-OP_AND = $9D       ; binary op
 OP_BTN = $82
 OP_CHR = $83
-OP_DIV = $9E       ; binary op
 OP_EOF = $84
-OP_EOR = $9F       ; binary op
 OP_FN  = $85
-OP_ELSEA = $86     ; to match OP_ELSE $C6 (i.e. $86 + $40)
-OP_GET = $87
-OP_INSTR = $88
-OP_INT = $89
-OP_JOY = $8A
-OP_KEY = $8B
-OP_LEN = $8C
-OP_LEFT = $8D
-OP_MID = $8E
-OP_MOD = $A0       ; binary op
-OP_NOT = $A1       ; unary op
-OP_OR  = $A2       ; binary op
-OP_POS = $8F
-OP_PI = $90
-OP_RIGHT = $91
-OP_RND = $92
-OP_SCN = $93
-OP_STRING = $94
-OP_STR = $95
-OP_SQR = $96
-OP_SGN = $97
-OP_STEP = $A3      ; `FOR` keyword
-OP_TIME = $98
-OP_TO = $A4        ; `FOR` keyword
-OP_THEN = $A5      ; `IF` keyword
-OP_TOP = $99
-OP_USR = $9A
-OP_VAL = $9B
-OP_VPOS = $9C
-OP_FNRET = $A6
-; print functions
-OP_SPC   = $A7       ; SPC(n)
-OP_TAB   = $A8       ; TAB(n)
-OP_AT    = $A9       ; PRINT AT x,y
-OP_IDX   = $AA       ; Array index: n, <dim-exprs>
-; operators
-OP_PAREN = $AB
-OP_UNEG = $AC
-OP_ADD = $AD
-OP_SUB = $AE
-OP_MUL = $AF
-OP_DIV = $B0
-OP_POW = $B1
-OP_IDIV = $B2
-OP_IMOD = $B3
-OP_STRL = $B4
+OP_GET = $86
+OP_INSTR = $87
+OP_INT = $88
+OP_JOY = $89
+OP_KEY = $8A
+OP_LEN = $8B
+OP_LEFT = $8C
+OP_MID = $8D
+OP_POS = $8E
+OP_PI = $8F
+OP_RIGHT = $90
+OP_RND = $91
+OP_SCN = $92
+OP_STRING = $93
+OP_STR = $94
+OP_SQR = $95
+OP_SGN = $96
+OP_TIME = $97
+OP_TOP = $98
+OP_USR = $99
+OP_VAL = $9A
+OP_VPOS = $9B
+OP_FNRET = $9C
+; infix operators
+OP_LPAR = $A0
+OP_UNEG = $A1
+OP_ADD = $A2
+OP_SUB = $A3
+OP_MUL = $A4
+OP_DIV = $A5
+OP_POW = $A6
+OP_RPAR = $A7
+OP_EQ = $A8
+OP_NE = $A9
+OP_LT = $AA
+OP_LE = $AB
+OP_GT = $AC
+OP_GE = $AD
+; infix keywords
+OP_AND = $B0
+OP_OR  = $B1
+OP_EOR = $B2
+OP_IDIV = $B3
+OP_IMOD = $B4
+; prefix keywords
 OP_NOT = $B5
-
+; print functions
+OP_SPC   = $B8       ; SPC(n)
+OP_TAB   = $B9       ; TAB(n)
+OP_AT    = $BA       ; PRINT AT x,y
+; special
+OP_STRL  = $BB
 
 OP_I0    = $F0       ; 1-byte
 OP_I9    = $F9       ; 1-byte
@@ -1349,30 +1350,17 @@ OP_FLT3  = $FE       ; 3-byte (opc|exp8|mant8)    ["1.2"; "2.55"; "10.2"]
 OP_FLT4  = $FF       ; 4-byte (opc|exp8|mant16)   ["99.99", "1.9876"]
 OP_FLT5  = $EF       ; 5-byte (opc|exp8|mant24)   ["987654.3", "9.876543"]
 
-; operators in precedence order:
-; 24:<< 25:<= 26:<> 28:>< 29:>= 30:>>
-OP_EQ    = 61        ; binary `=`
-OP_NE    = 26        ; binary
-OP_LT    = 60        ; binary `<`
-OP_LE    = 25        ; binary
-OP_GT    = 62        ; binary `>`
-OP_GE    = 29        ; binary
-
 expr_at:
 expr_a:
 ex_abs  DB "ABS",     OP_ABS    +$40     ; fn (0,0)  bit 6 set for more ($80+$40)
 ex_asc  DB "ASC",     OP_ASC    +$40     ; fn (0,1)  bit 6 clear to end ($80)
-ex_and  DB "AND",     OP_AND    +0       ; binary op
 expr_b:
 ex_btn  DB "BTN",     OP_BTN    +0       ; BTN(n) joystick button
 expr_c:
 ex_chr  DB "CHR$",    OP_CHR    +0       ; fn$ (1,1)
 expr_d:
-ex_div  DB "DIV",     OP_DIV    +0       ; binary op
 expr_e:
 ex_eof  DB "EOF",     OP_EOF    +$40     ; # function (2,0)
-ex_eor  DB "EOR",     OP_EOR    +$40     ; binary op
-ex_else DB "ELSE",    OP_ELSEA  +0       ; keyword
 expr_f:
 ex_fn   DB "FN",      OP_FN     +0       ; function-call (9)
 expr_g:
@@ -1390,11 +1378,8 @@ ex_len  DB "LEN",     OP_LEN    +$40     ; fn-or-fn# (B,1) 1st is $
 ex_lft  DB "LEFT$",   OP_LEFT   +0       ; fn$ (1,2) 1st is $
 expr_m:
 ex_mid  DB "MID$",    OP_MID    +$40     ; fn$ (1,3) 1st is $
-ex_mod  DB "MOD",     OP_MOD    +0       ; binary op
 expr_n:
-ex_not  DB "NOT",     OP_NOT    +0       ; unary op
 expr_o:
-ex_or   DB "OR",      OP_OR     +$40     ; binary op
 expr_p:
 ex_pos  DB "POS",     OP_POS    +$40     ; fn-or-fn# (B,0)  cursor x
 ex_pi   DB "PI",      OP_PI     +0       ; no-arg (0,0)
@@ -1408,11 +1393,8 @@ ex_stri DB "STRING$", OP_STRING +$40     ; fn$ (n,s) 2nd is $
 ex_str  DB "STR$",    OP_STR    +$40     ; fn$ (1,1) 1st is $
 ex_sqr  DB "SQR",     OP_SQR    +$40     ; fn (0,1)
 ex_sgn  DB "SGN",     OP_SGN    +$40     ; fn (0,1)
-ex_step DB "STEP",    OP_STEP   +0       ; `FOR` keyword
 expr_t:
 ex_time DB "TIME",    OP_TIME   +$40     ; no-arg (0,0)
-ex_to   DB "TO",      OP_TO     +$40     ; `FOR` keyword
-ex_then DB "THEN",    OP_THEN   +$40     ; `IF` keyword
 ex_top  DB "TOP",     OP_TOP    +0       ; no-arg (0,0)
 expr_u:
 ex_usr  DB "USR",     OP_USR    +0       ; fn (0,1)
@@ -1441,40 +1423,29 @@ expr_rev:                  ; [38]
   DB (ex_chr - expr_page)  ; "CHR",$83
   DB (ex_eof - expr_page)  ; "EOF",$84
   DB (ex_fn  - expr_page)  ; "FN",$85
-  DB (ex_else - expr_page) ; "ELSE",$86
-  DB (ex_get - expr_page)  ; "GET",$87
-  DB (ex_ins - expr_page)  ; "INSTR",$88
-  DB (ex_int - expr_page)  ; "INT",$89
-  DB (ex_joy - expr_page)  ; "JOY",$8A
-  DB (ex_key - expr_page)  ; "KEY",$8B
-  DB (ex_len - expr_page)  ; "LEN",$8C
-  DB (ex_lft - expr_page)  ; "LEFT",$8D
-  DB (ex_mid - expr_page)  ; "MID",$8E
-  DB (ex_pos - expr_page)  ; "POS",$8F
-  DB (ex_pi  - expr_page)  ; "PI",$90
-  DB (ex_rgt - expr_page)  ; "RIGHT",$91
-  DB (ex_rnd - expr_page)  ; "RND",$92
-  DB (ex_scn - expr_page)  ; "SCN",$93
-  DB (ex_stri - expr_page) ; "STRING",$94
-  DB (ex_str - expr_page)  ; "STR",$95
-  DB (ex_sqr - expr_page)  ; "SQR",$96
-  DB (ex_sgn - expr_page)  ; "SGN",$97
-  DB (ex_time - expr_page) ; "TIME",$98
-  DB (ex_top - expr_page)  ; "TOP",$99
-  DB (ex_usr - expr_page)  ; "USR", $9A
-  DB (ex_val - expr_page)  ; "VAL",$9B
-  DB (ex_vps - expr_page)  ; "VPOS",$9C
-  DB (ex_and - expr_page)  ; "AND",$9D   operator
-  DB (ex_div - expr_page)  ; "DIV",$9E   operator
-  DB (ex_eor - expr_page)  ; "EOR",$9F   operator
-  DB (ex_mod - expr_page)  ; "MOD",$A0   operator
-  DB (ex_not - expr_page)  ; "NOT",$A1   operator
-  DB (ex_or - expr_page)   ; "OR",$A2    operator
-  DB (ex_step - expr_page) ; "STEP",$A3  keyword
-  DB (ex_to - expr_page)   ; "TO",$A4    keyword
-  DB (ex_then - expr_page) ; "THEN",$A5  keyword
-  DB (ex_fnret - expr_page); "=",$A6     special
-
+  DB (ex_get - expr_page)  ; "GET",$86
+  DB (ex_ins - expr_page)  ; "INSTR",$87
+  DB (ex_int - expr_page)  ; "INT",$88
+  DB (ex_joy - expr_page)  ; "JOY",$89
+  DB (ex_key - expr_page)  ; "KEY",$8A
+  DB (ex_len - expr_page)  ; "LEN",$8B
+  DB (ex_lft - expr_page)  ; "LEFT",$8C
+  DB (ex_mid - expr_page)  ; "MID",$8D
+  DB (ex_pos - expr_page)  ; "POS",$8E
+  DB (ex_pi  - expr_page)  ; "PI",$8F
+  DB (ex_rgt - expr_page)  ; "RIGHT",$90
+  DB (ex_rnd - expr_page)  ; "RND",$91
+  DB (ex_scn - expr_page)  ; "SCN",$92
+  DB (ex_stri - expr_page) ; "STRING",$93
+  DB (ex_str - expr_page)  ; "STR",$94
+  DB (ex_sqr - expr_page)  ; "SQR",$95
+  DB (ex_sgn - expr_page)  ; "SGN",$96
+  DB (ex_time - expr_page) ; "TIME",$97
+  DB (ex_top - expr_page)  ; "TOP",$98
+  DB (ex_usr - expr_page)  ; "USR", $99
+  DB (ex_val - expr_page)  ; "VAL",$9A
+  DB (ex_vps - expr_page)  ; "VPOS",$9B
+  DB (ex_fnret - expr_page); "=",$9C
 
 ; @@ emit_place
 ; emit a placeholder byte, set current placeholder
