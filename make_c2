@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -e -x
+
+asm6 rom6K-uCode2.asm rom6K-uCode2.bin rom6K-uCode2.lst

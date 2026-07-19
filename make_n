@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -e -x
+
+asm6 rom6K-native.asm rom6K-native.bin rom6K-native.lst
