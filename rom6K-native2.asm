@@ -51,81 +51,76 @@ SYSVEC   = $FFC0  ; system vector table
 ; and machine code programs would need to be compiled
 ; for a specific screen mode?!
 
-ZeroPg   = $00  ; zero page (constant)
-StackPg  = $01  ; stack page (constant)
-BasePg   = $02  ; start of free memory (constant)
-End4K    = $10  ; end of 4KB memory (minimum RAM fitted)
+ZeroPg   = $000  ; zero page (constant)
+StackPg  = $100  ; stack page (constant)
+BasePg   = $200  ; start of free memory (constant)
+End4K    = $1000 ; end of 4KB memory (minimum RAM fitted)
 
 ; ------------------------------------------------------------------------------
 ; Zero Page $00-7F - BASIC WORKSPACE
 
-; -- $00-1F BASIC Operator Stack (32 operators)
+; -- $00-1F BASIC Operator Stack (32 bytes)
 
-OperStk  = $00    ; BASIC operator stack
+OperStk  = $00    ; BASIC operator stack                          (used in RT / Direct)
 
-; -- $20-3F Unused space (32)
+; -- $20-5F BASIC Variables (64 bytes)
 
-;DiskArea = $20    ; (32 bytes)
+VarPtrs  = $20    ; 26 x variable pointers (A-Z)                  (used in RT / Direct)
 
-; -- $40-73 BASIC Variables (52; 26 pointers)
+OpTop    = $54    ; Top of OperStk (stack pointer)                (used in RT / Direct)
+; XXX    = $55    ; unused
+TopPtr   = $56    ; TOP of BASIC program, start of variables      (used in RT / EDIT)
+TopPtrH  = $57
+FreePtr  = $58    ; FREE space at end of variables                (used in RT / Direct / EDIT)
+FreePtrH = $59
+HeapPtr  = $5A    ; bottom of string HEAP, descending             (used in RT / Direct / EDIT)
+HeapPtrH = $5B
+CODE     = $5C    ; BASIC code pointer (next instruction)         (used in RT / Direct)
+CODEH    = $5D
+Data     = $5E    ; BASIC data pointer (next DATA statement)      (used in RT)
+DataH    = $5F    ; ALIAS (EmitOfs, EmitPtch)
 
-VarPtrs  = $40    ; 26 x BASIC variable pointers (A-Z)
-var_vt   = $40    ; ALIAS: tokenize vars ($40-$43)
-var_et   = $41    ; ALIAS: tokenize vars ($40-$43)
-var_cnt  = $42    ; ALIAS: tokenize vars ($40-$43)
-AutoMode = $43    ; ALIAS: auto mode flag (top bit clear = AUTO)
+EmitOfs  = $5E    ; ALIAS Data - emit offset for tokenized code   (used in Direct)
+EmitPtch = $5F    ; ALIAS DataH - emit patch offset
 
-; -- $74-7F BASIC Pointers (12; 6 pointers)
+; -- $60-7F IO Buffer: Serial / Parallel / Open File (32 bytes)
 
-OpTop    = $74    ; Top of OperStk (stack pointer)
-; XXX    = $75    ; unused
-TopPtr   = $76    ; TOP of the BASIC program, start of variables
-TopPtrH  = $77
-FreePtr  = $78    ; FREE space at end of variables                 [LineNo]
-FreePtrH = $79
-HeapPtr  = $7A    ; start of string HEAP at top of memory          [AutoLn]
-HeapPtrH = $7B
-CODE     = $7C    ; BASIC code pointer (next instruction)          [Emit]
-CODEH    = $7D
-Data     = $7E    ; BASIC data pointer (next DATA statement)       [AutoInc]
-DataH    = $7F
-
-AutoInc  = $74    ; ALIAS OpTop - AUTO line increment [Tokenize]
-LineNo   = $78    ; ALIAS FreePtr - parsed line number [Tokenize]
-LineNoH  = $79    ; ALIAS FreePtrH - parsed line number [Tokenize]
-AutoLn   = $7A    ; ALIAS HeapPtr - AUTO line number low [Tokenize]
-AutoLnH  = $7B    ; ALIAS HeapPtrH - AUTO line number high [Tokenize]
-
-EmitOfs  = $7E    ; ALIAS Data - emit offset for tokenized code [Tokenize] [uCode]
-EmitPtch = $7F    ; ALIAS DataH - emit patch offset [Tokenize] [uCode]
-uCode    = $7A    ; ALIAS HeapPtr, AutoLn   [uCode]
-uCodeH   = $7B    ; ALIAS HeapPtrH, AutoLnH [uCode]
-JmpOp    = $78    ; ALIAS FreePtr, LineNo   [uCode]
-JmpOpH   = $79    ; ALIAS FreePtrH, LineNoH [uCode]
+IOBuf    = $60    ; IO Buffer area
 
 ; ------------------------------------------------------------------------------
 ; Zero Page $80-FF - OS WORKSPACE
 
-; -- $80-9F IO Buffers (32)
-
-KeyBufMask = 15   ; Modulo 16 (bitmask)
+; -- $80-8F Keyboard Buffer (16)
 
 KeyBuf   = $80    ; Keyboard Buffer (16 bytes)
-IOBuf    = $90    ; IO Buffer (16 bytes)
+KeyBufMask = 15   ; Modulo 16 (bitmask)
 
-; -- $A0-BF File Control Blocks (32)
+; -- $90-97 FCB Pointers (8)
 
-FCB_0    = $A0    ; File Control Block 0 (8 bytes)
-FCB_1    = $A8    ; File Control Block 1 (8 bytes)
-FCB_2    = $B0    ; File Control Block 2 (8 bytes)
-FCB_3    = $B8    ; File Control Block 3 (8 bytes)
+FCB      = $90    ; FCB Pointers (4 x 2 = 8 bytes)
 
-; -- $C0-CF Temporaries
+; -- $98-9F BASIC Variables (8)
 
-Src      = $C0    ; source pointer \ Scroll (PRINT/WRCHR/WRCTL), CLS
-SrcH     = $C1    ; source pointer | Tokenize (match_kws/num_val)
-Dst      = $C2    ; second pointer | Scroll (PRINT/WRCHR/WRCTL), CLS
-DstH     = $C3    ; second pointer | 
+LineNo   = $98    ; Parsed line number                            (used in EDIT)
+LineNoH  = $99    ; Parsed line number                            (used in EDIT)
+AutoInc  = $9A    ; AUTO line increment                           (used in EDIT)
+var_vt   = $9B    ; Tokenize vars                                 (used in EDIT)
+var_et   = $9C    ; Tokenize vars                                 (used in EDIT)
+var_cnt  = $9D    ; Tokenize vars                                 (used in EDIT)
+
+IOBufHd  = $9E    ; IO buffer head (IO Buffer area)
+IOBufTl  = $9F    ; IO buffer tail (IO Buffer area)
+
+; -- $A0-BF Disk Workspace (32)
+
+DiskWork = $A0    ; Reserved for Disk Expansion
+
+; -- $C0-CF Temporaries (16)
+
+Src      = $C0    ; source pointer \ Scroll (PRINT/WRCHR/WRCTL), CLS  [Term0]
+SrcH     = $C1    ; source pointer | Tokenize (match_kws/num_val)     [Term1]
+Dst      = $C2    ; second pointer | Scroll (PRINT/WRCHR/WRCTL), CLS  [Term2]
+DstH     = $C3    ; second pointer |                                  [TermE]
 Ptr      = $C4    ; third pointer  \ PRINT src (can cause Scroll)
 PtrH     = $C5    ; third pointer  /
 B        = $C6    ; extra register | Subroutines are annotated with usage;
@@ -134,17 +129,17 @@ D        = $C8    ; extra register | by callees (manually tracked)
 E        = $C9    ; extra register | 
 F        = $CA    ; extra register | Scratch (always transient; cannot hold)
 
-ExpTop   = $CB    ; top of Expr stack (in stack page)
+ExpTop   = $CB    ; top of Expr stack (in stack page)   (used in RT / Direct)
 
-AccE     = $CC    ; accumulator exponent (0 for integer)
-Acc2     = $CD    ; accumulator byte 2
-Acc1     = $CE    ; accumulator byte 1
-Acc0     = $CF    ; accumulator byte 0
+Acc0     = $CC    ; accumulator byte 0                      (used in RT / Direct)
+Acc1     = $CD    ; accumulator byte 1
+Acc2     = $CE    ; accumulator byte 2
+AccE     = $CF    ; accumulator exponent (0 for integer)
 
-TermE    = $C0    ; ALIAS Src:  term exponent (0 for integer)
-Term2    = $C1    ; ALIAS SrcH: term byte 2
-Term1    = $C2    ; ALIAS Dst:  term byte 1
-Term0    = $C3    ; ALIAS DstH: term byte 0
+Term0    = $C0    ; ALIAS DstH: term byte 0
+Term1    = $C1    ; ALIAS Dst:  term byte 1
+Term2    = $C2    ; ALIAS SrcH: term byte 2
+TermE    = $C3    ; ALIAS Src:  term exponent (0 for integer)
 
 ; -- $D0-DF System Vars
 
@@ -160,26 +155,24 @@ WinH     = $D7    ; text window height
 
 TXTP     = $D8    ; text write address
 TXTPH    = $D9    ; text write address high
+
 CurTime  = $DA    ; cursor flash timer
 CurChar  = $DB    ; character under cursor
 CurVis   = $DC    ; cursor visible flag
 
 VidBase  = $DD    ; base of video memory in pages
 MemSize  = $DE    ; size of memory fitted (detected memory) in pages
-
-; DE-DF free (2)
+;        = $DF    ;
 
 ; -- $E0-EF OS Vectors
 
-; E0-E3 free (4)
+; E0-E7 free (8)
 
-; Vectors (E4-EF)
-SysCmds  = $E4    ; REPL command-list pointer {Low,High} (for ROM override)
-SysStmt  = $E6    ; BASIC statement extension cmd-list {Low,High} (for ROM override)
+; Vectors (E8-EF)
 IRQTmp   = $E8    ; Temp for IRQ handler #1
 IRQTmp2  = $E9    ; Temp for IRQ handler #2
-NmiVec   = $EA    ; NMI vector in RAM {JMP,Low,High} (for ROM override)
-IrqVec   = $ED    ; IRQ vector in RAM {JMP,Low,High} (for ROM override)
+NmiVec   = $EA    ; NMI vector in RAM {JMP,Low,High} (for software override)
+IrqVec   = $ED    ; IRQ vector in RAM {JMP,Low,High} (for software override)
 
 ; -- $F0-FF  IO Area
 
@@ -202,9 +195,7 @@ IO_VCTL  = $FF    ; video mode 8-bit (7:VSync 6:VRow 5:Parallel 4:? 3:Grey 2:2Bp
 
 LineBuf  = $100    ; Input Buffer (128 bytes)
 EmitBuf  = $100    ; Emit Buffer (128 bytes)
-
-ExprStk  = $100    ; Expression stack (96 bytes = 24 numbers)
-
+ExprStk  = $100    ; Expression stack (96 bytes = 24 numbers)x
 StackBot = $180    ; Bottom of BASIC control-stack (cannot go below $180)
 
 ; ------------------------------------------------------------------------------
@@ -231,7 +222,7 @@ ORG BasROM
 reset:
   SEI               ; disable interrupts
   CLD               ; disable BCD mode
-  LDA #End4K        ; end of memory (page)
+  LDA #>End4K       ; end of memory (page)
   STA MemSize       ; set size of memory (in pages)
   LDX #0            ; X = 0
   STX Acc0          ; Acc0 = 0
@@ -250,15 +241,17 @@ basic:
   SEI               ; disable interrupts
   CLD               ; disable BCD mode
   JSR irq_init      ; set up IRQ handler (required for video)
+  JSR cmdNew        ; init program
   LDY #<msg_ready   ; [2] ready message (MUST be <128)
   JSR printmsgln    ; [6] print it
 repl:
   LDX #$FF          ; X = $FF
   TXS               ; reset SP = $FF
-  STX AutoMode      ; = $FF (top bit set = not AUTO)
+  INX               ; X = 0
+  STX AutoInc       ; clear AUTO mode
 repl_lp:
-  BIT AutoMode      ; test top bit
-  BMI @rdln         ; -> not in AUTO mode (top bit set)
+  LDA AutoInc       ; are we in AUTO mode?
+  BEQ @rdln         ; -> not in AUTO mode (zero)
   LDA LineNo
   STA Acc0
   LDA LineNoH
@@ -275,11 +268,11 @@ repl_lp:
   JSR skip_spc      ; [6] A=next-char
   CMP #0            ; [2] empty line? (must CMP)
   BEQ repl          ; [2] -> empty line, back to repl (exit AUTO mode) [+1]
-  BIT AutoMode      ; test top bit
-  BPL @haveline     ; -> in AUTO mode (top bit clear)
+  LDA AutoInc       ; are we in AUTO mode?
+  BNE @haveline     ; -> in AUTO mode (non-zero)
   JSR lno_u16       ; num_u16 -> LineNo, CS=found
   BCS @haveline     ; -> found line number
-  LDA #<kwi_cmds    ; table of commands
+  LDX #<kwi_cmds    ; table of commands
   JSR match_kwi     ; match command keywords
   BCS @docmd        ; -> found command
   JSR e_parse       ; parse and emit
@@ -296,7 +289,7 @@ repl_lp:
   JSR ins_line      ; [6] insert the line into the BASIC program
   CLC
   LDA LineNo        ; increment LineNo for AUTO
-  ADC AutoInc
+  ADC AutoInc       ; non-zero in AUTO mode
   STA LineNo
   BCC repl_lp       ; -> return to repl (continue AUTO)
   INC LineNoH
@@ -334,7 +327,7 @@ emit_chan LDA Acc1          ; range check
 e_range   LDY #<msg_rng
           JMP report_err
 
-chk_else  LDA #<kwi_ELSE
+chk_else  LDX #<kwi_ELSE
           JSR match_kwi     ; match ELSE (optional)
           BCS op_else       ; -> found it
           RTS
@@ -365,7 +358,7 @@ syn_stmt:
 
 e_if      JSR emit_place
           JSR e_nexp
-          LDA #<kwi_THEN
+          LDX #<kwi_THEN
           JSR match_kwi     ; match THEN (optional)
           BCC e_stmt        ; -> no THEN, expect statement
           JMP e_goln        ; -> try line number
@@ -479,7 +472,7 @@ e_inp_s   JSR emit_str      ; emit string literal
 
 e_print   LDX #<tab_print
           JSR tok_tab
-          LDA #<kwi_print   ; 
+          LDX #<kwi_print   ; 
           JSR match_kwi     ; match AT, TAB, SPC   (optional)  XXX need OR mask to emit OP...
           BCS e_prnfn
           JSR chk_else      ; ELSE -> e_else
@@ -633,111 +626,6 @@ e_goln    JSR num_u16
 
 ; ------------------------------------------------------------------------------
 ; PAGE 3 - Match / Emit Routines
-cmds_page = BasROM+$300
-
-; Commands
-
-cmdList:
-  RTS
-
-cmdArt:
-  RTS
-
-cmdSave:
-  RTS
-
-cmdDel:
-  JSR lno_u16       ; num_u16 -> LineNo, CS=found
-  BCC c_syn         ; -> require line
-  JSR if_comma      ; 
-  BNE delLine       ; -> no comma, single line
-  JSR num_u16       ; last line
-  BCC delLine       ; -> no number, single line
-; have a range
-  LDA LineNoH
-  CMP Acc1
-  BCC @valid        ; start < end -> OK
-  BNE c_range       ; start > end -> invalid
-  LDA LineNo
-  CMP Acc0
-  BCC @valid        ; start < end -> OK
-  BNE c_range       ; start > end -> invalid
-@valid:
-  RTS
-
-; @@ delLine
-; delete a single program line
-delLine:           ; delete one line (LineNo)
-  LDA #65
-  JMP wrchr
-
-c_range:
-  JMP e_range
-c_syn:
-  JMP e_syn
-
-
-cmdNew:
-  RTS
-
-cmdOld:
-  RTS
-
-cmdAuto:            ; 37 bytes
-  LDA #10
-  STA AutoInc       ; default = 10
-  STA AutoMode      ; clear top bit (in AUTO mode)
-  JSR lno_u16       ; num_u16 -> LineNo, CS=found
-  BCS @found        ; -> LineNo was set
-  LDA #10
-  STA LineNo        ; default = 10 (LineNoH = 0)
-@found:
-  JSR if_comma
-  BNE @noinc        ; -> no comma, keep default
-  JSR num_u16       ; CS=found
-  BCC @noinc        ; -> no number, keep default
-  LDA Acc1
-  BNE @range
-  LDA Acc0
-  STA AutoInc
-@noinc:
-  RTS               ; -> start AUTO
-@range:
-  JMP e_range
-
-cmdRun:
-  JSR clearVars     ; clear all variables
-  LDA #2            ; start of BASIC program
-  JSR setProg       ; set CODE, DataPtr, OpTop
-  JMP do_ln_op      ; -> expect start of line
-
-setProg:
-  STA CODEH         ; CODE page
-  LDY #0            ; code offset
-  STY CODE          ; CODE offset (ASSUMES EmitBuf is page-aligned)
-  STY Data          ; clear data pointer
-  STY DataH         ; clear data pointer
-  STY OpTop         ; clear operator stack
-  RTS
-
-clearVars:          ; call from OP_CLEAR
-  LDA #0
-  LDX #51           ; 52 bytes VarPtrs
-@lp:
-  STA VarPtrs,X     ; clear pointer
-  DEX
-  BPL @lp
-  ; reset free space (FREE = TOP)
-  LDA TopPtr
-  STA FreePtr
-  LDA TopPtrH
-  STA FreePtrH
-  ; reset string heap (HEAP = VIDBASE)
-  LDA VidBase
-  STA HeapPtr
-  LDA #0
-  STA HeapPtrH
-  RTS
 
 
 
@@ -775,9 +663,127 @@ tok_if:             ; expect A -> CS=found
 @ret:
   RTS               ; [6] EQ=found
 
+; @@ tok_tab
+; find a matching token, emit op or jump
 tok_tab:
   ; XXX
   RTS
+
+; @@ match_kwi
+; find matching keyword, terminated by a byte with top-bit set (8x,9x,Ax,Bx)
+match_kwi:       ; X=tab_ofs
+  JSR skip_spc   ; A=next-char (preserves X,Y)
+  LDA #>tab_page ;
+  STA SrcH       ; SrcH = page
+  TXA            ;
+  BNE match_kw2  ; -> ALWAYS: match keywords -> emit / jump
+
+; @@ match_kwa
+; find matching keyword via letter-index
+; find matching keyword, terminated by a byte with top-bit set (8x,9x,Ax,Bx)
+; if no match, continue until bit 6 is set (Cx,Dx,Ex,Fx)
+; note: table cannot cross a page boundary (INC/DEC Src would wrap)
+match_kwa:       ; Y=ofs, X=page -> emit/jump: Y, A=hi-byte (uses A,X,Y,B,Src)
+  JSR skip_spc   ; A=next-char (preserves X,Y)
+  JSR is_alpha   ; -> A=index,CC=alpha (preserves X,Y)
+  BCS match_kwx  ; -> not found, return
+  STX SrcH       ; SrcH = page
+  TAX            ; X=index
+  LDA #0         ; 
+  STA Src        ; keyword index at offset 0
+  LDA (Src),X    ; look up 1st keyword offset in page
+match_kw2:
+  STA Src        ; set 1st keyword offset
+  LDX #0
+  STY B          ; save Y = input ofs
+@next_kw:
+  DEY            ; [2] set up for pre-increment
+  DEC Src        ; [5] set up for pre-increment
+@match_lp:
+  INY            ; [2] pre-increment input position
+  INC Src        ; [5] pre-increment keyword position
+  LDA (Src,X)    ; [6] next keyword char
+  BMI match_kwf  ; [2] -> matched keyword (found hi-byte) [+1] (MUST check LDA flags not CMP flags)
+  CMP LineBuf,Y  ; [4] does it match input?
+  BEQ @match_lp  ; [2] -> yes, next char [+1]
+@skip_lp:        ; no match
+  INC Src        ; [5] find hi-byte at end of KW
+  LDA (Src,X)    ; [6] get next KW byte
+  BPL @skip_lp   ; [2] -> top bit clear, keep going [+1]
+  INC Src        ; [5] advance over hi-byte
+  LDY B          ; [2] restore Y = input ofs
+  ASL            ; [2] test bit 6 (continue bit)
+  BMI @next_kw   ; [2] -> bit 6 set, try next keyword [+1]
+match_kwx:       ; not found, return
+  CLC            ; [2]
+  RTS            ; [6] 
+match_kwf:       ; found match, A=hi-byte
+  SEC            ; [2]
+  RTS            ; [6] 
+
+
+
+; Emit routines
+
+; @@ emit_data
+emit_data:
+  JSR skip_spc     ; A=next-char
+@copy:
+  LDA LineBuf,Y    ; copy rest of the line
+  BEQ @done        ; -> end of line
+  INY              ; advance input
+  JSR emit_byte    ; emit code (uses X=0; preserves A,Y; PL)
+  BPL @copy        ; -> ALWAYS: until end of line
+@done:
+  RTS
+
+; @@ emit_var
+; match and emit a VAR name
+emit_var:
+  JSR skip_spc     ; [24] A=next-char
+  TAX              ; [2] save char
+  JSR is_alpha     ; [20] A=char -> A=az-index, CC=alphabetic (preserves X,Y)
+  BCS @ret         ; [2] -> no match, CS=not-found
+@lp:
+  TXA              ; [2] restore char
+  JSR emit_byte    ; [27] emit char -> (uses X; preserves A,Y; sets PL)
+@start:
+  LDA LineBuf,Y    ; [4] next input char
+  INY              ; [2] advance input (assume match)
+  TAX              ; [2] save char
+  JSR is_alpha     ; [20] A=char -> A=az-index, CC=alphabetic (preserves X,Y)
+  BCC @lp          ; [2] -> is alpha, continue [+1]
+  TXA              ; [2] restore char
+  JSR is_digit     ; [18] A=char -> A=[0..9], CC=found (preserves X,Y)
+  BCC @lp          ; [2] -> is digit, continue [+1]
+  DEY              ; [2] undo advance (didn't match)
+  CLC              ; [2] CC=found
+@ret:
+  RTS              ; [6] -> CC=found
+
+; @@ emit_str
+; match and emit a string literal (assume `"` already matched, Y>0)
+; jump to <addr> on missing closing quote
+emit_str:
+  DEY              ; for pre-advance INY
+  BNE @start       ; -> start (ASSUMES Y>0)
+@copy:
+  JSR emit_byte    ; [27] emit char (uses X; preserves A,Y; sets PL)
+@start:
+  INY              ; pre-advance input
+  LDA LineBuf,Y    ; next input char
+  BEQ @miss        ; -> at end of line (missing quote), jump to <addr>
+  CMP #34          ; is it `"`?
+  BNE @copy        ; -> continue
+  INY              ; advance
+  CMP LineBuf,Y    ; is next char `"` ?
+  BEQ @copy        ; -> emit one `"` and continue
+  RTS
+@miss:
+  LDA #34          ; `"`
+  JMP err_expect   ; -> Missing "
+
+
 
 
 
@@ -813,8 +819,8 @@ kwi_cmds:
   DB "LIST",   $80 +$40  ; bit 6 set for more ($40)
   DB "RUN",    $81 +$40
   DB "AUTO",   $82 +$40
-  DB "SAVE",   $83 +$40
-  DB "ART",    $84 +$40
+  DB "ART",    $83 +$40
+  DB "SAVE",   $84 +$40
   DB "DEL",    $85 +$40
   DB "NEW",    $86 +$40
   DB "OLD",    $87 +0    ; bit 6 clear to end (~$40)
@@ -824,8 +830,8 @@ disp_cmds:
   DB <cmdList  -1
   DB <cmdRun   -1
   DB <cmdAuto  -1
-  DB <cmdSave  -1
   DB <cmdArt   -1
+  DB <cmdSave  -1
   DB <cmdDel   -1
   DB <cmdNew   -1
   DB <cmdOld   -1
@@ -1072,13 +1078,15 @@ msg_searching:
 msg_loading:
   DB 7,"Loading"
 msg_art:
-  DB 4+4+44
+  DB 32
   ; XXX need raw print to display these arrows (or distinct codes)
-  DB "ART ",$1C,$1D,$1E,$1F," to move, GRA+key to draw, COL+key for color"
+  DB "ART ",$AC,$AD,$AE,$AF," move GRA draw COL color"
 msg_play:
   DB 4,"PLAY"
 msg_stop:
   DB 4,"STOP"
+msg_record:
+  DB 6,"RECORD"
 msg_tape:
   DB 5," TAPE"
 
@@ -1152,7 +1160,7 @@ OP_CLS     = $C2
 OP_CLOSE   = $C3
 OP_CLEAR   = $C4
 OP_DATA    = $C5
-OP_DRAW    = $C6   ; X,Y,C ?  or  X,Y,X,Y,C ?
+OP_DRAW    = $C6   ; X,Y
 OP_DIM     = $C7
 OP_DEFFN   = $C8
 OP_ELSE    = $C9   ; ELSE with <length>     (OP_ELSE,$xx vs source "EL.")
@@ -1164,23 +1172,24 @@ OP_IF      = $CE   ; IF <else-ofs> <cond> (THEN1,0xNN | THEN2,0xNN,0xMM | THEN |
 OP_INPUT   = $CF
 OP_LET     = $D0
 OP_LOAD    = $D1
-OP_MOVE    = $D2
+OP_MOVE    = $D2   ; X,Y
 OP_MODE    = $D3
 OP_NEXT    = $D4
 OP_OPT     = $D5
 OP_OPEN    = $D6
 OP_PUT     = $D7   ; X,Y,CHR (pairs with SCN X,Y)
 OP_PRINT   = $D8
-OP_PLOT    = $D9   ; X,Y,C ?
+OP_PLOT    = $D9   ; X,Y
 OP_POKE    = $DA   ; A,B
 OP_READ    = $DB
 OP_REPEAT  = $DC
 OP_RESTORE = $DD
 OP_RETURN  = $DE
 OP_REM     = $DF
-OP_SOUND   = $E0
+OP_SOUND   = $E0  ; P,D,V,[DP],[DV]
 OP_UNTIL   = $E1
 OP_WAIT    = $E2
+OP_EOP     = $E3
 
 kws_at:
 kws_a:
@@ -1550,65 +1559,6 @@ patch_byte:         ; A=patch (uses X) -> NE=found
   RTS               ; [6]
 
 
-; @@ emit_data
-emit_data:
-  JSR skip_spc     ; A=next-char
-@copy:
-  LDA LineBuf,Y    ; copy rest of the line
-  BEQ @done        ; -> end of line
-  INY              ; advance input
-  JSR emit_byte    ; emit code (uses X=0; preserves A,Y; PL)
-  BPL @copy        ; -> ALWAYS: until end of line
-@done:
-  RTS
-
-; @@ emit_var
-; match and emit a VAR name
-emit_var:
-  JSR skip_spc     ; [24] A=next-char
-  TAX              ; [2] save char
-  JSR is_alpha     ; [20] A=char -> A=az-index, CC=alphabetic (preserves X,Y)
-  BCS @ret         ; [2] -> no match, CS=not-found
-@lp:
-  TXA              ; [2] restore char
-  JSR emit_byte    ; [27] emit char -> (uses X; preserves A,Y; sets PL)
-@start:
-  LDA LineBuf,Y    ; [4] next input char
-  INY              ; [2] advance input (assume match)
-  TAX              ; [2] save char
-  JSR is_alpha     ; [20] A=char -> A=az-index, CC=alphabetic (preserves X,Y)
-  BCC @lp          ; [2] -> is alpha, continue [+1]
-  TXA              ; [2] restore char
-  JSR is_digit     ; [18] A=char -> A=[0..9], CC=found (preserves X,Y)
-  BCC @lp          ; [2] -> is digit, continue [+1]
-  DEY              ; [2] undo advance (didn't match)
-  CLC              ; [2] CC=found
-@ret:
-  RTS              ; [6] -> CC=found
-
-; @@ emit_str
-; match and emit a string literal (assume `"` already matched, Y>0)
-; jump to <addr> on missing closing quote
-emit_str:
-  DEY              ; for pre-advance INY
-  BNE @start       ; -> start (ASSUMES Y>0)
-@copy:
-  JSR emit_byte    ; [27] emit char (uses X; preserves A,Y; sets PL)
-@start:
-  INY              ; pre-advance input
-  LDA LineBuf,Y    ; next input char
-  BEQ @miss        ; -> at end of line (missing quote), jump to <addr>
-  CMP #34          ; is it `"`?
-  BNE @copy        ; -> continue
-  INY              ; advance
-  CMP LineBuf,Y    ; is next char `"` ?
-  BEQ @copy        ; -> emit one `"` and continue
-  RTS
-@miss:
-  LDA #34          ; `"`
-  JMP err_expect   ; -> Missing "
-
-
 ; @@ print_u16
 ; print a U16 in Acc
 print_u16:          ; Acc=U16 (uses A,X)
@@ -1616,6 +1566,7 @@ print_u16:          ; Acc=U16 (uses A,X)
   STA Acc2
   STA AccE
   JMP num_print     ; from Acc (uses A,X)
+
 
 ; @@ dbghex
 dbghex:
@@ -1627,7 +1578,176 @@ print_spc:
 
 
 ; ------------------------------------------------------------------------------
-; PAGE 8 - Support Routines
+; PAGE 8 - Commands
+
+DB "CMD"
+
+ORG BasROM+$800
+cmds_page:
+  DB 0              ; handlers cannot be at offset 0
+
+cmdList:            ; list program lines
+  ; spos = find start of the starting line (or start of the following line)
+  ; epos = find end of the ending line (or start of the following line) [verify epos >= spos] [single-line fallback]
+  ; print line at spos (tables for >$C0 and >$80)
+  ; spos += len(spos_line)
+  ; until spos == epos
+  RTS
+
+cmdSave:            ; save BASIC program
+  ; parse string (set filename)
+  ; optional comma lno_u16
+  ; if Num < 256 -> set Type = $E4 OR (A AND 2), Size = (TOP - $200)  BASIC
+  ; if Num >= 256 -> set SRC, expect u16 Size, u8 Type or $A8         MEMORY
+  ; RECORD TAPE
+  ; write each page from SRC for SIZE (last page with (Type OR 1))
+  ; STOP TAPE
+  RTS
+
+cmdArt:             ; 29 bytes
+  LDX #0            ; text mode
+  JSR vid_mode      ; set mode (X=mode, uses A,X,Y,B)
+  LDX #0
+  LDY #23
+  JSR txt_tab
+  LDY #<msg_art
+  JSR printmsg
+  JSR txt_home
+@idle:
+  JSR show_cursor   ; enable cursor (uses A,Y)
+@wait:
+  BIT ModKeys       ; detect ESC
+  BMI @esc
+  JSR readchar      ; get char from keyboard
+  BEQ @wait         ; -> continue waiting
+  TAX               ; save key
+  JSR hide_cursor   ; disable cursor (uses A,Y)
+  TXA               ; restore key
+@loop:
+  JSR wrchr         ; print it, or do control code
+  JSR readchar      ; get char from keyboard
+  BNE @loop         ; -> more chars
+  BEQ @idle         ; -> go idle
+@esc:
+  JMP escape
+
+cmdDel:
+  JSR lno_u16       ; num_u16 -> LineNo, CS=found
+  BCC c_syn         ; -> require line
+  JSR if_comma      ; 
+  BNE delLine       ; -> no comma, single line
+  JSR num_u16       ; last line
+  BCC delLine       ; -> no number, single line
+; have a range
+  LDA LineNoH
+  CMP Acc1
+  BCC @valid        ; start < end -> OK
+  BNE c_range       ; start > end -> invalid
+  LDA LineNo
+  CMP Acc0
+  BCC @valid        ; start < end -> OK
+  BNE c_range       ; start > end -> invalid
+@valid:
+; spos = find start of the starting line (or start of the following line)
+; epos = find end of the ending line (or start of the following line)      [verify greater]
+; move the chunk length=(epos -> TOP) from (epos) down to (spos)           unless spos==epos?
+; TOP -= length
+; CLEAR variables
+  RTS
+
+; @@ delLine
+; delete a single program line
+delLine:           ; delete one line (LineNo)
+; spos = find start of the starting line (bail if not found)
+; epos = spos + len(line)
+; jump to move handler above
+  LDA #65
+  JMP wrchr
+
+c_range:
+  JMP e_range
+c_syn:
+  JMP e_syn
+
+insLine:
+; spos = find start of matching line (or start of the following line)
+; cpos = spos + len(matching_line) or zero
+; epos = spos + len(insline)
+; move the chunk length=(cpos -> TOP) from (cpos) to (epos)    unless cpos==epos?
+; copy insline to (spos)
+; TOP += len(insline) - len(matching_line) [both 8-bit]
+; CLEAR variables
+
+
+cmdAuto:            ; 37 bytes
+  LDA #10
+  STA AutoInc       ; default = 10
+  JSR lno_u16       ; num_u16 -> LineNo, CS=found
+  BCS @found        ; -> LineNo was set
+  LDA #10
+  STA LineNo        ; default = 10 (LineNoH = 0)
+@found:
+  JSR if_comma
+  BNE @noinc        ; -> no comma, keep default
+  JSR num_u16       ; CS=found
+  BCC @noinc        ; -> no number, keep default
+  LDA Acc1
+  BNE @range
+  LDA Acc0
+  STA AutoInc
+  BEQ @range
+@noinc:
+  RTS               ; -> start AUTO
+@range:
+  JMP e_range
+
+cmdRun:
+  JSR clearVars     ; clear all variables
+  LDA #>BasePg      ; start of BASIC program ($02)
+  JSR setProg       ; set CODE, DataPtr, OpTop, Y=0
+  JMP do_ln_op      ; -> expect start of line
+
+cmdNew:
+  LDA #>BasePg      ; bottom of BASIC memory ($02)
+  STA TopPtrH       ; end of BASIC program
+  LDY #1            ; program length = 1
+  STY TopPtr        ; initially zero
+  LDA #OP_EOP       ; end of program marker
+  STA BasePg        ; write it
+  JMP clearVars     ; -> clear VARs, reset pointers, return
+
+cmdOld:             ; scan for valid lines, adjust TOP
+  RTS
+
+setProg:            ; A=page
+  STA CODEH         ; CODE page
+  LDY #0            ; code offset
+  STY CODE          ; CODE offset (ASSUMES EmitBuf is page-aligned)
+  STY Data          ; clear data pointer
+  STY DataH         ; clear data pointer
+  STY OpTop         ; clear operator stack
+  RTS
+
+clearVars:          ; call from OP_CLEAR
+  LDA #0
+  LDX #51           ; 52 bytes VarPtrs
+@lp:
+  STA VarPtrs,X     ; clear pointer
+  DEX
+  BPL @lp
+  ; reset free space (FREE = TOP)
+  LDA TopPtr
+  STA FreePtr
+  LDA TopPtrH
+  STA FreePtrH
+  ; reset string heap (HEAP = VIDBASE)
+  LDA VidBase
+  STA HeapPtr
+  LDA #0
+  STA HeapPtrH
+  RTS
+
+
 
 ALIGN 16
 DB "SUP"
@@ -1676,55 +1796,6 @@ prhex:              ; A=byte; (uses A,X,F,Src,Dst) preserves Y
 @let:               ; 
   ADC #54           ; 'A'65 - 10 - 1(CF)
   JMP wrchr         ; -> write char (uses A,X,F,Src,Dst) preserves Y
-
-
-; @@ match_kwi
-; find matching keyword, terminated by a byte with top-bit set (8x,9x,Ax,Bx)
-match_kwi:       ; A=tab_ofs
-  LDX #>tab_page
-  STX SrcH       ; SrcH = page
-  BNE match_kw2  ; -> ALWAYS: match keywords -> emit / jump
-
-; @@ match_kwa
-; find matching keyword via letter-index
-; find matching keyword, terminated by a byte with top-bit set (8x,9x,Ax,Bx)
-; if no match, continue until bit 6 is set (Cx,Dx,Ex,Fx)
-; note: table cannot cross a page boundary (INC/DEC Src would wrap)
-match_kwa:       ; Y=ofs, X=page -> emit/jump: Y, A=hi-byte (uses A,X,Y,B,Src)
-  JSR skip_spc   ; A=next-char (preserves X,Y)
-  JSR is_alpha   ; -> A=index,CC=alpha (preserves X,Y)
-  BCS match_kwx  ; -> not found, return
-  STX SrcH       ; SrcH = page
-  TAX            ; X=index
-  LDA #0         ; 
-  STA Src        ; keyword index at offset 0
-  LDA (Src),X    ; look up 1st keyword offset in page
-match_kw2:
-  STA Src        ; set 1st keyword offset
-  LDX #0
-@next_kw:
-  DEY            ; [2] set up for pre-increment
-  DEC Src        ; [5] set up for pre-increment
-@match_lp:
-  INY            ; [2] pre-increment input position
-  INC Src        ; [5] pre-increment keyword position
-  LDA (Src,X)    ; [6] next keyword char
-  BMI match_kwf  ; [2] -> matched keyword (found hi-byte) [+1] (MUST check LDA flags not CMP flags)
-  CMP LineBuf,Y  ; [4] does it match input?
-  BEQ @match_lp  ; [2] -> yes, next char [+1]
-@skip_lp:        ; no match
-  INC Src        ; [5] find hi-byte at end of KW
-  LDA (Src,X)    ; [6] get next KW byte
-  BPL @skip_lp   ; [2] -> top bit clear, keep going [+1]
-  INC Src        ; [5] advance over hi-byte
-  ASL            ; [2] test bit 6 (continue bit)
-  BMI @next_kw   ; [2] -> bit 6 set, try next keyword [+1]
-match_kwx:       ; not found, return
-  CLC            ; [2]
-  RTS            ; [6] 
-match_kwf:       ; found match, A=hi-byte
-  SEC            ; [2]
-  RTS            ; [6] 
 
 
 
@@ -2018,9 +2089,17 @@ code_add_y:
 @done:
   RTS
 
+do_synend:
+  CMP #OP_EOP    ; [2] end of program?
+  BEQ do_end     ; [2] -> yes, do END
 do_syn0:
   LDY #<msg_syn
   JMP report_err ; [3] -> jump to error handler (pushing A)
+
+
+; END: end the program
+do_end:
+  JMP repl
 
 
 ; @@ do_ln_op
@@ -2028,7 +2107,7 @@ do_syn0:
 do_ln_op:
   LDA (CODE),Y   ; [5] load token
   CMP #OP_LN     ; [2]
-  BNE do_syn0    ; [2] -> syntax error
+  BNE do_synend  ; [2] -> syntax error or end of program
   INY            ; [2]
   ; +++ fall through to @@ do_ln +++
 
@@ -2102,11 +2181,6 @@ do_dim:
   ; XX allocate array
   ; XX attach to var?
   JMP do_stmt     ; -> next stmt
-
-
-; END: end the program (return to REPL)
-do_end:
-  JMP repl
 
 
 ; --- FOR, NEXT ---
