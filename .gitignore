@@ -3,6 +3,6 @@
 /emu/robo
 /emu/robo.dSYM/
 /font/ASCII
-rom.bin
-rom.lst
+*.bin
+*.lst
 
