@@ -97,22 +97,28 @@
     <a name="appearance" val="logisim_evolution"/>
     <a name="circuit" val="VDP"/>
     <a name="circuitnamedboxfixedsize" val="true"/>
-    <a name="simulationFrequency" val="16.0"/>
-    <comp lib="0" loc="(1490,490)" name="Splitter">
+    <a name="simulationFrequency" val="64000.0"/>
+    <appear>
+      <rect height="20" stroke="none" width="200" x="60" y="60"/>
+      <rect fill="none" height="30" stroke="#000000" stroke-width="2" width="200" x="60" y="50"/>
+      <text dominant-baseline="alphabetic" fill="#ffffff" font-family="Dialog" font-size="14" font-weight="bold" text-anchor="middle" x="160" y="74">VDP</text>
+      <circ-anchor facing="east" x="50" y="50"/>
+    </appear>
+    <comp lib="0" loc="(1490,460)" name="Splitter">
       <a name="facing" val="west"/>
       <a name="fanout" val="9"/>
       <a name="incoming" val="9"/>
     </comp>
-    <comp lib="0" loc="(1520,490)" name="Probe">
+    <comp lib="0" loc="(1520,460)" name="Probe">
       <a name="appearance" val="classic"/>
       <a name="facing" val="west"/>
       <a name="radix" val="10unsigned"/>
     </comp>
-    <comp lib="0" loc="(1610,360)" name="Splitter">
-      <a name="facing" val="west"/>
-      <a name="fanout" val="9"/>
-      <a name="incoming" val="9"/>
+    <comp lib="0" loc="(1530,310)" name="Constant"/>
+    <comp lib="0" loc="(1530,330)" name="Constant">
+      <a name="value" val="0x0"/>
     </comp>
+    <comp lib="0" loc="(1530,350)" name="Constant"/>
     <comp lib="0" loc="(1640,1130)" name="Splitter">
       <a name="facing" val="west"/>
       <a name="fanout" val="9"/>
@@ -176,10 +182,6 @@
     <comp lib="0" loc="(2460,550)" name="Constant">
       <a name="facing" val="west"/>
     </comp>
-    <comp lib="0" loc="(250,1000)" name="Constant"/>
-    <comp lib="0" loc="(250,1080)" name="Constant"/>
-    <comp lib="0" loc="(250,840)" name="Constant"/>
-    <comp lib="0" loc="(250,920)" name="Constant"/>
     <comp lib="0" loc="(270,90)" name="Clock">
       <a name="appearance" val="classic"/>
     </comp>
@@ -196,11 +198,6 @@
       <a name="facing" val="west"/>
       <a name="fanout" val="8"/>
       <a name="incoming" val="8"/>
-    </comp>
-    <comp lib="0" loc="(3130,1810)" name="Constant">
-      <a name="facing" val="north"/>
-      <a name="value" val="0xe3"/>
-      <a name="width" val="8"/>
     </comp>
     <comp lib="0" loc="(3330,200)" name="Constant">
       <a name="facing" val="south"/>
@@ -298,34 +295,7 @@
       <a name="value" val="0x0"/>
     </comp>
     <comp lib="0" loc="(420,1420)" name="Constant"/>
-    <comp lib="0" loc="(420,500)" name="Constant"/>
-    <comp lib="0" loc="(420,540)" name="Constant">
-      <a name="value" val="0x0"/>
-    </comp>
-    <comp lib="0" loc="(420,560)" name="Constant">
-      <a name="value" val="0x0"/>
-    </comp>
-    <comp lib="0" loc="(420,580)" name="Constant">
-      <a name="value" val="0x0"/>
-    </comp>
-    <comp lib="0" loc="(420,600)" name="Constant">
-      <a name="value" val="0x0"/>
-    </comp>
-    <comp lib="0" loc="(420,690)" name="Constant"/>
     <comp lib="0" loc="(420,70)" name="Constant"/>
-    <comp lib="0" loc="(420,730)" name="Constant">
-      <a name="value" val="0x0"/>
-    </comp>
-    <comp lib="0" loc="(420,750)" name="Constant">
-      <a name="value" val="0x0"/>
-    </comp>
-    <comp lib="0" loc="(420,770)" name="Constant">
-      <a name="value" val="0x0"/>
-    </comp>
-    <comp lib="0" loc="(420,790)" name="Constant">
-      <a name="value" val="0x0"/>
-    </comp>
-    <comp lib="0" loc="(420,810)" name="Constant"/>
     <comp lib="0" loc="(4210,730)" name="Constant"/>
     <comp lib="0" loc="(4460,1020)" name="Splitter">
       <a name="facing" val="west"/>
@@ -337,12 +307,13 @@
       <a name="fanout" val="8"/>
       <a name="incoming" val="8"/>
     </comp>
-    <comp lib="1" loc="(1020,490)" name="AND Gate">
-      <a name="inputs" val="3"/>
-      <a name="size" val="30"/>
+    <comp lib="0" loc="(900,570)" name="Constant">
+      <a name="value" val="0xe0"/>
+      <a name="width" val="8"/>
     </comp>
-    <comp lib="1" loc="(1030,660)" name="NOT Gate">
-      <a name="size" val="20"/>
+    <comp lib="0" loc="(940,620)" name="Constant">
+      <a name="value" val="0xec"/>
+      <a name="width" val="8"/>
     </comp>
     <comp lib="1" loc="(1050,1060)" name="NOT Gate">
       <a name="size" val="20"/>
@@ -363,9 +334,6 @@
     <comp lib="1" loc="(1380,860)" name="AND Gate">
       <a name="size" val="30"/>
     </comp>
-    <comp lib="1" loc="(1590,390)" name="NOT Gate">
-      <a name="size" val="20"/>
-    </comp>
     <comp lib="1" loc="(1740,200)" name="OR Gate">
       <a name="facing" val="west"/>
       <a name="size" val="30"/>
@@ -382,7 +350,7 @@
       <a name="facing" val="west"/>
       <a name="size" val="20"/>
     </comp>
-    <comp lib="1" loc="(2050,690)" name="OR Gate">
+    <comp lib="1" loc="(2150,690)" name="OR Gate">
       <a name="facing" val="north"/>
       <a name="size" val="30"/>
     </comp>
@@ -404,11 +372,11 @@
       <a name="facing" val="west"/>
       <a name="size" val="30"/>
     </comp>
-    <comp lib="1" loc="(2570,330)" name="NOT Gate">
+    <comp lib="1" loc="(2570,190)" name="NOT Gate">
       <a name="facing" val="south"/>
       <a name="size" val="20"/>
     </comp>
-    <comp lib="1" loc="(2590,190)" name="NOT Gate">
+    <comp lib="1" loc="(2570,330)" name="NOT Gate">
       <a name="facing" val="south"/>
       <a name="size" val="20"/>
     </comp>
@@ -440,6 +408,9 @@
       <a name="facing" val="west"/>
       <a name="size" val="20"/>
     </comp>
+    <comp lib="1" loc="(350,520)" name="NOT Gate">
+      <a name="size" val="20"/>
+    </comp>
     <comp lib="1" loc="(3580,1080)" name="AND Gate">
       <a name="facing" val="west"/>
       <a name="inputs" val="5"/>
@@ -449,18 +420,21 @@
       <a name="facing" val="west"/>
       <a name="size" val="20"/>
     </comp>
+    <comp lib="1" loc="(3620,1090)" name="NOT Gate">
+      <a name="facing" val="west"/>
+      <a name="size" val="20"/>
+    </comp>
+    <comp lib="1" loc="(430,600)" name="AND Gate">
+      <a name="facing" val="west"/>
+      <a name="size" val="30"/>
+    </comp>
+    <comp lib="1" loc="(470,630)" name="NOT Gate">
+      <a name="facing" val="north"/>
+      <a name="size" val="20"/>
+    </comp>
     <comp lib="1" loc="(560,1110)" name="NOT Gate">
       <a name="facing" val="south"/>
       <a name="size" val="20"/>
-    </comp>
-    <comp lib="1" loc="(560,530)" name="NOT Gate">
-      <a name="facing" val="south"/>
-      <a name="size" val="20"/>
-    </comp>
-    <comp lib="1" loc="(570,480)" name="AND Gate">
-      <a name="facing" val="west"/>
-      <a name="inputs" val="3"/>
-      <a name="size" val="30"/>
     </comp>
     <comp lib="1" loc="(610,50)" name="AND Gate">
       <a name="inputs" val="4"/>
@@ -473,31 +447,44 @@
     <comp lib="1" loc="(640,1140)" name="AND Gate">
       <a name="size" val="30"/>
     </comp>
-    <comp lib="1" loc="(660,510)" name="NOT Gate">
-      <a name="facing" val="north"/>
-      <a name="size" val="20"/>
+    <comp lib="1" loc="(700,730)" name="AND Gate">
+      <a name="inputs" val="3"/>
+      <a name="size" val="30"/>
     </comp>
     <comp lib="1" loc="(710,1110)" name="NOT Gate">
       <a name="facing" val="north"/>
       <a name="size" val="20"/>
     </comp>
-    <comp lib="1" loc="(730,480)" name="AND Gate">
+    <comp lib="1" loc="(750,720)" name="AND Gate">
       <a name="inputs" val="3"/>
       <a name="size" val="30"/>
     </comp>
-    <comp lib="1" loc="(770,850)" name="AND Gate">
+    <comp lib="1" loc="(760,600)" name="NOT Gate">
+      <a name="size" val="20"/>
+    </comp>
+    <comp lib="1" loc="(800,600)" name="AND Gate">
       <a name="inputs" val="3"/>
       <a name="size" val="30"/>
     </comp>
-    <comp lib="1" loc="(860,830)" name="AND Gate">
+    <comp lib="1" loc="(810,580)" name="NOT Gate">
+      <a name="size" val="20"/>
+    </comp>
+    <comp lib="1" loc="(850,580)" name="AND Gate">
       <a name="inputs" val="3"/>
       <a name="size" val="30"/>
     </comp>
-    <comp lib="1" loc="(910,520)" name="AND Gate">
+    <comp lib="1" loc="(850,620)" name="AND Gate">
       <a name="inputs" val="3"/>
       <a name="size" val="30"/>
     </comp>
-    <comp lib="1" loc="(970,490)" name="NOT Gate">
+    <comp lib="1" loc="(900,630)" name="AND Gate">
+      <a name="inputs" val="3"/>
+      <a name="size" val="30"/>
+    </comp>
+    <comp lib="1" loc="(990,780)" name="NOT Gate">
+      <a name="size" val="20"/>
+    </comp>
+    <comp lib="1" loc="(990,850)" name="NOT Gate">
       <a name="size" val="20"/>
     </comp>
     <comp lib="2" loc="(1830,780)" name="Multiplexer">
@@ -513,18 +500,10 @@
       <a name="selloc" val="tr"/>
       <a name="width" val="8"/>
     </comp>
+    <comp lib="5" loc="(1070,850)" name="D Flip-Flop">
+      <a name="appearance" val="classic"/>
+    </comp>
     <comp lib="5" loc="(1260,1070)" name="J-K Flip-Flop">
-      <a name="appearance" val="classic"/>
-      <a name="trigger" val="falling"/>
-    </comp>
-    <comp lib="5" loc="(1260,500)" name="J-K Flip-Flop">
-      <a name="appearance" val="classic"/>
-      <a name="trigger" val="falling"/>
-    </comp>
-    <comp lib="5" loc="(1260,640)" name="D Flip-Flop">
-      <a name="appearance" val="classic"/>
-    </comp>
-    <comp lib="5" loc="(1260,830)" name="J-K Flip-Flop">
       <a name="appearance" val="classic"/>
       <a name="trigger" val="falling"/>
     </comp>
@@ -535,25 +514,15 @@
     <comp lib="5" loc="(130,930)" name="J-K Flip-Flop">
       <a name="appearance" val="classic"/>
     </comp>
+    <comp lib="5" loc="(1580,340)" name="Counter">
+      <a name="appearance" val="classic"/>
+      <a name="max" val="0x1ff"/>
+      <a name="width" val="9"/>
+    </comp>
     <comp lib="5" loc="(1850,940)" name="Register">
       <a name="appearance" val="classic"/>
     </comp>
     <comp lib="5" loc="(2370,640)" name="D Flip-Flop">
-      <a name="appearance" val="classic"/>
-    </comp>
-    <comp lib="5" loc="(2750,240)" name="D Flip-Flop">
-      <a name="appearance" val="classic"/>
-    </comp>
-    <comp lib="5" loc="(300,1060)" name="T Flip-Flop">
-      <a name="appearance" val="classic"/>
-    </comp>
-    <comp lib="5" loc="(300,820)" name="T Flip-Flop">
-      <a name="appearance" val="classic"/>
-    </comp>
-    <comp lib="5" loc="(300,900)" name="T Flip-Flop">
-      <a name="appearance" val="classic"/>
-    </comp>
-    <comp lib="5" loc="(300,980)" name="T Flip-Flop">
       <a name="appearance" val="classic"/>
     </comp>
     <comp lib="5" loc="(3850,250)" name="ROM">
@@ -718,452 +687,444 @@ f 7*0 ff 4*0 10 10 10 f0
       <a name="addrWidth" val="12"/>
       <a name="appearance" val="classic"/>
       <a name="contents">addr/data: 12 8
-78 d8 a2 ff 9a a2 1 86
-d9 ca 20 ec fe a0 23 20
-9e fd a9 10 85 dc a9 5
-85 75 85 77 a2 0 86 76
-86 cc 86 cd 86 cf 38 a5
-dc e5 75 85 ce 20 e9 fa
-a0 3c 20 9e fd d8 20 ca
-ff a0 49 20 9e fd a2 ff
-9a 20 85 fe 84 c9 20 d2
-fd a0 0 20 ef f0 c9 0
-f0 ec 20 37 fa d0 2a a2
-f3 a9 0 20 d7 f4 90 13
-20 66 f0 4c 3e f0 29 7
-a aa bd 35 f6 48 bd 34
-f6 48 60 20 c2 f0 a9 1
-85 7d a0 0 84 7c 4c 29
-f7 a5 cf 85 78 a5 ce 85
-79 30 6 20 c2 f0 4c 3e
-f0 a0 e5 20 a4 fd a0 e9
-20 9e fd 4c 3e f0 48 a0
-c2 20 a4 fd 68 20 e5 fd
-20 d2 fd 4c 3e f0 a0 f7
-20 9e fd a5 d2 30 fc 4c
-3e f0 a0 ca 4c 93 f0 4c
-4f f1 88 c8 20 ef f0 20
-f9 f0 b0 ee aa bd 0 f4
-a2 f4 20 d7 f4 90 e8 9
-c0 20 f2 f5 29 31 aa bd
-1 f6 85 c8 29 f aa a9
-f1 48 bd 21 f6 48 60 b9
-0 1 c8 c9 20 f0 f8 88
-60 b9 0 1 29 df 38 e9
-41 c9 1a 60 60 a5 c8 4*6a
-29 7 85 c8 d0 3 20 e8
-f1 20 35 f2 c6 c8 d0 f6
-60 20 5 f1 20 35 f2 90
-6 20 35 f2 90 1 60 a9
-0 4c f2 f5 20 e0 f1 20
-f2 f5 85 c6 b1 c4 c8 20
-f2 f5 c6 c6 d0 f6 60 4c
-5 f2 20 5 f2 20 e8 f1
-20 35 f2 60 20 35 f2 85
-c9 a9 3d 20 ea f1 20 35
-f2 c5 c9 d0 1 60 a0 e1
-4c 93 f0 20 35 f2 a9 28
-20 ea f1 20 35 f2 a9 29
-20 ea f1 60 20 35 f2 29
-1 d0 e3 a9 3d 20 ea f1
-20 35 f2 a2 f5 20 1d f2
-90 41 20 35 f2 a2 f5 20
-1d f2 90 93 4c 35 f2 20
-ef f0 20 f9 f0 b0 88 4c
-35 f2 20 35 f2 a2 f5 20
-1d f2 90 1f 90 5 20 34
-f2 90 0 60 20 ee f5 86
-c8 20 35 f2 e6 c8 20 f8
-f1 f0 f6 88 a5 c8 a2 0
-95 c2 60 84 c9 a0 ca 20
-a4 fd a4 c9 20 ad f6 20
-d2 fd 4c 3e f0 86 c6 a5
-c9 18 e5 c6 60 a9 2c 85
-ca 20 ef f0 c5 ca d0 2
-c8 60 4c 9e f0 a9 2c 85
-ca 20 ef f0 c5 ca d0 1
-c8 60 a9 23 20 ea f1 20
-37 fa a5 ce d0 9 a5 cf
-c9 4 b0 3 4c f2 f5 4c
-81 f9 20 ef f0 84 ca ca
-88 e8 c8 bd 0 f5 d1 c0
-f0 f7 c9 80 b0 2 a4 ca
-60 60 203*0 4c 49 53 54 c0
-52 55 4e c1 41 52 54 c2
-53 41 56 45 c3 41 55 54
-4f c4 44 45 4c c5 4e 45
-57 c6 4f 4c 44 87 18 92
-93 94 95 96 90 d d 50
-69 78 69 65 20 42 41 53
-49 43 20 31 2e 30 d c
-20 62 79 74 65 73 20 66
-72 65 65 d 5 52 45 41
-44 59 9 53 65 61 72 63
-68 69 6e 67 7 4c 6f 61
-64 69 6e 67 3b 50 69 78
-69 65 20 41 52 54 20 1c
-1d 1e 1f 20 74 6f 20 6d
-6f 76 65 2c 20 47 52 41
-2b 6b 65 79 20 74 6f 20
-64 72 61 77 2c 20 43 4f
-4c 2b 6b 65 79 20 66 6f
-72 20 63 6f 6c 6f 72 12
-50 72 65 73 73 20 50 4c
-41 59 20 6f 6e 20 54 41
-50 45 12 50 72 65 73 73
-20 53 54 4f 50 20 6f 6e
-20 54 41 50 45 7 45 78
-70 65 63 74 20 6 53 79
-6e 74 61 78 3 44 49 56
-3 4f 56 46 3 50 52 47
-3 56 41 52 3 54 59 50
-3 52 4e 47 7 20 45 72
-72 6f 72 d 5 42 6c 6f
-63 6b 6 45 73 63 61 70
-65 0 0 1a 1a 1a 24 31
-3a 3e 49 49 52 52 52 60
-65 6a 73 87 87 a6 ac ac
-b2 b2 b7 b7 b7 43 4c 53
-81 43 4c 4f 53 45 c2 44
-41 54 41 83 44 49 4d 84
-44 45 46 c5 45 4c 53 45
-86 45 4e 44 c7 46 4f 52
-c8 47 4f 54 4f 89 47 4f
-53 55 42 ca 49 46 8b 49
-4e 50 55 54 cc 4c 45 54
-8d 4c 49 4e 45 8e 4c 4f
-41 44 cf 4d 4f 44 45 d0
-4e 45 58 54 d1 4f 50 54
-92 4f 50 45 4e d3 50 55
-54 94 50 52 49 4e 54 95
-50 4c 4f 54 96 50 4f 4b
-45 d7 52 45 41 44 98 52
-45 50 45 41 54 99 52 45
-53 54 4f 52 45 9a 52 45
-54 55 52 4e 9b 52 45 4d
-dc 53 4f 55 4e 44 dd 55
-4e 54 49 4c de 57 41 49
-54 df 0 1a 1e 24 29 2d
-31 36 3a 3e 43 49 4c 52
-56 5b 60 65 6a 6e 73 77
-7d 82 87 8c 93 9b a2 a6
-ac b2 84 c6 85 c0 86 c1
-a2 0 88 c8 e6 c0 a1 c0
-d9 0 1 f0 f6 10 2 38
-60 e6 c0 a1 c0 10 fa e6
-c0 a4 c6 a 10 e4 18 60
-0 0 0 1a 22 26 2b 2b
-2f 32 36 36 41 45 49 53
-58 58 58 5f 5f 6a 83 8c
-90 4*99 41 42 53 c0 41 53
-43 81 42 54 4e 82 43 48
-52 24 83 45 4f 46 84 46
-4e 85 47 45 54 86 49 4e
-53 54 52 24 c7 49 4e 54
-88 4a 4f 59 89 4b 45 59
-8a 4c 45 4e cb 4c 45 46
-54 24 8c 4d 49 44 24 8d
-50 4f 53 ce 50 49 8f 52
-49 47 48 54 24 d0 52 4e
-44 91 53 43 4e d2 53 54
-52 49 4e 47 24 d3 53 54
-52 24 d4 53 51 52 d5 53
-47 4e 96 54 49 4d 45 d7
-54 4f 50 98 55 53 52 99
-56 41 4c da 56 50 4f 53
-9b 0 4e 4f 54 ad 41 4e
-44 bd 44 49 56 b3 45 4f
-52 bf 4d 4f 44 b4 4f 52
-be 41 54 ff 54 4f ff 53
-54 45 50 ff 54 48 45 4e
-ff 53 50 43 83 54 41 42
-84 46 4e 0 1a 1e 22 26
-2b 2f 32 36 3d 41 45 49
-4d 53 58 5c 5f 66 6a 6e
-76 7b 7f 83 88 8c 90 94
-9a 9e a2 a6 aa ae a5 7e
-85 c2 a6 7e 9d 0 1 e6
-7e 30 1 60 a0 d5 4c 93
-f0 0 0 3 2 5 d 9
-0 6 11 11 8 b 4 41
-e 11 7 21 83 31 c 21
-21 a 0 11 0 2 c1 11
-11 4 5 2f 42 4f 66 77
-9a a5 b7 b7 4*ce 52 45 50
-4c 43 f6 44 f6 71 f6 90
-f6 43 f6 43 f6 91 f6 ab
-f6 60 a0 0 84 7c a5 75
-85 7d b1 7c c9 c0 d0 c
-84 7e 84 7f 84 74 20 60
-f6 4c 16 f7 60 a9 0 a2
-33 95 40 ca 10 fb a5 76
-85 78 a5 77 85 79 60 a9
-0 20 ec fe a0 61 20 a4
-fd 20 16 ff 24 d2 30 b
-20 8b fd f0 f7 20 e5 fd
-4c 7f f6 4c ae f0 60 a5
-75 85 77 a2 0 86 76 a0
-4 b9 a7 f6 81 76 e6 76
-88 10 f6 60 0 0 ff ff
-c0 60 b9 0 f5 20 e5 fd
-c8 b9 0 f5 10 f7 60 52
-55 4e 54 1d b9 6f a1 64
-8a a1 6f 72 ac bf 98 f1
-3c dd 72 93 95 75 6c c3
-20 ce 7d da d4 e0 d1 a1
-c6 d7 a0 8d ac ac f7 f8
-f8 f7 f7 f8 8*f7 f8 f8 f8
-f7 6*f8 5*f7 f8 f7 f8 f8 f7
-f7 98 a0 0 18 65 7c 85
-7c 90 2 e6 7d 60 a0 ca
-4c 93 f0 b1 7c c9 c0 d0
-f5 c8 98 a0 4 18 65 7c
-85 7c 90 2 e6 7d b1 7c
-c8 10 e aa bd be f6 85
-c0 bd e1 f6 85 c1 6c c0
-0 20 ed f8 29 1 d0 1b
-20 96 f9 a5 cf 91 c4 c8
-a5 ce 91 c4 c8 a5 cd 91
-c4 c8 a5 cc 91 c4 a4 c6
-4c 29 f7 20 90 f9 4c 50
-f7 a9 82 20 ec f8 20 86
-f9 4c 29 f7 4c 3e f0 a9
-80 20 ec f8 20 86 f9 20
-86 f9 b1 7c d0 d a9 f0
-85 c6 20 45 f9 a5 c6 48
-4c 29 f7 20 86 f9 a9 f1
-d0 ee 4c 29 f7 20 86 f9
-90 4 c8 4c 29 f7 b1 7c
-84 c6 38 65 c6 a8 4c 29
-f7 20 5e f9 20 5d f9 a5
-c4 85 7c a5 c5 85 7d a0
-0 4c 29 f7 20 5e f9 a5
-c5 48 a5 c4 48 20 45 f9
-a9 f2 48 4c af f7 4c 29
-f7 4c 29 f7 4c 29 f7 20
-ec f8 4c 29 f7 20 5e f9
-20 5d f9 a5 c4 85 7e a5
-c5 85 7f 4c 29 f7 b1 7c
-c8 f0 f8 a b0 14 30 5
-a 30 1c 10 f1 20 4 f7
-a6 7d a4 7c 20 a6 fd c8
-d0 e4 10 5 a9 3f 20 e5
-fd 20 85 fe 4c f1 f7 20
-d2 fd 4c f1 f7 b1 7c 30
-13 c8 a a b0 17 30 20
-a 30 38 a 30 3 20 d2
-fd 4c 29 f7 48 a9 9 20
-28 fe 68 d0 e4 30 17 20
-58 f5 20 e9 fa 4c 20 f8
-20 4 f7 a6 7d a4 7c 20
-a6 fd c8 4c 20 f8 20 6a
-f5 68 a8 68 aa 20 a6 fd
-4c 20 f8 20 d2 fd 4c 20
-f8 4c 29 f7 4c 29 f7 4c
-29 f7 a2 2 20 76 f9 4c
-29 f7 20 5e f9 20 70 f9
-a2 0 81 c4 4c 29 f7 4c
-29 f7 20 86 f9 4c 29 f7
-84 c9 20 70 f9 20 ec fe
-a4 c9 4c 29 f7 20 70 f9
-aa d0 1 e8 a5 fc c9 c0
-d0 fa a5 fc c9 c0 f0 fa
-ca d0 f1 4c 29 f7 84 c9
-20 fc fe a4 c9 4c 29 f7
-4c 29 f7 a2 3 20 76 f9
-4c 29 f7 84 c9 a2 2 20
-76 f9 20 26 fb a4 c9 4c
-29 f7 84 c9 a2 4 20 76
-f9 20 5c fb a4 c9 4c 29
-f7 60 98 18 65 7c 85 7c
-90 2 e6 7d a0 0 b1 7c
-29 df 38 e9 41 c9 1a b0
-3c a aa b5 40 85 c4 b5
-41 f0 2d 85 c5 88 c8 b1
-7c d1 c4 f0 f9 10 a b1
-c4 10 6 84 c6 c8 c8 c8
-60 88 c8 b1 c4 10 fb c8
-b1 c4 aa c8 b1 c4 f0 8
-86 c4 85 c5 a0 0 f0 d5
-a0 dd 4c 93 f0 a0 ca 4c
-93 f0 b1 7c c9 c0 f0 d
-98 a0 0 18 65 7c 48 a5
-7d 69 0 48 60 98 a0 5
-d0 f1 60 20 86 f9 68 85
-c4 68 85 c5 68 85 ca 68
-5 ca d0 12 60 20 86 f9
-a5 cf 60 86 c9 20 70 f9
-48 c6 c9 d0 f6 60 a0 e5
-4c 93 f0 60 45 56 41 4c
-a0 d9 4c 93 f0 60 a0 e1
-4c 93 f0 b1 7c 30 43 c5
-40 90 1a 20 ed f8 29 1
-d0 ec b1 c4 48 c8 b1 c4
+78 d8 a9 10 85 de a2 0
+86 cc 20 81 fe a0 0 20
+1e fd a6 dd ca ca 86 cd
+20 ec c7 a0 1c 20 1e fd
+78 d8 20 8e ff 20 90 c8
+a0 3a 20 1e fd a2 ff 9a
+e8 86 9a a5 9a f0 e a5
+98 85 cc a5 99 85 cd 20
+ec c7 20 f8 c7 20 8 fe
+20 52 fd a0 0 84 5e 84
+5f 20 ed c6 c9 0 f0 d5
+a5 9a d0 17 20 2b c3 b0
+12 a2 37 20 58 c3 b0 27
+20 a8 c0 a9 1 20 a1 c8
+4c c5 c9 20 ed c6 c9 0
+f0 28 20 a8 c0 20 8 c9
+18 a5 98 65 9a 85 98 90
+aa e6 99 f0 a0 d0 a4 20
+95 c0 4c 33 c0 29 f aa
+a9 c8 48 bd 5a c4 48 4c
+ed c6 20 55 c8 4c 2d c0
+20 d2 c0 a9 3a 20 4a c3
+f0 f6 20 ca c0 4c 71 c1
+a5 cd d0 9 a5 cc c9 a
+b0 3 4c d0 c7 a0 c1 4c
+e7 c4 a2 1b 20 58 c3 b0
+3f 60 a2 c6 20 62 c3 b0
+f a9 22 20 4a c3 d0 d5
+a9 9c 20 d0 c7 4c 82 c2
+29 3f aa bd a6 c4 a2 c1
+85 c0 86 c1 6c c0 10*0 20
+ca c7 20 2a c2 a2 0 20
+58 c3 90 c5 4c 14 c3 a9
+c9 20 d0 c7 68 68 20 df
+c7 20 ca c7 4c 14 c3 20
+3a c2 a2 5 20 58 c3 90
+47 20 2a c2 a2 8 20 58
+c3 90 53 4c 2a c2 20 e7
+c2 a5 9b c9 1 f0 31 60
+a9 23 20 39 c3 20 fe cc
+90 26 4c b8 c0 a2 d 20
+58 c3 90 1c 20 42 c2 a9
+28 20 4a c3 d0 8 20 42
+c2 20 48 c3 f0 f8 a9 3d
+20 4a c3 d0 19 4c e0 c0
+a0 8c 4c e7 c4 20 e7 c2
+a9 3d 20 39 c3 20 82 c2
+a5 9b c5 9c d0 5b 60 20
+2a c2 20 37 c3 20 2a c2
+20 37 c3 4c 2a c2 20 88
+c1 20 9d c1 20 48 c3 d0
+e5 4c 2a c2 20 e7 c2 a9
+24 20 4a c3 d0 3 20 d0
+c7 a9 28 20 39 c3 4c 6
+c3 20 ca c7 20 99 c3 4c
+df c7 20 ca c7 a9 0 85
+9d 20 e7 c2 e6 9d 20 48
+c3 f0 f6 a9 9d 4c e4 c7
+20 41 c1 20 37 c3 4c 32
+c2 a0 b6 4c e7 c4 a6 90
+20 57 c3 20 ca c0 20 e7
+c2 4c e7 c1 20 c8 c3 4c
+e7 c1 a2 9b 20 57 c3 a2
+10 20 58 c3 b0 9 20 ca
+c0 20 82 c2 4c fb c1 29
+bf 20 d0 c7 a9 28 20 4a
+c3 c9 ba d0 6 20 2a c2
+20 37 c3 20 2a c2 4c fb
+c1 20 82 c2 a5 9b d0 b1
+60 20 82 c2 a5 9b f0 a9
+60 20 e7 c2 a5 9b d0 a1
+60 20 e7 c2 a5 9b f0 99
+60 e6 9c 60 20 2a c2 20
+48 c3 90 52 4c 2a c2 4c
+32 c2 20 4a c2 20 32 c2
+4c 50 c2 20 5b c2 4c 50
+c2 20 4a c2 4c 2a c2 4c
+46 c1 20 82 c2 a5 9c c9
+1 f0 3 20 32 c2 4c 32
+c2 a9 0 85 9c a2 6c 20
+57 c3 20 ed c6 aa 20 f7
+c6 90 16 8a 20 c4 c7 90
+28 b0 b a9 bb 20 d0 c7
+20 c8 c3 4c c2 c2 4c 71
+c1 a2 c7 20 62 c3 b0 6
+20 e7 c2 4c c2 c2 29 3f
+aa bd c9 c4 a2 c2 4c f0
+c0 a2 75 20 57 c3 a2 20
+20 58 c3 60 a2 88 20 57
+c3 a9 ac 20 d0 c7 4c 86
+c2 a2 8b 20 57 c3 a9 aa
+20 d0 c7 4c 86 c2 a9 0
+85 9b 20 a8 c3 90 b7 a9
+24 20 4a c3 d0 5 20 d0
+c7 e6 9b a9 28 20 4a c3
+d0 10 20 d0 c7 20 2a c2
+20 48 c3 f0 f8 a9 29 4c
+39 c3 60 20 fe cc 90 f
+a9 cc 20 d0 c7 a5 cc 20
+d0 c7 a5 cd 4c d0 c7 4c
+d2 c0 20 fe cc a5 cc 85
+98 a5 cd 85 99 60 a9 2c
+85 c6 20 ed c6 c5 c6 d0
+1 60 a5 c6 4c ed c4 a9
+2c 85 c6 20 ed c6 c5 c6
+d0 3 c8 a2 0 60 60 20
+ed c6 a9 c4 85 c1 8a d0
+11 20 ed c6 20 f7 c6 b0
+2b 86 c1 aa a9 0 85 c0
+b5 c0 85 c0 a2 0 84 c6
+88 c6 c0 c8 e6 c0 a1 c0
+30 14 d9 0 1 f0 f4 e6
+c0 a1 c0 10 fa e6 c0 a4
+c6 a 30 e4 18 60 38 60
+20 ed c6 b9 0 1 f0 6
+c8 20 d0 c7 10 f5 60 20
+ed c6 aa 20 f7 c6 b0 16
+8a 20 d0 c7 b9 0 1 c8
+aa 20 f7 c6 90 f2 8a 20
+c4 c7 90 ec 88 18 60 88
+d0 3 20 d0 c7 c8 b9 0
+1 f0 b c9 22 d0 f3 c8
+d9 0 1 f0 ed 60 a9 22
+4c ed c4 28*0 54 48 45 4e
+80 54 4f 80 53 54 45 50
+80 46 4e 80 53 50 43 f8
+54 41 42 f9 41 54 fa 45
+4c 53 45 c9 41 4e 44 f0
+4f 52 f1 45 4f 52 f2 44
+49 56 f3 4d 4f 44 b4 4e
+4f 54 b5 4c 49 53 54 c0
+52 55 4e c1 41 55 54 4f
+c2 41 52 54 c3 53 41 56
+45 c4 44 45 4c c5 4e 45
+57 c6 4f 4c 44 87 0 84
+5f 2 1 34 8f 9f 87 f5
+e7 fb 86 9c cd da 17 e7
+2d a1 2b 4 28 a0 22 5
+84 2b a2 2d a3 2a a4 2f
+a5 5e a6 3d a8 29 9 3e
+6 3c 7 84 3d ad 84 3d
+ab 3e a9 84 22 1 2c 80
+3b 80 3a 40 0 40 82 2c
+80 3b 81 27 82 3a 40 0
+40 83 87 87 87 41 87 ba
+8e a5 4e 17 87 20 94 94
+0 e7 76 df 8e 94 37 8e
+d9 88 fb 8e 8e c3 87 94
+87 ba 97 94 94 6*4c 9*55 4d
+58 58 58 4a 73 5b 5b 5b
+64 6a 6a 70 70 41 20 1e
+fd 4c 2d c0 48 a0 83 20
+24 fd 68 20 66 fd 20 52
+fd 4c 2d c0 0 0 0 1b
+92 93 94 95 96 90 d d
+46 72 6f 6e 74 69 65 72
+20 42 41 53 49 43 20 31
+2e 30 d 1d 20 62 79 74
+65 73 20 66 72 65 65 d
+54 79 70 65 20 41 52 54
+20 74 6f 20 64 72 61 77
+d 5 52 65 61 64 79 9
+53 65 61 72 63 68 69 6e
+67 7 4c 6f 61 64 69 6e
+67 20 41 52 54 20 ac ad
+ae af 20 6d 6f 76 65 20
+47 52 41 20 64 72 61 77
+20 43 4f 4c 20 63 6f 6c
+6f 72 4 50 4c 41 59 4
+53 54 4f 50 5 20 54 41
+50 45 8 4d 69 73 73 69
+6e 67 20 6 53 79 6e 74
+61 78 8 44 69 76 20 62
+79 20 30 7 54 6f 6f 20
+62 69 67 7 43 6f 72 72
+75 70 74 9 4e 6f 74 20
+73 65 74 3a 20 a 57 72
+6f 6e 67 20 74 79 70 65
+6 52 61 6e 67 65 3f 5
+42 6c 6f 63 6b 8 d d
+45 73 63 61 70 65 20 53
+ff a0 ce 20 1e fd a5 d2
+30 fc 4c 2d c0 26*0 4*1b 31
+43 4c 50 5b 5b 64 64 64
+6d 77 7c 85 99 99 b8 be
+be 5*c4 43 4f 4c 4f 52 c1
+43 4c 53 c2 43 4c 4f 53
+45 c3 43 4c 45 41 52 84
+44 41 54 41 c5 44 52 41
+57 c6 44 49 4d c7 44 45
+46 88 45 4c 53 45 c9 45
+4e 44 8a 46 4f 52 8b 47
+4f 54 4f cc 47 4f 53 55
+42 8d 49 46 ce 49 4e 50
+55 54 8f 4c 45 54 d0 4c
+4f 41 44 91 4d 4f 56 45
+d2 4d 4f 44 45 93 4e 45
+58 54 94 4f 50 54 d5 4f
+50 45 4e 96 50 55 54 d7
+50 52 49 4e 54 d8 50 4c
+4f 54 d9 50 4f 4b 45 9a
+52 45 41 44 db 52 45 50
+45 41 54 dc 52 45 53 54
+4f 52 45 dd 52 45 54 55
+52 4e de 52 45 4d 9f 53
+4f 55 4e 44 a0 55 4e 54
+49 4c a1 57 41 49 54 a2
+80 c9 1b 21 25 2b 31 36
+3b 3f 43 48 4c 50 55 5b
+5e 64 68 6d 72 77 7c 80
+85 89 8f 94 99 9e a5 ad
+b4 b8 be c4 b9 0 1 c8
+c9 20 f0 f8 88 60 29 df
+38 e9 40 c9 1b 60 0 1b
+1b 23 27 2c 2c 30 33 37
+37 42 46 4a 54 59 59 59
+60 60 6b 84 8d 5*91 41 42
+53 c0 41 53 43 c1 42 54
+4e 82 43 48 52 24 83 45
+4f 46 c4 46 4e 85 47 45
+54 86 49 4e 53 54 52 24
+c7 49 4e 54 88 4a 4f 59
+89 4b 45 59 8a 4c 45 4e
+cb 4c 45 46 54 24 8c 4d
+49 44 24 cd 50 4f 53 ce
+50 49 8f 52 49 47 48 54
+24 d0 52 4e 44 91 53 43
+4e d2 53 54 52 49 4e 47
+24 d3 53 54 52 24 d4 53
+51 52 d5 53 47 4e d6 54
+49 4d 45 d7 54 4f 50 98
+55 53 52 99 56 41 4c da
+56 50 4f 53 9b 3d 80 41
+54 b0 53 50 43 b1 54 41
+42 72 1b 1f 23 27 2c 30
+33 37 3e 42 46 4a 4e 54
+59 5d 60 67 6b 6f 77 7c
+80 84 89 8d 91 95 9a 38
+e9 30 c9 a 60 a6 5e 86
+5f a9 ff a6 5e 9d 0 1
+e6 5e 30 1 60 a0 9c 4c
+e7 c4 a5 5e 18 e5 5f a6
+5f f0 3 9d 0 1 60 a9
+0 85 ce 85 cf 4c e3 cc
+20 f1 c8 a9 20 4c 66 fd
+43 4d 44 0 60 60 a2 0
+20 81 fe a2 0 a0 17 20
+c6 fe a0 52 20 24 fd 20
+c0 fe 20 61 ff 24 d2 30
+14 20 b fd f0 f7 aa 20
+53 ff 8a 20 66 fd 20 b
+fd d0 f8 f0 e5 4c d7 c5
+20 2b c3 90 23 20 48 c3
+d0 16 20 fe cc 90 11 a5
+99 c5 cd 90 a d0 e a5
+98 c5 cc 90 2 d0 6 60
+a9 41 4c 66 fd 4c c5 c0
+4c 71 c1 a9 a 85 9a 20
+2b c3 b0 4 a9 a 85 98
+20 48 c3 d0 f 20 fe cc
+90 a a5 cd d0 7 a5 cc
+85 9a f0 1 60 4c c5 c0
+20 ae c8 a9 2 20 a1 c8
+4c b2 c9 a9 2 85 57 a0
+1 84 56 a9 e3 8d 0 2
+4c ae c8 60 85 5d a0 0
+84 5c 84 5e 84 5f 84 54
+60 a9 0 a2 33 95 20 ca
+10 fb a5 56 85 58 a5 57
+85 59 a5 dd 85 5a a9 0
+85 5b 60 8*0 53 55 50 a4
+5e a9 0 99 0 1 a8 b9
+0 1 f0 10 85 cc a9 0
+85 cd 85 ce 85 cf 20 f5
+c7 c8 d0 eb 60 48 4*4a 20
+fc c8 68 29 f c9 a b0
+3 69 fa 18 69 36 4c 66
+fd 60 a5 98 85 cc a5 99
+85 cd 20 a cc b0 0 a0
+3 b1 c4 85 c6 38 e9 5
+85 c7 c5 5e f0 e a5 c4
+85 c0 18 65 c6 a5 c5 85
+c3 20 fe fe a0 0 84 ce
+84 cf c8 b1 5c 85 cc c8
+b1 5c 85 cd 25 cc c9 ff
+20 e3 cc 20 f8 c7 c8 c8
+60 52 55 4e b9 5f 14 46
+c 2f 46 af 17 51 64 3d
+96 e4 83 17 38 3a 1a 11
+69 c5 74 22 7f 79 85 76
+46 6c 7c 46 32 51 51 c9
+cb cb ca ca cb ca c9 5*ca
+c9 cb cb cb ca cb cb cb
+ca cb cb 5*ca cb ca cb cb
+ca ca 98 a0 0 18 65 5c
+85 5c 90 2 e6 5d 60 c9
+e3 f0 5 a0 8c 4c e7 c4
+4c 2d c0 b1 5c c9 c0 d0
+ee c8 98 a0 4 18 65 5c
+85 5c 90 2 e6 5d 4c 2d
+c0 b1 5c c8 10 17 aa bd
+53 c9 85 c0 bd 76 c9 85
+c1 6c c0 6*0 53 54 4d 54
+20 a4 cb 29 1 d0 1b 20
+34 cc a5 cc 91 c4 c8 a5
+cd 91 c4 c8 a5 ce 91 c4
+c8 a5 cf 91 c4 a4 c6 4c
+c5 c9 20 33 cc 4c f8 c9
+a9 82 20 a3 cb 20 2e cc
+4c c5 c9 a9 80 20 a3 cb
+20 2e cc 20 2e cc b1 5c
+d0 d a9 f0 85 c6 20 f2
+cb a5 c6 48 4c c5 c9 20
+2e cc a9 f1 d0 ee 4c c5
+c9 20 2e cc 90 4 c8 4c
+c5 c9 b1 5c 84 c6 38 65
+c6 a8 4c c5 c9 20 b cc
+20 a cc a5 c4 85 5c a5
+c5 85 5d a0 0 4c c5 c9
+20 b cc a5 c5 48 a5 c4
+48 20 f2 cb a9 f2 48 4c
+54 ca 4c c5 c9 4c c5 c9
+4c c5 c9 20 a3 cb 4c c5
+c9 20 b cc 20 a cc a5
+c4 85 5e a5 c5 85 5f 4c
+c5 c9 b1 5c c8 f0 f8 a
+b0 14 30 5 a 30 1c 10
+f1 20 99 c9 a6 5d a4 5c
+20 26 fd c8 d0 e4 10 5
+a9 3f 20 66 fd 20 8 fe
+4c 96 ca 20 52 fd 4c 96
+ca b1 5c 30 13 c8 a a
+b0 17 30 20 a 30 38 a
+30 3 20 52 fd 4c c5 c9
+48 a9 9 20 ab fd 68 d0
+e4 30 17 20 59 c7 20 e3
+cc 4c c5 ca 20 99 c9 a6
+5d a4 5c 20 26 fd c8 4c
+c5 ca 20 6b c7 68 a8 68
+aa 20 26 fd 4c c5 ca 20
+52 fd 4c c5 ca 4c c5 c9
+4c c5 c9 4c c5 c9 a2 2
+20 23 cc 4c c5 c9 20 b
+cc 20 1d cc a2 0 81 c4
+4c c5 c9 4c c5 c9 20 2e
+cc 4c c5 c9 84 c9 20 1d
+cc aa 20 81 fe a4 c9 4c
+c5 c9 20 1d cc aa d0 1
+e8 a5 fa c9 c0 d0 fa a5
+fa c9 c0 f0 fa ca d0 f1
+4c c5 c9 84 c9 20 a6 fe
+a4 c9 4c c5 c9 4c c5 c9
+a2 3 20 23 cc 4c c5 c9
+84 c9 a2 2 20 23 cc 20
+4 f8 a4 c9 4c c5 c9 84
+c9 a2 4 20 23 cc 20 3a
+f8 a4 c9 4c c5 c9 14*0 48
+4c 50 60 98 18 65 5c 85
+5c 90 2 e6 5d a0 0 b1
+5c 29 df 38 e9 41 c9 1a
+b0 37 a aa b5 20 85 c4
+b5 21 f0 2d 85 c5 88 c8
+b1 5c d1 c4 f0 f9 10 a
+b1 c4 10 6 84 c6 c8 c8
+c8 60 88 c8 b1 c4 10 fb
+c8 b1 c4 aa c8 b1 c4 f0
+8 86 c4 85 c5 a0 0 f0
+d5 b1 5c c9 c0 f0 d 98
+a0 0 18 65 5c 48 a5 5d
+69 0 48 60 98 a0 5 d0
+f1 60 20 2e cc 68 85 c4
+68 85 c5 68 85 ca 68 5
+ca d0 12 60 20 2e cc a5
+cc 60 86 c9 20 1d cc 48
+c6 c9 d0 f6 60 60 0 45
+56 4c 60 b1 5c 30 43 c5
+40 90 1a 20 a4 cb 29 1
+d0 f1 b1 c4 48 c8 b1 c4
 48 c8 b1 c4 48 c8 b1 c4
 48 a4 c6 d0 de c9 30 b0
 e c9 28 f0 a c9 2d f0
-6 c9 2b f0 2 d0 c1 38
+6 c9 2b f0 2 d0 cb 38
 e9 30 c9 a 90 4 c9 3d
 b0 8 48 a9 0 48 48 48
-f0 b9 29 1f aa bd e9 f9
-48 bd e9 f9 48 60 4e 55
-4d 53 ba bd 3 1 1d 7
-1 18 68 7d 3 1 9d 3
-1 68 7d 3 1 9d 3 1
-68 7d 3 1 9d 3 1 68
-60 a6 cb bd 7 1 1d 3
-1 38 bd 4 1 fd 0 1
-9d 4 1 bd 5 1 fd 1
-1 9d 5 1 bd 6 1 fd
-0 1 9d 6 1 4*e8 86 cb
-60 84 c7 20 81 fa b0 9
-a5 cd 5 cc d0 3 c4 c7
-60 a0 e5 4c 93 f0 18 60
-a9 0 85 c6 b9 0 1 c9
-2d f0 f 20 81 fa b0 8
-a5 c6 d0 b 24 cd 10 1
-38 60 c8 e6 c6 d0 ec 38
-a9 0 e5 cf 85 cf a9 0
-e5 ce 85 ce a9 0 e5 cd
-85 cd 60 a9 0 85 cf 85
-ce 85 cd 85 cc b9 0 1
-38 e9 30 c9 a b0 1d aa
-20 b4 fa b0 18 8a 18 65
-cf 85 cf a5 ce 69 0 85
-ce a5 cd 69 0 85 cd b0
-4 c8 d0 d9 18 60 a5 cf
-a 85 c3 a5 ce 2a 85 c2
-a5 cd 2a 85 c1 b0 23 6
-c3 26 c2 26 c1 b0 1b 18
-a5 cf 65 c3 85 cf a5 ce
-65 c2 85 ce a5 cd 65 c1
-85 cd b0 6 6 cf 26 ce
-26 cd 60 a9 0 48 20 3
-fb 9 30 48 a5 cf 5 ce
-5 cd d0 f2 68 f0 5 20
-e5 fd d0 f8 60 a2 18 a9
-0 6 cf 26 ce 26 cd 2a
-c9 a b0 4 ca d0 f2 60
-e9 a e6 cf ca d0 ea 60
-47 52 41 50 f8 f4 f2 f1
-a9 2 85 c3 68 c9 18 b0
-2c a aa a a a 29 f0
-85 ca 68 c9 20 b0 1e 4a
-5 ca 85 c2 2a 29 1 85
-ca 8a 29 2 5 ca aa a0
-0 b1 c2 c9 f0 b0 1 98
-1d 22 fb 91 c2 60 a9 2
-85 c3 ba a0 0 a9 f8 49
-c 85 ca b1 c2 c9 f0 b0
-1 98 5 ca 91 c2 60 299*0
-a9 0 85 e9 a0 8 84 fb
-88 a5 fb 85 d2 c5 fb d0
-ef 84 fb ea a6 fb d0 13
-88 10 f6 a5 e9 d0 3 84
-d3 60 a4 d3 a9 4 c6 d4
-f0 1b 60 e4 fb d0 e2 84
-e8 98 a a a a8 8a c8
-a 90 fc 84 e9 c4 d3 f0
-22 84 d3 a9 10 85 d4 24
-d2 70 13 b9 a fd a4 d1
-99 80 0 c8 98 29 f c5
-d0 f0 2 85 d1 60 b9 4a
-fd 10 eb aa d0 d1 a4 e8
-4c b8 fc 1b 31 32 33 34
-35 36 37 9 71 77 65 72
-74 79 75 e 61 73 64 66
-67 68 6a 0 7a 78 63 76
-62 6e 6d 38 39 30 2d 3d
-60 8 1c 69 6f 70 5b 5d
-5c 0 1d 6b 6c 3b 27 0
-0 d 1e 2c 2e 2f 0 0
-0 20 1f 1b 21 40 23 24
-25 5e 26 9 51 57 45 52
-54 59 55 e 41 53 44 46
-47 48 4a 0 5a 58 43 56
-42 4e 4d 2a 28 29 5f 2b
-7e 8 1c 49 4f 50 7b 7d
-7c 0 1d 4b 4c 3a 22 0
-0 d 1e 3c 3e 3f 0 0
-0 20 1f a6 d0 e4 d1 f0
-a b4 80 e8 8a 29 f 85
-d0 98 60 a9 0 60 20 a4
-fd 4c d2 fd a2 f3 86 c5
-84 c4 a0 0 b1 c4 f0 15
-85 c6 c8 b1 c4 c9 20 90
-13 a2 0 81 d7 e6 d7 f0
-5 c4 c6 d0 ed 60 20 dc
-fd 4c c1 fd 20 28 fe 4c
-c1 fd a5 d7 9 1f aa e8
-86 d7 d0 8 a5 d8 c9 4
-f0 10 e6 d8 60 c9 20 90
-3f a2 0 81 d7 e6 d7 f0
-eb 60 98 48 a4 d5 c8 98
-20 35 ff 86 c1 84 c0 a5
-d5 20 35 ff 86 c3 84 c2
-a4 d6 88 f0 9 98 20 35
-ff ca ca 20 65 ff a5 d5
-18 65 d6 69 ff a2 0 20
-2d ff 20 4a ff 68 a8 60
-c9 d f0 a6 c9 8 f0 11
-c9 1e f0 17 c9 1f f0 32
-c9 1c f0 18 c9 1d f0 2f
-60 20 4b fe a9 20 a2 0
-81 d7 60 c6 d7 a5 d7 c9
-ff f0 a 60 a5 d7 38 e9
-20 85 d7 b0 27 c6 d8 a5
-d8 c9 1 d0 1f a9 4 85
-d8 60 e6 d7 f0 a 60 a5
-d7 18 69 20 85 d7 90 c
-e6 d8 a5 d8 c9 5 d0 4
-a9 2 85 d8 60 a9 0 85
-c6 85 c7 20 b8 ff 58 24
-d2 30 3c 20 8b fd f0 f7
-aa 20 ad ff 58 8a c9 20
-90 17 a4 c7 c0 7f f0 a
-99 0 1 e6 c6 e6 c7 20
-e5 fd 20 8b fd d0 e7 f0
-d2 c9 d f0 27 a4 c7 f0
-8 c9 8 f0 d c9 1e f0
-b c9 1f f0 10 d0 e3 4c
-ae f0 c6 c6 88 84 c7 20
-28 fe 4c b2 fe c4 c6 f0
-d1 c8 d0 f1 a4 c6 a9 0
-99 0 1 60 29 1 85 ff
-a9 f 85 fd a9 0 85 d5
-a9 18 85 d6 a5 d5 a2 0
-20 2d ff a6 d6 20 4a ff
-a9 20 18 65 d7 85 d7 90
-2 e6 d8 ca d0 ef a2 0
-a0 0 f0 d e0 20 90 2
-a2 1f c4 d6 90 3 a4 d6
-88 98 18 65 d5 20 37 ff
-86 d8 84 d7 60 a2 0 86
-ca 6a 6a 6a aa 6a 29 e0
-5 ca a8 8a 29 3 aa e8
-e8 60 a9 20 a0 1f 91 d7
-88 10 fb 60 a5 c3 c5 c1
-90 b d0 28 a5 c2 c5 c0
-90 3 d0 20 60 98 f0 1
-e8 86 ca aa a0 0 b1 c0
-91 c2 c8 f0 8 ca d0 f6
-c6 ca d0 f2 60 e6 c1 e6
-c3 4c 75 ff 86 ca a5 c1
-18 65 ca 85 c1 a5 c3 65
-ca 85 c3 98 f0 2 e6 ca
-88 b1 c0 91 c2 98 d0 f8
-c6 c1 c6 c3 c6 ca d0 f0
-60 24 db 10 b 78 a5 da
-a0 0 84 db 91 d7 f0 d
-78 a0 0 b1 d7 85 da a9
-ef 91 d7 85 db a9 18 85
-d9 60 78 a9 0 85 d0 85
-d1 85 d2 a9 4c 85 ed a9
-e1 85 ee a9 ff 85 ef 58
-60 48 8a 48 98 48 85 fc
-20 a0 fc c6 d9 d0 3 20
-a9 ff 68 a8 68 aa 68 40
-0 0 f7 ff 0 f0 ed
+f0 b9 29 1f aa bd 87 cc
+48 bd 87 cc 48 60 ba bd
+3 1 1d 7 1 18 68 7d
+3 1 9d 3 1 68 7d 3
+1 9d 3 1 68 7d 3 1
+9d 3 1 68 60 a6 cb bd
+7 1 1d 3 1 38 bd 4
+1 fd 0 1 9d 4 1 bd
+5 1 fd 1 1 9d 5 1
+bd 6 1 fd 0 1 9d 6
+1 4*e8 86 cb 60 15*0 49 4e
+54 a9 0 48 a9 a 20 d7
+cd 9 30 48 a5 cc 5 cd
+5 ce d0 f0 68 20 66 fd
+68 d0 fa 60 20 ed c6 84
+c6 20 3c cd c4 c6 f0 8
+a5 ce 5 cf d0 4 38 60
+18 60 a0 c1 4c e7 c4 20
+ed c6 c9 2d f0 3 4c 3c
+cd c8 20 3c cd 38 a9 0
+aa e5 cc 85 cc 8a e5 cd
+85 cd 8a e5 ce 85 ce 90
+5c 60 a9 0 85 cc 85 cd
+85 ce 85 cf 88 c8 b9 0
+1 38 e9 30 c9 a b0 e9
+aa 6 cc 26 cd 26 ce b0
+3c a5 cc 85 c0 a5 cd 85
+c1 a5 ce 85 c2 6 cc 26
+cd 26 ce b0 28 6 cc 26
+cd 26 ce b0 20 18 8a 65
+cc 90 8 e6 cd d0 4 e6
+ce f0 12 65 c0 85 cc a5
+cd 65 c1 85 cd a5 ce 65
+c2 85 ce 90 b0 a0 9c 4c
+e7 c4 4*0 4d 55 4c a9 0
+85 c6 85 c7 85 c8 a2 18
+18 b0 e7 46 ce 66 cd 66
+cc 90 15 18 a5 c6 65 c0
+85 c6 a5 c7 65 c1 85 c7
+a5 c8 65 c2 85 c8 b0 ca
+6 c0 26 c1 26 c2 ca d0
+d8 60 85 c0 a9 0 a2 18
+6 cc 26 cd 26 ce 2a c5
+c0 90 4 e5 c0 e6 cc ca
+d0 ee 60 a5 c1 5 c2 f0
+e3 a9 0 85 c6 85 c7 85
+c8 a2 18 6 cc 26 cd 26
+ce 26 c6 26 c7 26 c8 a5
+c8 c5 c2 90 25 d0 e a5
+c7 c5 c1 90 1d d0 6 a5
+c6 c5 c0 90 15 38 a5 c6
+e5 c0 85 c6 a5 c7 e5 c1
+85 c7 a5 c8 e5 c2 85 c8
+e6 cc ca d0 c6 60
 </a>
     </comp>
     <comp lib="5" loc="(480,1030)" name="J-K Flip-Flop">
@@ -1228,14 +1189,6 @@ a9 ff 68 a8 68 aa 68 40
       <a name="ShowInternalStructure" val="true"/>
       <a name="facing" val="south"/>
     </comp>
-    <comp lib="7" loc="(460,490)" name="74161">
-      <a name="ShowInternalStructure" val="true"/>
-      <a name="facing" val="south"/>
-    </comp>
-    <comp lib="7" loc="(460,680)" name="74161">
-      <a name="ShowInternalStructure" val="true"/>
-      <a name="facing" val="south"/>
-    </comp>
     <comp lib="7" loc="(470,60)" name="74161">
       <a name="ShowInternalStructure" val="true"/>
       <a name="facing" val="south"/>
@@ -1264,21 +1217,9 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U42 1 of 8 Decoder"/>
     </comp>
-    <comp lib="9" loc="(1000,460)" name="Text">
+    <comp lib="9" loc="(1015,615)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="SHS 42"/>
-    </comp>
-    <comp lib="9" loc="(1000,470)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="101x1x"/>
-    </comp>
-    <comp lib="9" loc="(1005,515)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U37A"/>
-    </comp>
-    <comp lib="9" loc="(1015,645)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U38D"/>
+      <a name="text" val="Burst"/>
     </comp>
     <comp lib="9" loc="(1040,1075)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1292,6 +1233,10 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Scan"/>
     </comp>
+    <comp lib="9" loc="(1050,895)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="D1"/>
+    </comp>
     <comp lib="9" loc="(1055,1575)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="HSync"/>
@@ -1304,13 +1249,13 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Not HSync"/>
     </comp>
-    <comp lib="9" loc="(1080,695)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="Fetch"/>
-    </comp>
     <comp lib="9" loc="(110,915)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U43B"/>
+    </comp>
+    <comp lib="9" loc="(1100,845)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="H-Vis"/>
     </comp>
     <comp lib="9" loc="(1120,1115)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1356,33 +1301,9 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U33A"/>
     </comp>
-    <comp lib="9" loc="(1235,545)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="HSync"/>
-    </comp>
     <comp lib="9" loc="(1240,1110)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="VSync"/>
-    </comp>
-    <comp lib="9" loc="(1240,485)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U31A"/>
-    </comp>
-    <comp lib="9" loc="(1240,625)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U30A"/>
-    </comp>
-    <comp lib="9" loc="(1240,685)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="H-Visible"/>
-    </comp>
-    <comp lib="9" loc="(1240,815)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U31B"/>
-    </comp>
-    <comp lib="9" loc="(1240,870)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="Colorburst"/>
     </comp>
     <comp lib="9" loc="(1245,1255)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1408,17 +1329,13 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="VBlank"/>
     </comp>
-    <comp lib="9" loc="(1360,835)" name="Text">
+    <comp lib="9" loc="(1360,885)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="Visible"/>
+      <a name="text" val="U34D"/>
     </comp>
     <comp lib="9" loc="(1365,1655)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Scan"/>
-    </comp>
-    <comp lib="9" loc="(1365,885)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U34D"/>
     </comp>
     <comp lib="9" loc="(1370,1500)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1452,25 +1369,41 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 18"/>
       <a name="text" val="5 Counter + 9 Decode"/>
     </comp>
-    <comp lib="9" loc="(1425,105)" name="Text">
-      <a name="font" val="SansSerif plain 14"/>
-      <a name="text" val="7.15909 MHz"/>
+    <comp lib="9" loc="(1405,775)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="Fetch"/>
+    </comp>
+    <comp lib="9" loc="(1405,855)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="Visible"/>
     </comp>
     <comp lib="9" loc="(150,855)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U44C"/>
     </comp>
-    <comp lib="9" loc="(1515,475)" name="Text">
+    <comp lib="9" loc="(1515,445)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="HCount"/>
     </comp>
-    <comp lib="9" loc="(1620,350)" name="Text">
+    <comp lib="9" loc="(1615,330)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="SimVGA"/>
     </comp>
     <comp lib="9" loc="(1670,1105)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="VCount"/>
+    </comp>
+    <comp lib="9" loc="(1774,107)" name="Text">
+      <a name="font" val="SansSerif plain 14"/>
+      <a name="text" val="7.15909 MHz"/>
+    </comp>
+    <comp lib="9" loc="(1774,85)" name="Text">
+      <a name="font" val="SansSerif plain 14"/>
+      <a name="text" val="RCO (15)"/>
+    </comp>
+    <comp lib="9" loc="(1777,128)" name="Text">
+      <a name="font" val="SansSerif plain 14"/>
+      <a name="text" val="3.579545 MHz"/>
     </comp>
     <comp lib="9" loc="(1780,795)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1491,6 +1424,10 @@ a9 ff 68 a8 68 aa 68 40
     <comp lib="9" loc="(1820,900)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="DAC Latch"/>
+    </comp>
+    <comp lib="9" loc="(1823,1010)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="LATCH on /PCLK edge"/>
     </comp>
     <comp lib="9" loc="(1830,915)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1516,30 +1453,26 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="use 0 IRE for both Black and Blanking level"/>
     </comp>
-    <comp lib="9" loc="(2050,670)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="(that would eliminate HBlank and VBlank)"/>
-    </comp>
-    <comp lib="9" loc="(2051,736)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U58C"/>
-    </comp>
-    <comp lib="9" loc="(2114,844)" name="Text">
+    <comp lib="9" loc="(2110,840)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Fetch"/>
+    </comp>
+    <comp lib="9" loc="(2115,715)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U58C"/>
     </comp>
     <comp lib="9" loc="(2120,875)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Visible"/>
     </comp>
-    <comp lib="9" loc="(2184,84)" name="Text">
+    <comp lib="9" loc="(2192,85)" name="Text">
       <a name="font" val="SansSerif plain 14"/>
-      <a name="text" val="Last PCLK in the CLK cycle"/>
+      <a name="text" val="Last /PCLK before \CLK"/>
     </comp>
     <comp lib="9" loc="(220,95)" name="Text">
       <a name="text" val="CLK"/>
     </comp>
-    <comp lib="9" loc="(2207,244)" name="Text">
+    <comp lib="9" loc="(2205,240)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="2BPP"/>
     </comp>
@@ -1555,7 +1488,7 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Visible"/>
     </comp>
-    <comp lib="9" loc="(2285,534)" name="Text">
+    <comp lib="9" loc="(2285,530)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="\PCLK"/>
     </comp>
@@ -1563,8 +1496,8 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U38E"/>
     </comp>
-    <comp lib="9" loc="(2327,694)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
+    <comp lib="9" loc="(2330,695)" name="Text">
+      <a name="font" val="SansSerif plain 10"/>
       <a name="text" val="Active Low"/>
     </comp>
     <comp lib="9" loc="(235,120)" name="Text">
@@ -1595,39 +1528,43 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U39"/>
     </comp>
-    <comp lib="9" loc="(2427,379)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="LOAD on last \PCLK in CLK cycle"/>
-    </comp>
     <comp lib="9" loc="(2440,1880)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="IOQ_FE"/>
+    </comp>
+    <comp lib="9" loc="(2440,362)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="SHIFT on \PCLK edge"/>
+    </comp>
+    <comp lib="9" loc="(2440,377)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="LOAD on \CLK at last \PCLK edge"/>
     </comp>
     <comp lib="9" loc="(2475,395)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Shift Register"/>
     </comp>
-    <comp lib="9" loc="(2484,413)" name="Text">
+    <comp lib="9" loc="(2480,410)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="nLoad"/>
     </comp>
-    <comp lib="9" loc="(2517,432)" name="Text">
+    <comp lib="9" loc="(2515,430)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U58D"/>
+    </comp>
+    <comp lib="9" loc="(2555,105)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="PCLK"/>
     </comp>
     <comp lib="9" loc="(2570,735)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U46"/>
     </comp>
-    <comp lib="9" loc="(2575,105)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="PCLK"/>
-    </comp>
-    <comp lib="9" loc="(2611,234)" name="Text">
+    <comp lib="9" loc="(2592,232)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="\PCLK"/>
     </comp>
-    <comp lib="9" loc="(2615,180)" name="Text">
+    <comp lib="9" loc="(2595,180)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U44F"/>
     </comp>
@@ -1635,13 +1572,13 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U48"/>
     </comp>
-    <comp lib="9" loc="(2675,1425)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U50"/>
-    </comp>
     <comp lib="9" loc="(2675,1435)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="FG MUX"/>
+    </comp>
+    <comp lib="9" loc="(2676,1422)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U50"/>
     </comp>
     <comp lib="9" loc="(2680,660)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1655,11 +1592,7 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Y2"/>
     </comp>
-    <comp lib="9" loc="(2770,265)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U45B"/>
-    </comp>
-    <comp lib="9" loc="(2802,436)" name="Text">
+    <comp lib="9" loc="(2800,435)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Inhibit Attribute Load"/>
     </comp>
@@ -1667,7 +1600,7 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U47"/>
     </comp>
-    <comp lib="9" loc="(2985,1435)" name="Text">
+    <comp lib="9" loc="(2985,1440)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="BG MUX"/>
     </comp>
@@ -1675,7 +1608,7 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U49"/>
     </comp>
-    <comp lib="9" loc="(2990,1420)" name="Text">
+    <comp lib="9" loc="(2990,1425)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U51"/>
     </comp>
@@ -1691,55 +1624,55 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Y0"/>
     </comp>
-    <comp lib="9" loc="(3080,411)" name="Text">
+    <comp lib="9" loc="(3080,410)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Hold FG/BG in Reset until Fetch begins"/>
     </comp>
-    <comp lib="9" loc="(3130,1840)" name="Text">
+    <comp lib="9" loc="(3159,1361)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="Data Bus"/>
+      <a name="text" val="Text &lt;- VDP"/>
     </comp>
-    <comp lib="9" loc="(3168,335)" name="Text">
+    <comp lib="9" loc="(3159,1378)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="Gfx &lt;- DBus"/>
+    </comp>
+    <comp lib="9" loc="(3165,335)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="nFetch"/>
     </comp>
-    <comp lib="9" loc="(3219,411)" name="Text">
+    <comp lib="9" loc="(3215,410)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="nCLR"/>
     </comp>
-    <comp lib="9" loc="(3228,333)" name="Text">
+    <comp lib="9" loc="(3225,330)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="nText"/>
     </comp>
-    <comp lib="9" loc="(3238,382)" name="Text">
+    <comp lib="9" loc="(3235,380)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U58D"/>
     </comp>
-    <comp lib="9" loc="(3251,235)" name="Text">
+    <comp lib="9" loc="(3273,303)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="LoadQ on \PCLK"/>
+      <a name="text" val="LoadQ on \CLK"/>
     </comp>
-    <comp lib="9" loc="(3280,1510)" name="Text">
+    <comp lib="9" loc="(3316,955)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="Text"/>
+      <a name="text" val="Attr Load"/>
     </comp>
     <comp lib="9" loc="(3330,175)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="VDP_TEXT"/>
     </comp>
-    <comp lib="9" loc="(3352,954)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="Inhibit Attribute Load"/>
-    </comp>
-    <comp lib="9" loc="(3381,1138)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="IO Load"/>
-    </comp>
-    <comp lib="9" loc="(3383,1020)" name="Text">
+    <comp lib="9" loc="(3380,1020)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U58A"/>
     </comp>
-    <comp lib="9" loc="(3383,1152)" name="Text">
+    <comp lib="9" loc="(3380,1135)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="IO Load"/>
+    </comp>
+    <comp lib="9" loc="(3383,1150)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Palette"/>
     </comp>
@@ -1747,45 +1680,57 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U58B"/>
     </comp>
+    <comp lib="9" loc="(339,507)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="/CLK"/>
+    </comp>
     <comp lib="9" loc="(3410,1830)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="IOQ_FD"/>
     </comp>
-    <comp lib="9" loc="(3440,1008)" name="Text">
+    <comp lib="9" loc="(3440,1007)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="Cx Load"/>
+      <a name="text" val="8x Load"/>
     </comp>
-    <comp lib="9" loc="(3449,1101)" name="Text">
+    <comp lib="9" loc="(3445,1102)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="Dx Load"/>
+      <a name="text" val="9x Load"/>
     </comp>
     <comp lib="9" loc="(3540,1075)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Attr Load"/>
     </comp>
+    <comp lib="9" loc="(3541,1268)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="Low 4 bits"/>
+    </comp>
+    <comp lib="9" loc="(3554,1036)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="8x/9x"/>
+    </comp>
     <comp lib="9" loc="(3575,915)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="LoadQ on \PCLK"/>
+      <a name="text" val="LoadQ on \CLK"/>
     </comp>
-    <comp lib="9" loc="(3584,1146)" name="Text">
+    <comp lib="9" loc="(3581,1115)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U56C"/>
+    </comp>
+    <comp lib="9" loc="(3581,1131)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U57A"/>
     </comp>
-    <comp lib="9" loc="(3585,1115)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U56C"/>
+    <comp lib="9" loc="(3602,1145)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="8x/9x (100x)"/>
     </comp>
     <comp lib="9" loc="(3605,270)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Bus CLK 0.89 MHz"/>
     </comp>
-    <comp lib="9" loc="(3609,1130)" name="Text">
+    <comp lib="9" loc="(3682,1495)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="Cx/Dx (110x)"/>
-    </comp>
-    <comp lib="9" loc="(3614,1160)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="Cx/Dx AND Text"/>
+      <a name="text" val="Text"/>
     </comp>
     <comp lib="9" loc="(3745,260)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1801,15 +1746,11 @@ a9 ff 68 a8 68 aa 68 40
     </comp>
     <comp lib="9" loc="(3785,1480)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="V[3..8]"/>
+      <a name="text" val="V[3..7]"/>
     </comp>
     <comp lib="9" loc="(3790,1350)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="H[3..8]"/>
-    </comp>
-    <comp lib="9" loc="(3811,103)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="MUST latch at /CLK mid-cycle for VDP"/>
+      <a name="text" val="H[3..7]"/>
     </comp>
     <comp lib="9" loc="(3830,1370)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
@@ -1827,19 +1768,23 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U54"/>
     </comp>
-    <comp lib="9" loc="(3950,808)" name="Text">
+    <comp lib="9" loc="(3950,805)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="CharROM"/>
+    </comp>
+    <comp lib="9" loc="(3950,820)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="Bypass MUX"/>
     </comp>
     <comp lib="9" loc="(3950,844)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U55"/>
     </comp>
-    <comp lib="9" loc="(3951,824)" name="Text">
+    <comp lib="9" loc="(3960,434)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="Bypass"/>
+      <a name="text" val="CharROM Output"/>
     </comp>
-    <comp lib="9" loc="(3969,224)" name="Text">
+    <comp lib="9" loc="(3965,220)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="CharROM"/>
     </comp>
@@ -1847,97 +1792,117 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Data ready by /CLK mid-cycle for VDP"/>
     </comp>
+    <comp lib="9" loc="(4074,1154)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="VDP read during first half of CLK"/>
+    </comp>
     <comp lib="9" loc="(4075,1170)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="Data from memory latched at \CLK"/>
+      <a name="text" val="Data from memory latched at /CLK"/>
     </comp>
     <comp lib="9" loc="(420,270)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="Address setup for mid-high-CLK RAS"/>
+      <a name="text" val="(74LS393 is \CLK triggered)"/>
     </comp>
-    <comp lib="9" loc="(4200,1494)" name="Text">
+    <comp lib="9" loc="(4200,1490)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U45-U57 (+U39)"/>
     </comp>
-    <comp lib="9" loc="(4220,1544)" name="Text">
+    <comp lib="9" loc="(4220,1540)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U39 8-bit Shift Register"/>
     </comp>
-    <comp lib="9" loc="(425,255)" name="Text">
+    <comp lib="9" loc="(425,253)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="MUST update Address on /CLK mid-cycle"/>
     </comp>
-    <comp lib="9" loc="(4260,1699)" name="Text">
+    <comp lib="9" loc="(4260,1695)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U50 Quad 1-of-2 MUX 74LS157 (FG)"/>
     </comp>
-    <comp lib="9" loc="(4260,1714)" name="Text">
+    <comp lib="9" loc="(4260,1710)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U51 Quad 1-of-2 MUX 74LS157 (BG)"/>
     </comp>
-    <comp lib="9" loc="(4270,1579)" name="Text">
+    <comp lib="9" loc="(4270,1575)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U53 8-bit Register 74LS273 (VDP Latch)"/>
     </comp>
-    <comp lib="9" loc="(4270,1669)" name="Text">
+    <comp lib="9" loc="(4270,1665)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U48 4-bit DFF with Clear 74LS175 (FG)"/>
     </comp>
-    <comp lib="9" loc="(4270,1684)" name="Text">
+    <comp lib="9" loc="(4270,1680)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U49 4-bit DFF with Clear 74LS175 (BG)"/>
     </comp>
-    <comp lib="9" loc="(4270,1729)" name="Text">
+    <comp lib="9" loc="(4270,1725)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U52 8-bit Register 74LS273 (Color 2/3)"/>
     </comp>
-    <comp lib="9" loc="(4270,1789)" name="Text">
+    <comp lib="9" loc="(4270,1785)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U58 Quad 2-OR 74LS32 (Color Decode)"/>
     </comp>
-    <comp lib="9" loc="(4270,1804)" name="Text">
+    <comp lib="9" loc="(4270,1800)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U59 Hex NOT 74LS04 (Color Decode)"/>
     </comp>
-    <comp lib="9" loc="(4275,1514)" name="Text">
+    <comp lib="9" loc="(4275,1510)" name="Text">
       <a name="font" val="SansSerif bold 18"/>
       <a name="text" val="5 Pixel Pipe + 7 Color/2bpp"/>
     </comp>
-    <comp lib="9" loc="(4275,1559)" name="Text">
+    <comp lib="9" loc="(4275,1555)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U45 Dual D-FF 74LS74 (Delay/Clocking)"/>
     </comp>
-    <comp lib="9" loc="(4275,1639)" name="Text">
+    <comp lib="9" loc="(4275,1635)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U46 Dual 1-of-4 74LS153 (Palette MUX)"/>
     </comp>
-    <comp lib="9" loc="(4275,1654)" name="Text">
+    <comp lib="9" loc="(4275,1650)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U47 Dual 1-of-4 74LS153 (Palette MUX)"/>
     </comp>
-    <comp lib="9" loc="(4275,1754)" name="Text">
+    <comp lib="9" loc="(4275,1750)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U56 Triple 3-AND 74LS11 (Color Decode)"/>
     </comp>
-    <comp lib="9" loc="(4275,1774)" name="Text">
+    <comp lib="9" loc="(4275,1770)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U57 Quad 2-AND 74LS08 (Color Decode)"/>
     </comp>
-    <comp lib="9" loc="(4305,1594)" name="Text">
+    <comp lib="9" loc="(4305,1590)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U54 Quad 1-of-2 MUX 74LS157 (Char Bypass MUX)"/>
     </comp>
-    <comp lib="9" loc="(4305,1609)" name="Text">
+    <comp lib="9" loc="(4305,1605)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U55 Quad 1-of-2 MUX 74LS157 (Char Bypass MUX)"/>
     </comp>
-    <comp lib="9" loc="(4311,936)" name="Text">
+    <comp lib="9" loc="(4310,715)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U53"/>
+    </comp>
+    <comp lib="9" loc="(4310,935)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="VDP Latch"/>
     </comp>
-    <comp lib="9" loc="(4312,715)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U53"/>
+    <comp lib="9" loc="(4311,950)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="Latched at /CLK"/>
+    </comp>
+    <comp lib="9" loc="(4315,1116)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="VDP Latch Output"/>
+    </comp>
+    <comp lib="9" loc="(4326,563)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="Data Bus"/>
+    </comp>
+    <comp lib="9" loc="(4443,104)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="Latch data at /CLK for VDP"/>
     </comp>
     <comp lib="9" loc="(455,1000)" name="Text">
       <a name="text" val="9-bit V-Count"/>
@@ -1945,10 +1910,6 @@ a9 ff 68 a8 68 aa 68 40
     <comp lib="9" loc="(455,1460)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U41"/>
-    </comp>
-    <comp lib="9" loc="(455,850)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U36"/>
     </comp>
     <comp lib="9" loc="(460,1015)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1960,14 +1921,6 @@ a9 ff 68 a8 68 aa 68 40
     </comp>
     <comp lib="9" loc="(460,450)" name="Text">
       <a name="text" val="6-bit H-Count"/>
-    </comp>
-    <comp lib="9" loc="(460,475)" name="Text">
-      <a name="font" val="SansSerif plain 14"/>
-      <a name="text" val="[0-56]"/>
-    </comp>
-    <comp lib="9" loc="(460,660)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U35"/>
     </comp>
     <comp lib="9" loc="(465,1535)" name="Text">
       <a name="font" val="SansSerif plain 14"/>
@@ -1981,37 +1934,21 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif plain 14"/>
       <a name="text" val="VBlank = 76~543 + 765~4~3 + 765~4~2"/>
     </comp>
-    <comp lib="9" loc="(525,595)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="Border"/>
-    </comp>
     <comp lib="9" loc="(530,1580)" name="Text">
       <a name="font" val="SansSerif plain 14"/>
       <a name="text" val="VSync = VBL • ~(d4 + d3 + d2) • (d1 + d0)"/>
     </comp>
-    <comp lib="9" loc="(530,520)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U38A"/>
+    <comp lib="9" loc="(551,449)" name="Text">
+      <a name="font" val="SansSerif plain 14"/>
+      <a name="text" val="[0-56]"/>
     </comp>
     <comp lib="9" loc="(585,1105)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U38F"/>
     </comp>
-    <comp lib="9" loc="(585,505)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U32A"/>
-    </comp>
     <comp lib="9" loc="(590,1000)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="RVC 261"/>
-    </comp>
-    <comp lib="9" loc="(590,445)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="RHC 56"/>
-    </comp>
-    <comp lib="9" loc="(590,460)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="111xxx"/>
     </comp>
     <comp lib="9" loc="(595,1015)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -2062,10 +1999,6 @@ a9 ff 68 a8 68 aa 68 40
       <a name="text" val="U44A"/>
       <a name="valign" val="bottom"/>
     </comp>
-    <comp lib="9" loc="(690,525)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U38B"/>
-    </comp>
     <comp lib="9" loc="(690,85)" name="Text">
       <a name="font" val="SansSerif plain 14"/>
       <a name="text" val="1 in 16"/>
@@ -2074,37 +2007,17 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U30B"/>
     </comp>
-    <comp lib="9" loc="(710,445)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="SHB 40"/>
-    </comp>
-    <comp lib="9" loc="(710,455)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="101xxx"/>
-    </comp>
-    <comp lib="9" loc="(715,505)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U32B"/>
-    </comp>
     <comp lib="9" loc="(720,1075)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="011"/>
     </comp>
+    <comp lib="9" loc="(730,745)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="Reset (57)"/>
+    </comp>
     <comp lib="9" loc="(745,1315)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="1 Line Delay (261-&gt;0)"/>
-    </comp>
-    <comp lib="9" loc="(750,815)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="RCB 49"/>
-    </comp>
-    <comp lib="9" loc="(750,825)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="11xxx1"/>
-    </comp>
-    <comp lib="9" loc="(755,875)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U32C"/>
     </comp>
     <comp lib="9" loc="(790,1530)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -2122,18 +2035,6 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="VSync"/>
     </comp>
-    <comp lib="9" loc="(840,800)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="SCB 47"/>
-    </comp>
-    <comp lib="9" loc="(840,810)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="101111"/>
-    </comp>
-    <comp lib="9" loc="(845,860)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U37C"/>
-    </comp>
     <comp lib="9" loc="(85,620)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U30 Dual DFF"/>
@@ -2146,21 +2047,13 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="HBlank"/>
     </comp>
-    <comp lib="9" loc="(890,490)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="RHS 46"/>
-    </comp>
-    <comp lib="9" loc="(890,500)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="10111x"/>
-    </comp>
-    <comp lib="9" loc="(895,545)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U37B"/>
-    </comp>
     <comp lib="9" loc="(910,1160)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U42"/>
+    </comp>
+    <comp lib="9" loc="(915,770)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="Border (32)"/>
     </comp>
     <comp lib="9" loc="(95,485)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -2190,10 +2083,6 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U44 Hex Inverter"/>
     </comp>
-    <comp lib="9" loc="(955,475)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U38C"/>
-    </comp>
     <comp lib="9" loc="(965,1630)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="VBlank"/>
@@ -2218,128 +2107,89 @@ a9 ff 68 a8 68 aa 68 40
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Not VBlank"/>
     </comp>
+    <comp lib="9" loc="(975,565)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="HSync"/>
+    </comp>
     <comp lib="9" loc="(980,1010)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="011000xxx"/>
     </comp>
+    <comp loc="(460,500)" name="SN74LS393"/>
+    <comp loc="(940,570)" name="Timer_555"/>
+    <comp loc="(980,620)" name="Timer_555"/>
     <wire from="(1000,1020)" to="(1000,1290)"/>
     <wire from="(1000,1290)" to="(1030,1290)"/>
+    <wire from="(1010,780)" to="(1010,870)"/>
+    <wire from="(1010,780)" to="(1450,780)"/>
+    <wire from="(1010,870)" to="(1030,870)"/>
     <wire from="(1020,1060)" to="(1020,1080)"/>
     <wire from="(1020,1060)" to="(1030,1060)"/>
-    <wire from="(1020,490)" to="(1040,490)"/>
-    <wire from="(1030,520)" to="(1030,530)"/>
-    <wire from="(1030,520)" to="(1220,520)"/>
-    <wire from="(1030,660)" to="(1060,660)"/>
-    <wire from="(1040,490)" to="(1040,500)"/>
-    <wire from="(1040,500)" to="(1220,500)"/>
     <wire from="(1050,1060)" to="(1110,1060)"/>
     <wire from="(1050,1290)" to="(1230,1290)"/>
-    <wire from="(1060,660)" to="(1060,700)"/>
-    <wire from="(1060,660)" to="(1220,660)"/>
-    <wire from="(1060,700)" to="(1450,700)"/>
     <wire from="(1070,1080)" to="(1070,1170)"/>
     <wire from="(1070,1080)" to="(1110,1080)"/>
+    <wire from="(1070,850)" to="(1350,850)"/>
     <wire from="(1140,1070)" to="(1220,1070)"/>
     <wire from="(1160,1090)" to="(1160,1190)"/>
     <wire from="(1160,1090)" to="(1220,1090)"/>
     <wire from="(1160,1190)" to="(1620,1190)"/>
-    <wire from="(1190,280)" to="(1190,640)"/>
-    <wire from="(1190,280)" to="(1200,280)"/>
-    <wire from="(1190,640)" to="(1220,640)"/>
     <wire from="(1200,1080)" to="(1200,1280)"/>
     <wire from="(1200,1080)" to="(1220,1080)"/>
     <wire from="(1200,1280)" to="(1230,1280)"/>
     <wire from="(1200,280)" to="(1200,300)"/>
     <wire from="(1200,280)" to="(1340,280)"/>
     <wire from="(1200,320)" to="(1200,340)"/>
-    <wire from="(1200,340)" to="(1200,510)"/>
-    <wire from="(1200,340)" to="(1250,340)"/>
-    <wire from="(1200,510)" to="(1200,840)"/>
-    <wire from="(1200,510)" to="(1220,510)"/>
-    <wire from="(1200,840)" to="(1200,1080)"/>
-    <wire from="(1200,840)" to="(1220,840)"/>
-    <wire from="(1250,290)" to="(1250,340)"/>
-    <wire from="(1250,290)" to="(3700,290)"/>
+    <wire from="(1200,340)" to="(1200,1080)"/>
+    <wire from="(1200,340)" to="(1270,340)"/>
     <wire from="(1260,1070)" to="(1920,1070)"/>
-    <wire from="(1260,1090)" to="(1270,1090)"/>
-    <wire from="(1260,500)" to="(1270,500)"/>
-    <wire from="(1260,640)" to="(1300,640)"/>
-    <wire from="(1260,830)" to="(1280,830)"/>
     <wire from="(1270,1270)" to="(1300,1270)"/>
-    <wire from="(1270,490)" to="(1270,500)"/>
-    <wire from="(1270,490)" to="(1320,490)"/>
-    <wire from="(1270,940)" to="(1270,1090)"/>
-    <wire from="(1280,830)" to="(1280,930)"/>
-    <wire from="(1280,930)" to="(1720,930)"/>
-    <wire from="(1300,640)" to="(1300,850)"/>
-    <wire from="(1300,850)" to="(1350,850)"/>
+    <wire from="(1270,290)" to="(1270,340)"/>
+    <wire from="(1270,290)" to="(3320,290)"/>
     <wire from="(1300,870)" to="(1300,1270)"/>
     <wire from="(1300,870)" to="(1350,870)"/>
     <wire from="(1310,1140)" to="(1310,1340)"/>
     <wire from="(1310,1140)" to="(1620,1140)"/>
     <wire from="(1320,1150)" to="(1320,1360)"/>
     <wire from="(1320,1150)" to="(1620,1150)"/>
-    <wire from="(1320,420)" to="(1320,490)"/>
-    <wire from="(1320,490)" to="(1320,740)"/>
+    <wire from="(1320,420)" to="(1320,570)"/>
+    <wire from="(1320,570)" to="(1320,740)"/>
     <wire from="(1320,740)" to="(1820,740)"/>
     <wire from="(1330,1160)" to="(1330,1380)"/>
     <wire from="(1330,1160)" to="(1620,1160)"/>
     <wire from="(1340,1170)" to="(1340,1400)"/>
     <wire from="(1340,1170)" to="(1620,1170)"/>
-    <wire from="(1340,280)" to="(1340,390)"/>
-    <wire from="(1340,280)" to="(3660,280)"/>
-    <wire from="(1340,390)" to="(1340,520)"/>
-    <wire from="(1340,390)" to="(1570,390)"/>
-    <wire from="(1340,520)" to="(1470,520)"/>
-    <wire from="(1340,530)" to="(1340,730)"/>
-    <wire from="(1340,530)" to="(1400,530)"/>
+    <wire from="(1340,280)" to="(1340,490)"/>
+    <wire from="(1340,280)" to="(3700,280)"/>
+    <wire from="(1340,490)" to="(1470,490)"/>
     <wire from="(1350,1220)" to="(1620,1220)"/>
-    <wire from="(1350,270)" to="(1350,380)"/>
-    <wire from="(1350,380)" to="(1350,510)"/>
-    <wire from="(1350,380)" to="(1590,380)"/>
-    <wire from="(1350,510)" to="(1470,510)"/>
-    <wire from="(1350,540)" to="(1350,750)"/>
-    <wire from="(1350,540)" to="(1410,540)"/>
+    <wire from="(1350,270)" to="(1350,480)"/>
+    <wire from="(1350,480)" to="(1470,480)"/>
     <wire from="(1350,960)" to="(1350,1220)"/>
-    <wire from="(1360,260)" to="(1360,370)"/>
-    <wire from="(1360,370)" to="(1360,500)"/>
-    <wire from="(1360,370)" to="(1590,370)"/>
-    <wire from="(1360,500)" to="(1470,500)"/>
-    <wire from="(1360,550)" to="(1360,770)"/>
-    <wire from="(1360,550)" to="(1420,550)"/>
-    <wire from="(1370,560)" to="(1370,790)"/>
-    <wire from="(1370,560)" to="(1430,560)"/>
+    <wire from="(1360,260)" to="(1360,470)"/>
+    <wire from="(1360,470)" to="(1470,470)"/>
     <wire from="(1380,860)" to="(2160,860)"/>
-    <wire from="(1400,400)" to="(1400,530)"/>
-    <wire from="(1400,400)" to="(1590,400)"/>
-    <wire from="(1400,530)" to="(1470,530)"/>
-    <wire from="(1410,410)" to="(1410,540)"/>
-    <wire from="(1410,410)" to="(1590,410)"/>
-    <wire from="(1410,540)" to="(1470,540)"/>
-    <wire from="(1420,420)" to="(1420,550)"/>
-    <wire from="(1420,420)" to="(1590,420)"/>
-    <wire from="(1420,550)" to="(1470,550)"/>
-    <wire from="(1430,430)" to="(1430,560)"/>
-    <wire from="(1430,430)" to="(1590,430)"/>
-    <wire from="(1430,560)" to="(1470,560)"/>
-    <wire from="(1440,440)" to="(1440,570)"/>
-    <wire from="(1440,440)" to="(1590,440)"/>
-    <wire from="(1440,570)" to="(1470,570)"/>
-    <wire from="(1450,450)" to="(1450,580)"/>
-    <wire from="(1450,450)" to="(1590,450)"/>
-    <wire from="(1450,580)" to="(1470,580)"/>
-    <wire from="(1450,700)" to="(1450,850)"/>
+    <wire from="(1450,780)" to="(1450,850)"/>
     <wire from="(1450,850)" to="(2140,850)"/>
-    <wire from="(1490,490)" to="(1510,490)"/>
-    <wire from="(1510,490)" to="(1510,510)"/>
-    <wire from="(1510,490)" to="(1520,490)"/>
-    <wire from="(1510,510)" to="(1590,510)"/>
+    <wire from="(1490,460)" to="(1510,460)"/>
+    <wire from="(1510,460)" to="(1510,480)"/>
+    <wire from="(1510,460)" to="(1520,460)"/>
+    <wire from="(1510,480)" to="(1590,480)"/>
+    <wire from="(1530,310)" to="(1560,310)"/>
+    <wire from="(1530,330)" to="(1550,330)"/>
+    <wire from="(1530,350)" to="(1550,350)"/>
+    <wire from="(1550,620)" to="(1550,800)"/>
+    <wire from="(1550,800)" to="(1810,800)"/>
+    <wire from="(1560,310)" to="(1560,320)"/>
+    <wire from="(1560,360)" to="(1560,390)"/>
+    <wire from="(1560,390)" to="(1700,390)"/>
+    <wire from="(1570,360)" to="(1570,720)"/>
+    <wire from="(1580,340)" to="(1640,340)"/>
     <wire from="(1590,1720)" to="(3730,1720)"/>
-    <wire from="(1590,510)" to="(1590,1720)"/>
-    <wire from="(1610,360)" to="(1640,360)"/>
+    <wire from="(1590,480)" to="(1590,1720)"/>
     <wire from="(1640,1110)" to="(1640,1130)"/>
     <wire from="(1640,1110)" to="(1690,1110)"/>
-    <wire from="(1640,360)" to="(1640,680)"/>
+    <wire from="(1640,340)" to="(1640,680)"/>
     <wire from="(1640,680)" to="(1780,680)"/>
     <wire from="(1640,690)" to="(1640,1110)"/>
     <wire from="(1640,690)" to="(1790,690)"/>
@@ -2348,11 +2198,10 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(1690,200)" to="(1690,990)"/>
     <wire from="(1690,200)" to="(1740,200)"/>
     <wire from="(1690,990)" to="(1830,990)"/>
-    <wire from="(1700,110)" to="(1700,700)"/>
+    <wire from="(1700,110)" to="(1700,390)"/>
     <wire from="(1700,110)" to="(1860,110)"/>
+    <wire from="(1700,390)" to="(1700,700)"/>
     <wire from="(1700,700)" to="(1750,700)"/>
-    <wire from="(1720,800)" to="(1720,930)"/>
-    <wire from="(1720,800)" to="(1810,800)"/>
     <wire from="(1730,660)" to="(1740,660)"/>
     <wire from="(1740,630)" to="(1740,660)"/>
     <wire from="(1750,630)" to="(1750,700)"/>
@@ -2386,7 +2235,7 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(1850,750)" to="(1850,760)"/>
     <wire from="(1850,940)" to="(1870,940)"/>
     <wire from="(1860,110)" to="(1860,210)"/>
-    <wire from="(1860,110)" to="(2590,110)"/>
+    <wire from="(1860,110)" to="(2570,110)"/>
     <wire from="(1860,690)" to="(1860,700)"/>
     <wire from="(1870,680)" to="(1920,680)"/>
     <wire from="(1870,880)" to="(1870,940)"/>
@@ -2419,8 +2268,7 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(2090,920)" to="(2680,920)"/>
     <wire from="(2100,930)" to="(2100,1010)"/>
     <wire from="(2100,930)" to="(2720,930)"/>
-    <wire from="(2140,690)" to="(2140,850)"/>
-    <wire from="(2140,690)" to="(2150,690)"/>
+    <wire from="(2140,720)" to="(2140,850)"/>
     <wire from="(2150,1560)" to="(2890,1560)"/>
     <wire from="(2150,680)" to="(2150,690)"/>
     <wire from="(2150,680)" to="(2200,680)"/>
@@ -2461,8 +2309,8 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(2300,1070)" to="(2300,1530)"/>
     <wire from="(2300,1530)" to="(2590,1530)"/>
     <wire from="(2300,970)" to="(2300,990)"/>
-    <wire from="(2310,360)" to="(2310,530)"/>
-    <wire from="(2310,360)" to="(2590,360)"/>
+    <wire from="(2310,240)" to="(2310,530)"/>
+    <wire from="(2310,240)" to="(2570,240)"/>
     <wire from="(2310,530)" to="(2310,640)"/>
     <wire from="(2310,530)" to="(2390,530)"/>
     <wire from="(2310,640)" to="(2330,640)"/>
@@ -2497,18 +2345,6 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(2380,410)" to="(2390,410)"/>
     <wire from="(2380,510)" to="(2390,510)"/>
     <wire from="(2380,950)" to="(2380,990)"/>
-    <wire from="(240,1030)" to="(240,1060)"/>
-    <wire from="(240,1030)" to="(320,1030)"/>
-    <wire from="(240,1060)" to="(260,1060)"/>
-    <wire from="(240,710)" to="(240,820)"/>
-    <wire from="(240,710)" to="(310,710)"/>
-    <wire from="(240,820)" to="(260,820)"/>
-    <wire from="(240,870)" to="(240,900)"/>
-    <wire from="(240,870)" to="(320,870)"/>
-    <wire from="(240,900)" to="(260,900)"/>
-    <wire from="(240,950)" to="(240,980)"/>
-    <wire from="(240,950)" to="(320,950)"/>
-    <wire from="(240,980)" to="(260,980)"/>
     <wire from="(2400,1070)" to="(2400,1090)"/>
     <wire from="(2400,1090)" to="(2490,1090)"/>
     <wire from="(2400,890)" to="(2400,990)"/>
@@ -2531,10 +2367,6 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(2480,690)" to="(2960,690)"/>
     <wire from="(2490,700)" to="(2490,1090)"/>
     <wire from="(2490,700)" to="(2640,700)"/>
-    <wire from="(250,1000)" to="(260,1000)"/>
-    <wire from="(250,1080)" to="(260,1080)"/>
-    <wire from="(250,840)" to="(260,840)"/>
-    <wire from="(250,920)" to="(260,920)"/>
     <wire from="(2500,420)" to="(2570,420)"/>
     <wire from="(2500,440)" to="(3290,440)"/>
     <wire from="(2500,470)" to="(2500,620)"/>
@@ -2553,8 +2385,9 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(2560,1260)" to="(2650,1260)"/>
     <wire from="(2560,1500)" to="(2870,1500)"/>
     <wire from="(2560,820)" to="(2560,830)"/>
+    <wire from="(2570,110)" to="(2570,170)"/>
+    <wire from="(2570,190)" to="(2570,240)"/>
     <wire from="(2570,260)" to="(2570,310)"/>
-    <wire from="(2570,260)" to="(2710,260)"/>
     <wire from="(2570,330)" to="(2570,420)"/>
     <wire from="(2580,1280)" to="(2580,1520)"/>
     <wire from="(2580,1280)" to="(2650,1280)"/>
@@ -2562,14 +2395,10 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(2580,730)" to="(2580,740)"/>
     <wire from="(2580,730)" to="(2860,730)"/>
     <wire from="(2580,820)" to="(2580,850)"/>
-    <wire from="(2590,110)" to="(2590,170)"/>
     <wire from="(2590,1160)" to="(2650,1160)"/>
     <wire from="(2590,1340)" to="(2590,1530)"/>
     <wire from="(2590,1340)" to="(2650,1340)"/>
     <wire from="(2590,1530)" to="(3110,1530)"/>
-    <wire from="(2590,190)" to="(2590,240)"/>
-    <wire from="(2590,240)" to="(2590,360)"/>
-    <wire from="(2590,240)" to="(2710,240)"/>
     <wire from="(2590,450)" to="(2590,470)"/>
     <wire from="(2590,470)" to="(3580,470)"/>
     <wire from="(2590,480)" to="(2590,490)"/>
@@ -2639,7 +2468,6 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(2740,1120)" to="(2740,1340)"/>
     <wire from="(2740,700)" to="(2740,1100)"/>
     <wire from="(2750,1140)" to="(2750,1400)"/>
-    <wire from="(2750,240)" to="(3320,240)"/>
     <wire from="(2770,1040)" to="(2770,1200)"/>
     <wire from="(2770,1040)" to="(3370,1040)"/>
     <wire from="(2770,1360)" to="(2770,1540)"/>
@@ -2696,10 +2524,6 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(2960,820)" to="(2960,860)"/>
     <wire from="(2980,710)" to="(2980,740)"/>
     <wire from="(2980,820)" to="(2980,990)"/>
-    <wire from="(300,1060)" to="(340,1060)"/>
-    <wire from="(300,820)" to="(320,820)"/>
-    <wire from="(300,900)" to="(320,900)"/>
-    <wire from="(300,980)" to="(320,980)"/>
     <wire from="(3000,710)" to="(3000,740)"/>
     <wire from="(3000,710)" to="(3050,710)"/>
     <wire from="(3000,820)" to="(3000,900)"/>
@@ -2735,17 +2559,12 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(3090,1590)" to="(3110,1590)"/>
     <wire from="(310,280)" to="(310,520)"/>
     <wire from="(310,280)" to="(700,280)"/>
-    <wire from="(310,520)" to="(310,710)"/>
-    <wire from="(310,520)" to="(430,520)"/>
-    <wire from="(310,710)" to="(430,710)"/>
-    <wire from="(3130,1600)" to="(3130,1810)"/>
+    <wire from="(310,520)" to="(310,920)"/>
+    <wire from="(310,520)" to="(330,520)"/>
+    <wire from="(310,920)" to="(830,920)"/>
+    <wire from="(3130,1600)" to="(3130,1880)"/>
+    <wire from="(3130,1880)" to="(4480,1880)"/>
     <wire from="(3190,340)" to="(3190,360)"/>
-    <wire from="(320,820)" to="(320,870)"/>
-    <wire from="(320,820)" to="(340,820)"/>
-    <wire from="(320,900)" to="(320,950)"/>
-    <wire from="(320,900)" to="(340,900)"/>
-    <wire from="(320,980)" to="(320,1030)"/>
-    <wire from="(320,980)" to="(340,980)"/>
     <wire from="(3200,390)" to="(3200,1030)"/>
     <wire from="(3210,340)" to="(3210,360)"/>
     <wire from="(3210,340)" to="(3260,340)"/>
@@ -2760,7 +2579,7 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(3280,340)" to="(3330,340)"/>
     <wire from="(3290,440)" to="(3290,940)"/>
     <wire from="(3290,940)" to="(3470,940)"/>
-    <wire from="(3320,240)" to="(3320,920)"/>
+    <wire from="(3320,290)" to="(3320,920)"/>
     <wire from="(3320,920)" to="(3620,920)"/>
     <wire from="(3330,200)" to="(3330,340)"/>
     <wire from="(3330,340)" to="(3700,340)"/>
@@ -2780,6 +2599,7 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(3480,1080)" to="(3490,1080)"/>
     <wire from="(3490,1040)" to="(3490,1080)"/>
     <wire from="(3490,1040)" to="(3650,1040)"/>
+    <wire from="(350,520)" to="(430,520)"/>
     <wire from="(3510,1020)" to="(3510,1080)"/>
     <wire from="(3510,1080)" to="(3580,1080)"/>
     <wire from="(3580,470)" to="(3580,790)"/>
@@ -2791,7 +2611,7 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(3610,1060)" to="(3700,1060)"/>
     <wire from="(3610,1070)" to="(3620,1070)"/>
     <wire from="(3610,1080)" to="(3620,1080)"/>
-    <wire from="(3610,1090)" to="(4020,1090)"/>
+    <wire from="(3610,1090)" to="(3620,1090)"/>
     <wire from="(3610,1100)" to="(4030,1100)"/>
     <wire from="(3610,500)" to="(3610,760)"/>
     <wire from="(3610,760)" to="(3780,760)"/>
@@ -2801,6 +2621,7 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(3630,590)" to="(3630,740)"/>
     <wire from="(3630,740)" to="(4090,740)"/>
     <wire from="(3640,1080)" to="(3880,1080)"/>
+    <wire from="(3640,1090)" to="(4020,1090)"/>
     <wire from="(3640,580)" to="(3640,730)"/>
     <wire from="(3640,730)" to="(3820,730)"/>
     <wire from="(3650,1040)" to="(3650,1070)"/>
@@ -2817,7 +2638,7 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(370,420)" to="(1320,420)"/>
     <wire from="(370,420)" to="(370,1040)"/>
     <wire from="(3700,1060)" to="(3700,1500)"/>
-    <wire from="(3700,110)" to="(3700,290)"/>
+    <wire from="(3700,110)" to="(3700,280)"/>
     <wire from="(3700,110)" to="(4520,110)"/>
     <wire from="(3700,340)" to="(3700,540)"/>
     <wire from="(3700,540)" to="(3700,1060)"/>
@@ -2940,6 +2761,13 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(3990,680)" to="(3990,780)"/>
     <wire from="(3990,780)" to="(4130,780)"/>
     <wire from="(3990,960)" to="(3990,1050)"/>
+    <wire from="(400,530)" to="(400,550)"/>
+    <wire from="(400,530)" to="(430,530)"/>
+    <wire from="(400,550)" to="(400,670)"/>
+    <wire from="(400,550)" to="(430,550)"/>
+    <wire from="(400,670)" to="(400,820)"/>
+    <wire from="(400,670)" to="(470,670)"/>
+    <wire from="(400,820)" to="(770,820)"/>
     <wire from="(4000,1060)" to="(4230,1060)"/>
     <wire from="(4000,620)" to="(4000,790)"/>
     <wire from="(4000,790)" to="(4130,790)"/>
@@ -2966,9 +2794,6 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(410,1230)" to="(430,1230)"/>
     <wire from="(410,1280)" to="(510,1280)"/>
     <wire from="(410,190)" to="(430,190)"/>
-    <wire from="(410,620)" to="(410,670)"/>
-    <wire from="(410,620)" to="(430,620)"/>
-    <wire from="(410,670)" to="(510,670)"/>
     <wire from="(4100,750)" to="(4100,940)"/>
     <wire from="(4100,750)" to="(4130,750)"/>
     <wire from="(4130,310)" to="(4130,430)"/>
@@ -2992,18 +2817,10 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(420,1380)" to="(430,1380)"/>
     <wire from="(420,1400)" to="(430,1400)"/>
     <wire from="(420,1420)" to="(430,1420)"/>
-    <wire from="(420,500)" to="(430,500)"/>
+    <wire from="(420,540)" to="(420,600)"/>
     <wire from="(420,540)" to="(430,540)"/>
-    <wire from="(420,560)" to="(430,560)"/>
-    <wire from="(420,580)" to="(430,580)"/>
     <wire from="(420,600)" to="(430,600)"/>
-    <wire from="(420,690)" to="(430,690)"/>
     <wire from="(420,70)" to="(440,70)"/>
-    <wire from="(420,730)" to="(430,730)"/>
-    <wire from="(420,750)" to="(430,750)"/>
-    <wire from="(420,770)" to="(430,770)"/>
-    <wire from="(420,790)" to="(430,790)"/>
-    <wire from="(420,810)" to="(430,810)"/>
     <wire from="(4200,1030)" to="(4440,1030)"/>
     <wire from="(4200,750)" to="(4200,1030)"/>
     <wire from="(4200,750)" to="(4270,750)"/>
@@ -3043,8 +2860,6 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(430,170)" to="(430,190)"/>
     <wire from="(430,170)" to="(440,170)"/>
     <wire from="(430,190)" to="(440,190)"/>
-    <wire from="(430,620)" to="(490,620)"/>
-    <wire from="(430,810)" to="(490,810)"/>
     <wire from="(4350,750)" to="(4400,750)"/>
     <wire from="(4350,770)" to="(4390,770)"/>
     <wire from="(4350,790)" to="(4380,790)"/>
@@ -3073,9 +2888,22 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(4400,750)" to="(4400,1100)"/>
     <wire from="(4460,1020)" to="(4500,1020)"/>
     <wire from="(4470,560)" to="(4480,560)"/>
+    <wire from="(4480,1240)" to="(4480,1880)"/>
     <wire from="(4480,560)" to="(4480,1240)"/>
     <wire from="(4500,410)" to="(4500,1020)"/>
     <wire from="(4520,110)" to="(4520,910)"/>
+    <wire from="(460,500)" to="(680,500)"/>
+    <wire from="(460,510)" to="(690,510)"/>
+    <wire from="(460,520)" to="(700,520)"/>
+    <wire from="(460,530)" to="(470,530)"/>
+    <wire from="(460,540)" to="(630,540)"/>
+    <wire from="(460,550)" to="(570,550)"/>
+    <wire from="(460,590)" to="(470,590)"/>
+    <wire from="(460,610)" to="(470,610)"/>
+    <wire from="(470,530)" to="(470,590)"/>
+    <wire from="(470,530)" to="(620,530)"/>
+    <wire from="(470,610)" to="(470,630)"/>
+    <wire from="(470,650)" to="(470,670)"/>
     <wire from="(480,1030)" to="(660,1030)"/>
     <wire from="(490,1130)" to="(500,1130)"/>
     <wire from="(490,1150)" to="(520,1150)"/>
@@ -3089,15 +2917,6 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(490,1380)" to="(580,1380)"/>
     <wire from="(490,1400)" to="(820,1400)"/>
     <wire from="(490,1440)" to="(560,1440)"/>
-    <wire from="(490,540)" to="(520,540)"/>
-    <wire from="(490,560)" to="(510,560)"/>
-    <wire from="(490,640)" to="(560,640)"/>
-    <wire from="(490,710)" to="(510,710)"/>
-    <wire from="(490,730)" to="(720,730)"/>
-    <wire from="(490,750)" to="(870,750)"/>
-    <wire from="(490,770)" to="(860,770)"/>
-    <wire from="(490,790)" to="(610,790)"/>
-    <wire from="(490,830)" to="(560,830)"/>
     <wire from="(500,1090)" to="(500,1130)"/>
     <wire from="(500,110)" to="(560,110)"/>
     <wire from="(500,1190)" to="(500,1200)"/>
@@ -3111,14 +2930,8 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(510,1190)" to="(860,1190)"/>
     <wire from="(510,1280)" to="(510,1320)"/>
     <wire from="(510,190)" to="(510,210)"/>
-    <wire from="(510,560)" to="(510,580)"/>
-    <wire from="(510,580)" to="(620,580)"/>
-    <wire from="(510,670)" to="(510,710)"/>
-    <wire from="(510,670)" to="(790,670)"/>
     <wire from="(520,1150)" to="(520,1180)"/>
     <wire from="(520,1180)" to="(840,1180)"/>
-    <wire from="(520,540)" to="(520,570)"/>
-    <wire from="(520,570)" to="(630,570)"/>
     <wire from="(530,170)" to="(700,170)"/>
     <wire from="(530,30)" to="(530,170)"/>
     <wire from="(530,30)" to="(580,30)"/>
@@ -3136,55 +2949,53 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(560,110)" to="(1700,110)"/>
     <wire from="(560,1110)" to="(560,1250)"/>
     <wire from="(560,1250)" to="(560,1440)"/>
-    <wire from="(560,480)" to="(560,510)"/>
-    <wire from="(560,480)" to="(570,480)"/>
-    <wire from="(560,530)" to="(560,640)"/>
-    <wire from="(560,640)" to="(560,830)"/>
     <wire from="(560,70)" to="(560,110)"/>
     <wire from="(560,70)" to="(580,70)"/>
+    <wire from="(570,550)" to="(570,780)"/>
+    <wire from="(570,550)" to="(640,550)"/>
+    <wire from="(570,780)" to="(970,780)"/>
     <wire from="(580,1130)" to="(580,1380)"/>
     <wire from="(580,1130)" to="(610,1130)"/>
     <wire from="(580,1380)" to="(1330,1380)"/>
     <wire from="(600,1150)" to="(600,1340)"/>
     <wire from="(600,1150)" to="(610,1150)"/>
     <wire from="(600,1340)" to="(1310,1340)"/>
-    <wire from="(600,470)" to="(630,470)"/>
-    <wire from="(600,480)" to="(620,480)"/>
-    <wire from="(600,490)" to="(610,490)"/>
-    <wire from="(610,490)" to="(610,790)"/>
     <wire from="(610,50)" to="(640,50)"/>
-    <wire from="(610,790)" to="(670,790)"/>
-    <wire from="(620,480)" to="(620,580)"/>
-    <wire from="(620,580)" to="(650,580)"/>
-    <wire from="(630,470)" to="(630,570)"/>
-    <wire from="(630,570)" to="(660,570)"/>
+    <wire from="(620,530)" to="(620,740)"/>
+    <wire from="(620,530)" to="(740,530)"/>
+    <wire from="(620,740)" to="(670,740)"/>
+    <wire from="(630,540)" to="(630,730)"/>
+    <wire from="(630,540)" to="(730,540)"/>
+    <wire from="(630,730)" to="(670,730)"/>
     <wire from="(640,1140)" to="(660,1140)"/>
     <wire from="(640,50)" to="(640,90)"/>
+    <wire from="(640,550)" to="(640,720)"/>
+    <wire from="(640,550)" to="(720,550)"/>
+    <wire from="(640,720)" to="(670,720)"/>
     <wire from="(640,90)" to="(2270,90)"/>
     <wire from="(650,1060)" to="(660,1060)"/>
     <wire from="(650,1080)" to="(660,1080)"/>
-    <wire from="(650,470)" to="(650,580)"/>
-    <wire from="(650,470)" to="(700,470)"/>
-    <wire from="(650,580)" to="(700,580)"/>
     <wire from="(660,1030)" to="(660,1060)"/>
     <wire from="(660,1030)" to="(710,1030)"/>
     <wire from="(660,1080)" to="(660,1140)"/>
     <wire from="(660,1140)" to="(660,1170)"/>
     <wire from="(660,1170)" to="(1070,1170)"/>
-    <wire from="(660,480)" to="(660,510)"/>
-    <wire from="(660,480)" to="(700,480)"/>
-    <wire from="(660,530)" to="(660,570)"/>
-    <wire from="(660,570)" to="(710,570)"/>
     <wire from="(670,1270)" to="(670,1470)"/>
     <wire from="(670,1270)" to="(690,1270)"/>
-    <wire from="(670,490)" to="(670,790)"/>
-    <wire from="(670,490)" to="(700,490)"/>
-    <wire from="(670,790)" to="(1370,790)"/>
+    <wire from="(680,500)" to="(1470,500)"/>
+    <wire from="(680,500)" to="(680,640)"/>
+    <wire from="(680,640)" to="(680,710)"/>
+    <wire from="(680,640)" to="(860,640)"/>
+    <wire from="(680,710)" to="(710,710)"/>
+    <wire from="(690,510)" to="(690,630)"/>
+    <wire from="(690,510)" to="(760,510)"/>
+    <wire from="(690,630)" to="(820,630)"/>
     <wire from="(700,170)" to="(700,280)"/>
-    <wire from="(700,280)" to="(1190,280)"/>
-    <wire from="(700,580)" to="(700,860)"/>
-    <wire from="(700,580)" to="(990,580)"/>
-    <wire from="(700,860)" to="(740,860)"/>
+    <wire from="(700,280)" to="(1200,280)"/>
+    <wire from="(700,520)" to="(700,620)"/>
+    <wire from="(700,520)" to="(750,520)"/>
+    <wire from="(700,620)" to="(820,620)"/>
+    <wire from="(700,730)" to="(720,730)"/>
     <wire from="(710,1030)" to="(710,1060)"/>
     <wire from="(710,1060)" to="(880,1060)"/>
     <wire from="(710,1080)" to="(710,1110)"/>
@@ -3193,64 +3004,68 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(710,1210)" to="(1620,1210)"/>
     <wire from="(710,150)" to="(710,270)"/>
     <wire from="(710,270)" to="(1350,270)"/>
-    <wire from="(710,570)" to="(1440,570)"/>
-    <wire from="(710,570)" to="(710,850)"/>
-    <wire from="(710,850)" to="(740,850)"/>
+    <wire from="(710,710)" to="(710,720)"/>
+    <wire from="(710,710)" to="(720,710)"/>
+    <wire from="(710,720)" to="(720,720)"/>
     <wire from="(710,960)" to="(1350,960)"/>
     <wire from="(710,960)" to="(710,1030)"/>
     <wire from="(720,130)" to="(1840,130)"/>
     <wire from="(720,130)" to="(720,260)"/>
     <wire from="(720,260)" to="(1360,260)"/>
-    <wire from="(720,730)" to="(1340,730)"/>
-    <wire from="(720,730)" to="(720,840)"/>
-    <wire from="(720,840)" to="(740,840)"/>
+    <wire from="(720,550)" to="(1470,550)"/>
+    <wire from="(720,550)" to="(720,610)"/>
+    <wire from="(720,610)" to="(770,610)"/>
     <wire from="(730,1100)" to="(730,1200)"/>
     <wire from="(730,1100)" to="(880,1100)"/>
     <wire from="(730,1200)" to="(1620,1200)"/>
     <wire from="(730,1270)" to="(1230,1270)"/>
-    <wire from="(730,480)" to="(800,480)"/>
-    <wire from="(770,850)" to="(1220,850)"/>
-    <wire from="(790,670)" to="(790,830)"/>
-    <wire from="(790,830)" to="(830,830)"/>
-    <wire from="(800,480)" to="(800,820)"/>
-    <wire from="(800,480)" to="(860,480)"/>
-    <wire from="(800,820)" to="(830,820)"/>
-    <wire from="(810,840)" to="(810,940)"/>
-    <wire from="(810,840)" to="(830,840)"/>
-    <wire from="(810,940)" to="(1270,940)"/>
+    <wire from="(730,540)" to="(1470,540)"/>
+    <wire from="(730,540)" to="(730,600)"/>
+    <wire from="(730,600)" to="(740,600)"/>
+    <wire from="(740,530)" to="(1470,530)"/>
+    <wire from="(740,530)" to="(740,590)"/>
+    <wire from="(740,590)" to="(770,590)"/>
+    <wire from="(750,520)" to="(1470,520)"/>
+    <wire from="(750,520)" to="(750,580)"/>
+    <wire from="(750,580)" to="(790,580)"/>
+    <wire from="(750,720)" to="(770,720)"/>
+    <wire from="(760,510)" to="(1470,510)"/>
+    <wire from="(760,510)" to="(760,570)"/>
+    <wire from="(760,570)" to="(820,570)"/>
+    <wire from="(760,600)" to="(770,600)"/>
+    <wire from="(770,720)" to="(1570,720)"/>
+    <wire from="(770,720)" to="(770,820)"/>
+    <wire from="(800,600)" to="(810,600)"/>
+    <wire from="(810,580)" to="(820,580)"/>
+    <wire from="(810,590)" to="(810,600)"/>
+    <wire from="(810,590)" to="(820,590)"/>
+    <wire from="(810,600)" to="(810,610)"/>
+    <wire from="(810,610)" to="(820,610)"/>
     <wire from="(820,1000)" to="(820,1400)"/>
     <wire from="(820,1000)" to="(880,1000)"/>
     <wire from="(820,1400)" to="(1340,1400)"/>
+    <wire from="(830,850)" to="(830,920)"/>
+    <wire from="(830,850)" to="(970,850)"/>
     <wire from="(840,1020)" to="(840,1180)"/>
     <wire from="(840,1020)" to="(880,1020)"/>
     <wire from="(840,1180)" to="(1620,1180)"/>
+    <wire from="(850,580)" to="(910,580)"/>
+    <wire from="(850,620)" to="(870,620)"/>
     <wire from="(860,1040)" to="(860,1190)"/>
     <wire from="(860,1040)" to="(880,1040)"/>
     <wire from="(860,1190)" to="(1160,1190)"/>
-    <wire from="(860,480)" to="(860,510)"/>
-    <wire from="(860,480)" to="(990,480)"/>
-    <wire from="(860,510)" to="(880,510)"/>
-    <wire from="(860,520)" to="(860,770)"/>
-    <wire from="(860,520)" to="(880,520)"/>
-    <wire from="(860,770)" to="(1360,770)"/>
-    <wire from="(860,830)" to="(1220,830)"/>
-    <wire from="(870,530)" to="(870,750)"/>
-    <wire from="(870,530)" to="(880,530)"/>
-    <wire from="(870,750)" to="(960,750)"/>
-    <wire from="(910,520)" to="(930,520)"/>
-    <wire from="(930,490)" to="(930,520)"/>
-    <wire from="(930,490)" to="(950,490)"/>
-    <wire from="(930,520)" to="(930,530)"/>
-    <wire from="(930,530)" to="(1030,530)"/>
+    <wire from="(860,630)" to="(860,640)"/>
+    <wire from="(860,630)" to="(870,630)"/>
+    <wire from="(860,640)" to="(870,640)"/>
+    <wire from="(900,570)" to="(910,570)"/>
+    <wire from="(900,630)" to="(950,630)"/>
     <wire from="(940,1020)" to="(1000,1020)"/>
     <wire from="(940,1080)" to="(1020,1080)"/>
-    <wire from="(960,500)" to="(960,750)"/>
-    <wire from="(960,500)" to="(990,500)"/>
-    <wire from="(960,750)" to="(1350,750)"/>
-    <wire from="(970,490)" to="(990,490)"/>
-    <wire from="(990,580)" to="(1450,580)"/>
-    <wire from="(990,580)" to="(990,660)"/>
-    <wire from="(990,660)" to="(1010,660)"/>
+    <wire from="(940,570)" to="(1320,570)"/>
+    <wire from="(940,620)" to="(950,620)"/>
+    <wire from="(980,620)" to="(1550,620)"/>
+    <wire from="(990,780)" to="(1010,780)"/>
+    <wire from="(990,850)" to="(1030,850)"/>
   </circuit>
   <circuit name="PSG">
     <a name="circuit" val="PSG"/>
@@ -3565,5 +3380,266 @@ a9 ff 68 a8 68 aa 68 40
     <wire from="(2970,830)" to="(3010,830)"/>
     <wire from="(2970,870)" to="(2970,1000)"/>
     <wire from="(2970,870)" to="(3010,870)"/>
+  </circuit>
+  <circuit name="Timer_555">
+    <a name="circuit" val="Timer_555"/>
+    <a name="circuitnamedboxfixedsize" val="true"/>
+    <a name="clabel" val="555"/>
+    <a name="clabelfont" val="SansSerif plain 12"/>
+    <a name="clabelup" val="north"/>
+    <a name="simulationFrequency" val="16.0"/>
+    <comp lib="0" loc="(160,140)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="label" val="Trigger"/>
+    </comp>
+    <comp lib="0" loc="(170,90)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="label" val="Count"/>
+      <a name="radix" val="16"/>
+      <a name="width" val="8"/>
+    </comp>
+    <comp lib="0" loc="(230,240)" name="Clock">
+      <a name="appearance" val="classic"/>
+    </comp>
+    <comp lib="0" loc="(700,230)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="facing" val="west"/>
+      <a name="label" val="DOut"/>
+      <a name="type" val="output"/>
+    </comp>
+    <comp lib="5" loc="(410,180)" name="Counter">
+      <a name="appearance" val="classic"/>
+    </comp>
+    <comp lib="5" loc="(500,230)" name="J-K Flip-Flop">
+      <a name="appearance" val="classic"/>
+    </comp>
+    <comp lib="9" loc="(215,265)" name="Text">
+      <a name="font" val="SansSerif plain 14"/>
+      <a name="text" val="14.31818 MHz"/>
+    </comp>
+    <wire from="(160,140)" to="(320,140)"/>
+    <wire from="(170,90)" to="(350,90)"/>
+    <wire from="(230,240)" to="(390,240)"/>
+    <wire from="(320,140)" to="(320,170)"/>
+    <wire from="(320,170)" to="(320,230)"/>
+    <wire from="(320,170)" to="(380,170)"/>
+    <wire from="(320,230)" to="(460,230)"/>
+    <wire from="(350,180)" to="(380,180)"/>
+    <wire from="(350,190)" to="(350,210)"/>
+    <wire from="(350,190)" to="(380,190)"/>
+    <wire from="(350,210)" to="(540,210)"/>
+    <wire from="(350,90)" to="(350,180)"/>
+    <wire from="(390,200)" to="(390,240)"/>
+    <wire from="(390,240)" to="(460,240)"/>
+    <wire from="(410,190)" to="(430,190)"/>
+    <wire from="(430,190)" to="(430,250)"/>
+    <wire from="(430,250)" to="(460,250)"/>
+    <wire from="(500,230)" to="(540,230)"/>
+    <wire from="(540,210)" to="(540,230)"/>
+    <wire from="(540,230)" to="(700,230)"/>
+  </circuit>
+  <circuit name="SN74LS393">
+    <a name="circuit" val="SN74LS393"/>
+    <a name="circuitnamedboxfixedsize" val="true"/>
+    <a name="clabel" val="393"/>
+    <a name="clabelfont" val="SansSerif plain 12"/>
+    <a name="clabelup" val="north"/>
+    <a name="simulationFrequency" val="16.0"/>
+    <comp lib="0" loc="(690,240)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="label" val="nCLK1"/>
+    </comp>
+    <comp lib="0" loc="(690,520)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="label" val="CLR1"/>
+    </comp>
+    <comp lib="0" loc="(690,590)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="label" val="nCLK2"/>
+    </comp>
+    <comp lib="0" loc="(690,910)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="label" val="CLR2"/>
+    </comp>
+    <comp lib="0" loc="(800,260)" name="Constant"/>
+    <comp lib="0" loc="(800,340)" name="Constant"/>
+    <comp lib="0" loc="(800,420)" name="Constant"/>
+    <comp lib="0" loc="(800,500)" name="Constant"/>
+    <comp lib="0" loc="(800,610)" name="Constant"/>
+    <comp lib="0" loc="(800,700)" name="Constant"/>
+    <comp lib="0" loc="(800,790)" name="Constant"/>
+    <comp lib="0" loc="(800,880)" name="Constant"/>
+    <comp lib="0" loc="(820,630)" name="Constant">
+      <a name="value" val="0x0"/>
+    </comp>
+    <comp lib="0" loc="(820,720)" name="Constant">
+      <a name="value" val="0x0"/>
+    </comp>
+    <comp lib="0" loc="(820,810)" name="Constant">
+      <a name="value" val="0x0"/>
+    </comp>
+    <comp lib="0" loc="(820,900)" name="Constant">
+      <a name="value" val="0x0"/>
+    </comp>
+    <comp lib="0" loc="(920,240)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="facing" val="west"/>
+      <a name="label" val="QA"/>
+      <a name="type" val="output"/>
+    </comp>
+    <comp lib="0" loc="(920,320)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="facing" val="west"/>
+      <a name="label" val="QB"/>
+      <a name="type" val="output"/>
+    </comp>
+    <comp lib="0" loc="(920,400)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="facing" val="west"/>
+      <a name="label" val="QC"/>
+      <a name="type" val="output"/>
+    </comp>
+    <comp lib="0" loc="(920,480)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="facing" val="west"/>
+      <a name="label" val="QD"/>
+      <a name="type" val="output"/>
+    </comp>
+    <comp lib="0" loc="(920,590)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="facing" val="west"/>
+      <a name="label" val="QE"/>
+      <a name="type" val="output"/>
+    </comp>
+    <comp lib="0" loc="(920,680)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="facing" val="west"/>
+      <a name="label" val="QF"/>
+      <a name="type" val="output"/>
+    </comp>
+    <comp lib="0" loc="(920,770)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="facing" val="west"/>
+      <a name="label" val="QG"/>
+      <a name="type" val="output"/>
+    </comp>
+    <comp lib="0" loc="(920,860)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="facing" val="west"/>
+      <a name="label" val="QH"/>
+      <a name="type" val="output"/>
+    </comp>
+    <comp lib="1" loc="(780,240)" name="NOT Gate">
+      <a name="size" val="20"/>
+    </comp>
+    <comp lib="1" loc="(780,590)" name="NOT Gate">
+      <a name="size" val="20"/>
+    </comp>
+    <comp lib="5" loc="(860,240)" name="T Flip-Flop">
+      <a name="appearance" val="classic"/>
+    </comp>
+    <comp lib="5" loc="(860,320)" name="T Flip-Flop">
+      <a name="appearance" val="classic"/>
+    </comp>
+    <comp lib="5" loc="(860,400)" name="T Flip-Flop">
+      <a name="appearance" val="classic"/>
+    </comp>
+    <comp lib="5" loc="(860,480)" name="T Flip-Flop">
+      <a name="appearance" val="classic"/>
+    </comp>
+    <comp lib="5" loc="(860,590)" name="T Flip-Flop">
+      <a name="appearance" val="classic"/>
+    </comp>
+    <comp lib="5" loc="(860,680)" name="T Flip-Flop">
+      <a name="appearance" val="classic"/>
+    </comp>
+    <comp lib="5" loc="(860,770)" name="T Flip-Flop">
+      <a name="appearance" val="classic"/>
+    </comp>
+    <comp lib="5" loc="(860,860)" name="T Flip-Flop">
+      <a name="appearance" val="classic"/>
+    </comp>
+    <wire from="(690,240)" to="(760,240)"/>
+    <wire from="(690,520)" to="(760,520)"/>
+    <wire from="(690,590)" to="(760,590)"/>
+    <wire from="(690,910)" to="(760,910)"/>
+    <wire from="(760,280)" to="(760,360)"/>
+    <wire from="(760,280)" to="(850,280)"/>
+    <wire from="(760,360)" to="(760,440)"/>
+    <wire from="(760,360)" to="(850,360)"/>
+    <wire from="(760,440)" to="(760,520)"/>
+    <wire from="(760,440)" to="(850,440)"/>
+    <wire from="(760,520)" to="(850,520)"/>
+    <wire from="(760,640)" to="(760,730)"/>
+    <wire from="(760,640)" to="(850,640)"/>
+    <wire from="(760,730)" to="(760,820)"/>
+    <wire from="(760,730)" to="(850,730)"/>
+    <wire from="(760,820)" to="(760,910)"/>
+    <wire from="(760,820)" to="(850,820)"/>
+    <wire from="(760,910)" to="(850,910)"/>
+    <wire from="(780,240)" to="(820,240)"/>
+    <wire from="(780,590)" to="(820,590)"/>
+    <wire from="(790,290)" to="(790,320)"/>
+    <wire from="(790,290)" to="(890,290)"/>
+    <wire from="(790,320)" to="(820,320)"/>
+    <wire from="(790,370)" to="(790,400)"/>
+    <wire from="(790,370)" to="(890,370)"/>
+    <wire from="(790,400)" to="(820,400)"/>
+    <wire from="(790,450)" to="(790,480)"/>
+    <wire from="(790,450)" to="(890,450)"/>
+    <wire from="(790,480)" to="(820,480)"/>
+    <wire from="(790,650)" to="(790,680)"/>
+    <wire from="(790,650)" to="(890,650)"/>
+    <wire from="(790,680)" to="(820,680)"/>
+    <wire from="(790,740)" to="(790,770)"/>
+    <wire from="(790,740)" to="(890,740)"/>
+    <wire from="(790,770)" to="(820,770)"/>
+    <wire from="(790,830)" to="(790,860)"/>
+    <wire from="(790,830)" to="(890,830)"/>
+    <wire from="(790,860)" to="(820,860)"/>
+    <wire from="(800,260)" to="(820,260)"/>
+    <wire from="(800,340)" to="(820,340)"/>
+    <wire from="(800,420)" to="(820,420)"/>
+    <wire from="(800,500)" to="(820,500)"/>
+    <wire from="(800,610)" to="(820,610)"/>
+    <wire from="(800,700)" to="(820,700)"/>
+    <wire from="(800,790)" to="(820,790)"/>
+    <wire from="(800,880)" to="(820,880)"/>
+    <wire from="(820,630)" to="(830,630)"/>
+    <wire from="(820,720)" to="(830,720)"/>
+    <wire from="(820,810)" to="(830,810)"/>
+    <wire from="(820,900)" to="(830,900)"/>
+    <wire from="(830,620)" to="(830,630)"/>
+    <wire from="(830,710)" to="(830,720)"/>
+    <wire from="(830,800)" to="(830,810)"/>
+    <wire from="(830,890)" to="(830,900)"/>
+    <wire from="(850,270)" to="(850,280)"/>
+    <wire from="(850,350)" to="(850,360)"/>
+    <wire from="(850,430)" to="(850,440)"/>
+    <wire from="(850,510)" to="(850,520)"/>
+    <wire from="(850,620)" to="(850,640)"/>
+    <wire from="(850,710)" to="(850,730)"/>
+    <wire from="(850,800)" to="(850,820)"/>
+    <wire from="(850,890)" to="(850,910)"/>
+    <wire from="(860,240)" to="(920,240)"/>
+    <wire from="(860,260)" to="(890,260)"/>
+    <wire from="(860,320)" to="(920,320)"/>
+    <wire from="(860,340)" to="(890,340)"/>
+    <wire from="(860,400)" to="(920,400)"/>
+    <wire from="(860,420)" to="(890,420)"/>
+    <wire from="(860,480)" to="(920,480)"/>
+    <wire from="(860,590)" to="(920,590)"/>
+    <wire from="(860,610)" to="(890,610)"/>
+    <wire from="(860,680)" to="(920,680)"/>
+    <wire from="(860,700)" to="(890,700)"/>
+    <wire from="(860,770)" to="(920,770)"/>
+    <wire from="(860,790)" to="(890,790)"/>
+    <wire from="(860,860)" to="(920,860)"/>
+    <wire from="(890,260)" to="(890,290)"/>
+    <wire from="(890,340)" to="(890,370)"/>
+    <wire from="(890,420)" to="(890,450)"/>
+    <wire from="(890,610)" to="(890,650)"/>
+    <wire from="(890,700)" to="(890,740)"/>
+    <wire from="(890,790)" to="(890,830)"/>
   </circuit>
 </project>
