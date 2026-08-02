@@ -13,8 +13,8 @@
 ; Keyboard        256b ($100)  |              0D
 ; Print/Wrchr     231b ($e7)   |              0E
 ; Readline        103b ($67)   |  1K          0F
-; Cls/Tab/XY      106b ($6a)   |  
-; Copy fw/bw       85b ($55)   |  
+; Cls/Tab/XY      106b ($6a)   |
+; Copy fw/bw       85b ($55)   |
 ; INT/Cursor       79b ($4f)   /
 ;                 -----------
 ; 256+231+103+106+85+79+164
@@ -57,15 +57,22 @@ BasePg   = $200  ; start of free memory (constant)
 End4K    = $1000 ; end of 4KB memory (minimum RAM fitted)
 
 ; ------------------------------------------------------------------------------
-; Zero Page $00-7F - BASIC WORKSPACE
+; Zero Page $00-7F - BASIC WORKSPACE / Free for ASM software
 
 ; -- $00-1F BASIC Operator Stack (32 bytes)
 
-OperStk  = $00    ; BASIC operator stack                          (used in RT / Direct)
+OperStk  = $00    ; BASIC operator stack                          (used in Eval [RT / Direct])
+
+LineNo   = $00    ; ALIAS Parsed line number                      (used in AUTO / EDIT)
+LineNoH  = $01    ; ALIAS Parsed line number                      (used in AUTO / EDIT)
+AutoInc  = $02    ; ALIAS AUTO line increment                     (used in AUTO / EDIT)
+var_vt   = $03    ; ALIAS Tokenize vars                           (used in AUTO / EDIT)
+var_et   = $04    ; ALIAS Tokenize vars                           (used in AUTO / EDIT)
+var_cnt  = $05    ; ALIAS Tokenize vars                           (used in AUTO / EDIT)
 
 ; -- $20-5F BASIC Variables (64 bytes)
 
-VarPtrs  = $20    ; 26 x variable pointers (A-Z)                  (used in RT / Direct)
+VarPtrs  = $20    ; 26 x variable pointers (52)                   (used in RT / Direct)
 
 OpTop    = $54    ; Top of OperStk (stack pointer)                (used in RT / Direct)
 ; XXX    = $55    ; unused
@@ -83,65 +90,66 @@ DataH    = $5F    ; ALIAS (EmitOfs, EmitPtch)
 EmitOfs  = $5E    ; ALIAS Data - emit offset for tokenized code   (used in Direct)
 EmitPtch = $5F    ; ALIAS DataH - emit patch offset
 
-; -- $60-7F IO Buffer: Serial / Parallel / Open File (32 bytes)
+; -- $60-7F Scratch Space (32 bytes)
 
-IOBuf    = $60    ; IO Buffer area
 
 ; ------------------------------------------------------------------------------
 ; Zero Page $80-FF - OS WORKSPACE
 
 ; -- $80-8F Keyboard Buffer (16)
 
-KeyBuf   = $80    ; Keyboard Buffer (16 bytes)
-KeyBufMask = 15   ; Modulo 16 (bitmask)
+KeyBuf     = $80        ; Keyboard buffer (16 bytes, align 16)
+KeyBufMask = 15         ; Modulo 16 (bitmask)
 
-; -- $90-97 FCB Pointers (8)
+; -- $90-A7 Disk/Tape Workspace (24)
 
-FCB      = $90    ; FCB Pointers (4 x 2 = 8 bytes)
+FCB_1      = $90        ; File Control Block #1 (8 bytes)
+FCB_2      = $98        ; File Control Block #2 (8 bytes)
+FCB_buf    = 0          ; 0,1  ptr to heap buffer (2)
+FCB_blk    = 2          ; 2    current block (1)
+FCB_ofs    = 3          ; 3    current ofs (1)
+FCB_toc    = 4          ; 4-5  ptr to name [tape] / toc entry [disk] (2)
+FCB_szb    = 6          ; 6    size in blocks (1)
+FCB_szo    = 7          ; 7    final block length (1)
+FCB_base   = FCB_1 - 8  ; FCB_base + (#n << 3) -> FCB_n
 
-; -- $98-9F BASIC Variables (8)
+FCB_trk    = $A0        ; FCB current disk track array (2)
+FCB_sec    = $A2        ; FCB current disk sector array (2)
+DSK_ftr    = $A4        ; Disk free-list track (1)
+DSK_fsc    = $A5        ; Disk free-list sector (1)
+DSK_work   = $A6        ; Disk workspace heap pointer? (2)
 
-LineNo   = $98    ; Parsed line number                            (used in EDIT)
-LineNoH  = $99    ; Parsed line number                            (used in EDIT)
-AutoInc  = $9A    ; AUTO line increment                           (used in EDIT)
-var_vt   = $9B    ; Tokenize vars                                 (used in EDIT)
-var_et   = $9C    ; Tokenize vars                                 (used in EDIT)
-var_cnt  = $9D    ; Tokenize vars                                 (used in EDIT)
+; -- $A8-BF Color RAM (24)
 
-IOBufHd  = $9E    ; IO buffer head (IO Buffer area)
-IOBufTl  = $9F    ; IO buffer tail (IO Buffer area)
+ColorRAM = $A8          ; 24 x {BG:7-4, FG:3-0} (free if Color Zones are inactive)
 
-; -- $A0-BF Disk Workspace (32)
+; -- $C0-CF System Temporaries (16)
 
-DiskWork = $A0    ; Reserved for Disk Expansion
+Src      = $C0          ; source pointer \ Scroll (PRINT/WRCHR/WRCTL), CLS  [Term0]
+SrcH     = $C1          ; source pointer | Tokenize (match_kws/num_val)     [Term1]
+Dst      = $C2          ; destn pointer  | Scroll (PRINT/WRCHR/WRCTL), CLS  [Term2]
+DstH     = $C3          ; destn pointer  /                                  [TermE]
+Ptr      = $C4          ; third pointer  \ VAR ptr, STR ptr, PRINT src (can cause Scroll)
+PtrH     = $C5          ; third pointer  /
+B        = $C6          ; extra register | Subroutines are annotated with usage;
+C        = $C7          ; extra register | held across calls only when unused
+D        = $C8          ; extra register | by callees (manually tracked)
+E        = $C9          ; extra register |
+F        = $CA          ; extra register | Scratch (always transient; cannot hold)
 
-; -- $C0-CF Temporaries (16)
+ExpTop   = $CB          ; top of Expr stack (in stack page)   (used in RT / Direct)
 
-Src      = $C0    ; source pointer \ Scroll (PRINT/WRCHR/WRCTL), CLS  [Term0]
-SrcH     = $C1    ; source pointer | Tokenize (match_kws/num_val)     [Term1]
-Dst      = $C2    ; second pointer | Scroll (PRINT/WRCHR/WRCTL), CLS  [Term2]
-DstH     = $C3    ; second pointer |                                  [TermE]
-Ptr      = $C4    ; third pointer  \ PRINT src (can cause Scroll)
-PtrH     = $C5    ; third pointer  /
-B        = $C6    ; extra register | Subroutines are annotated with usage;
-C        = $C7    ; extra register | held across calls only when unused
-D        = $C8    ; extra register | by callees (manually tracked)
-E        = $C9    ; extra register | 
-F        = $CA    ; extra register | Scratch (always transient; cannot hold)
+Acc0     = $CC          ; accumulator byte 0                  (used in RT / Direct)
+Acc1     = $CD          ; accumulator byte 1
+Acc2     = $CE          ; accumulator byte 2
+AccE     = $CF          ; accumulator exponent (0 for integer)
 
-ExpTop   = $CB    ; top of Expr stack (in stack page)   (used in RT / Direct)
+Term0    = $C0          ; ALIAS Src: term byte 0
+Term1    = $C1          ; ALIAS SrcH: term byte 1
+Term2    = $C2          ; ALIAS Dst: term byte 2
+TermE    = $C3          ; ALIAS DstH: term exponent (0 for integer)
 
-Acc0     = $CC    ; accumulator byte 0                      (used in RT / Direct)
-Acc1     = $CD    ; accumulator byte 1
-Acc2     = $CE    ; accumulator byte 2
-AccE     = $CF    ; accumulator exponent (0 for integer)
-
-Term0    = $C0    ; ALIAS DstH: term byte 0
-Term1    = $C1    ; ALIAS Dst:  term byte 1
-Term2    = $C2    ; ALIAS SrcH: term byte 2
-TermE    = $C3    ; ALIAS Src:  term exponent (0 for integer)
-
-; -- $D0-DF System Vars
+; -- $D0-DF System Vars (16)
 
 KeyHd    = $D0    ; keyboard buffer head (owned by User)
 KeyTl    = $D1    ; keyboard buffer tail (owned by IRQ)
@@ -160,35 +168,37 @@ CurTime  = $DA    ; cursor flash timer
 CurChar  = $DB    ; character under cursor
 CurVis   = $DC    ; cursor visible flag
 
-VidBase  = $DD    ; base of video memory in pages
-MemSize  = $DE    ; size of memory fitted (detected memory) in pages
-;        = $DF    ;
+;        = $DD    ;
+VidBase  = $DE    ; base of video memory (page)
+MemSize  = $DF    ; detected memory size in pages
 
-; -- $E0-EF OS Vectors
+; -- $E0-EF Option Registers, OS Vectors (16)
 
-; E0-E7 free (8)
+; Option = $E0-E7     ; OPT registers
 
-; Vectors (E8-EF)
-IRQTmp   = $E8    ; Temp for IRQ handler #1
-IRQTmp2  = $E9    ; Temp for IRQ handler #2
-NmiVec   = $EA    ; NMI vector in RAM {JMP,Low,High} (for software override)
-IrqVec   = $ED    ; IRQ vector in RAM {JMP,Low,High} (for software override)
+IRQTmp   = $E8        ; Temp for IRQ handler #1
+IRQTmp2  = $E9        ; Temp for IRQ handler #2
+NmiVec   = $EA        ; NMI vector in RAM {JMP,Low,High} (for ROM override)
+IrqVec   = $ED        ; IRQ vector in RAM {JMP,Low,High} (for ROM override)
 
-; -- $F0-FF  IO Area
+; -- $F0-FF  IO Area (16)
 
-IO_MMAP  = $F0    ; expansion mapping 4-bit (write)
-IO_DSK0  = $F4    ; disk expansion 0
-IO_DSK1  = $F5    ; disk expansion 1
-IO_DSK2  = $F6    ; disk expansion 2
-IO_DSK3  = $F7    ; disk expansion 3
-IO_DATA  = $F8    ; OUT 8-bit (7-6:Volume 2:RTS 1:TXD 0:TapeOut) / IN (2:CTS 1:RXD 0:TapeIn)
-IO_KEYB  = $F9    ; Keyboard column 4-bit (3:Strobe 2-0:KBCol) / read: KB row 8-bit
-IO_LINE  = $FA    ; IRQAck 3-bit (7:VSync 6:VRow 5:KBInt) / read: vertical line (>= 192 in vblank)
-IO_PSGF  = $FB    ; PSG frequency 8-bit (write: 7-0:Divider)(7860 Hz / divider)
-IO_PAL1  = $FC    ; palette for APA 8-bit (7-4:BG 3-0:~FG)
-IO_PAL2  = $FD    ; palette for APA 8-bit (7-4:C2 3-0:C3)
-IO_VPGC  = $FE    ; video page counter 5-bit
-IO_VCTL  = $FF    ; video mode 8-bit (7:VSync 6:VRow 5:Parallel 4:? 3:Grey 2:2Bpp 1-0:VMux)
+IO_EXT0  = $F0        ; expansion slot 0 (modem/audio/etc)
+IO_EXT1  = $F1        ; expansion slot 1 (modem/audio/etc)
+IO_EXT2  = $F2        ; expansion slot 2 (modem/audio/etc)
+IO_EXT3  = $F3        ; expansion slot 3 (modem/audio/etc)
+IO_DSK0  = $F4        ; disk controller 0
+IO_DSK1  = $F5        ; disk controller 1
+IO_DSK2  = $F6        ; disk controller 2
+IO_DSK3  = $F7        ; disk controller 3
+IO_EXMM  = $F8        ; external memory mapping 6-bit [expansion box] (write)
+IO_DATA  = $F9        ; OUT 8-bit (7-6:Volume 2:RTS 1:TapeTx 0:TXD | 7-0 Parallel) / IN (2:CTS 1:TapeRx 0:RXD)
+IO_KEYB  = $FA        ; Keyboard column 4-bit (3:Strobe 2-0:KBCol) / read: KB row 8-bit
+IO_PSGF  = $FB        ; PSG frequency 8-bit (write: 7-0:Divider)(7860 Hz / divider)
+IO_LINE  = $FC        ; IRQAck (7:IRQAck 6:Parallel) / read: vertical line (>= 192 in vblank)
+IO_PAL1  = $FD        ; palette for APA 8-bit (7-4:BG 3-0:~FG)
+IO_PAL2  = $FE        ; palette for APA 8-bit (7-4:C2 3-0:C3)
+IO_VCTL  = $FF        ; video mode 8-bit (7-4:VideoBase 3:Grey 2:2Bpp 1-0:Mode)
 
 ; ------------------------------------------------------------------------------
 ; PAGE ONE $100-1FF - STACK
@@ -232,8 +242,8 @@ reset:
   ; print free memory
   LDX VidBase       ; get video base page
   DEX               ; minus 2 (ASSUMES BasePg=$02)
-  DEX               ; 
-  STX Acc1          ; 
+  DEX               ;
+  STX Acc1          ;
   JSR print_u16     ; print it (requires Acc0 = 0)
   LDY #<msg_freemem ; free memory message
   JSR printmsgln    ; print it
@@ -320,7 +330,7 @@ e_syn1    JMP e_syn
 
 emit_chan LDA Acc1          ; range check
           BNE e_range       ; -> out of range
-          LDA Acc0          ; 
+          LDA Acc0          ;
           CMP #10           ; is it >= 10?
           BCS e_range       ; -> out of range
           JMP emit_byte
@@ -472,7 +482,7 @@ e_inp_s   JSR emit_str      ; emit string literal
 
 e_print   LDX #<tab_print
           JSR tok_tab
-          LDX #<kwi_print   ; 
+          LDX #<kwi_print   ;
           JSR match_kwi     ; match AT, TAB, SPC   (optional)  XXX need OR mask to emit OP...
           BCS e_prnfn
           JSR chk_else      ; ELSE -> e_else
@@ -689,7 +699,7 @@ match_kwa:       ; Y=ofs, X=page -> emit/jump: Y, A=hi-byte (uses A,X,Y,B,Src)
   BCS match_kwx  ; -> not found, return
   STX SrcH       ; SrcH = page
   TAX            ; X=index
-  LDA #0         ; 
+  LDA #0         ;
   STA Src        ; keyword index at offset 0
   LDA (Src),X    ; look up 1st keyword offset in page
 match_kw2:
@@ -716,10 +726,10 @@ match_kw2:
   BMI @next_kw   ; [2] -> bit 6 set, try next keyword [+1]
 match_kwx:       ; not found, return
   CLC            ; [2]
-  RTS            ; [6] 
+  RTS            ; [6]
 match_kwf:       ; found match, A=hi-byte
   SEC            ; [2]
-  RTS            ; [6] 
+  RTS            ; [6]
 
 
 
@@ -1004,35 +1014,35 @@ stmt_disp:
 ; "FN",       OP_FN      special
 
 expr_disp:
-  DB <e_xn        ; OP_PI      none -> num       
-  DB <e_xn        ; OP_TIME    none -> num       
-  DB <e_xn        ; OP_TOP     none -> num       
-  DB <e_xn        ; OP_POS     none -> num       
-  DB <e_xn        ; OP_VPOS    none -> num       
-  DB <e_xn        ; OP_GET     none -> num       
-  DB <e_nn        ; OP_ABS     num -> num        
-  DB <e_nn        ; OP_RND     num -> num        
-  DB <e_nn        ; OP_SQR     num -> num        
-  DB <e_nn        ; OP_SGN     num -> num        
-  DB <e_nn        ; OP_USR     num -> num        
-  DB <e_nn        ; OP_BTN     num -> num        
-  DB <e_nn        ; OP_JOY     num -> num        
-  DB <e_nn        ; OP_KEY     num -> num        
-  DB <e_nn        ; OP_INT     num -> num        
-  DB <e_nnn       ; OP_SCN     num, num -> num   
-  DB <e_sn        ; OP_ASC     str -> num        
-  DB <e_sn        ; OP_VAL     str -> num        
-  DB <e_sn        ; OP_LEN     str -> num        
-  DB <e_xs        ; OP_GET     none -> str       
+  DB <e_xn        ; OP_PI      none -> num
+  DB <e_xn        ; OP_TIME    none -> num
+  DB <e_xn        ; OP_TOP     none -> num
+  DB <e_xn        ; OP_POS     none -> num
+  DB <e_xn        ; OP_VPOS    none -> num
+  DB <e_xn        ; OP_GET     none -> num
+  DB <e_nn        ; OP_ABS     num -> num
+  DB <e_nn        ; OP_RND     num -> num
+  DB <e_nn        ; OP_SQR     num -> num
+  DB <e_nn        ; OP_SGN     num -> num
+  DB <e_nn        ; OP_USR     num -> num
+  DB <e_nn        ; OP_BTN     num -> num
+  DB <e_nn        ; OP_JOY     num -> num
+  DB <e_nn        ; OP_KEY     num -> num
+  DB <e_nn        ; OP_INT     num -> num
+  DB <e_nnn       ; OP_SCN     num, num -> num
+  DB <e_sn        ; OP_ASC     str -> num
+  DB <e_sn        ; OP_VAL     str -> num
+  DB <e_sn        ; OP_LEN     str -> num
+  DB <e_xs        ; OP_GET     none -> str
   DB <e_instr     ; OP_INSTR   [num], str, str -> num
-  DB <e_sns       ; OP_LEFT    str, num -> str   
-  DB <e_sns       ; OP_RIGHT   str, num -> str   
-  DB <e_sns       ; OP_STRING  str, num -> str   
+  DB <e_sns       ; OP_LEFT    str, num -> str
+  DB <e_sns       ; OP_RIGHT   str, num -> str
+  DB <e_sns       ; OP_STRING  str, num -> str
   DB <e_snns      ; OP_MID     str, num, num -> str
-  DB <e_ns        ; OP_CHR     num -> str        
-  DB <e_ns        ; OP_STR     num -> str        
-  DB <e_ch        ; OP_EOF     #ch               
-  DB <e_ch        ; OP_FLEN    #ch               
+  DB <e_ns        ; OP_CHR     num -> str
+  DB <e_ns        ; OP_STR     num -> str
+  DB <e_ch        ; OP_EOF     #ch
+  DB <e_ch        ; OP_FLEN    #ch
   DB <e_ret2      ; OP_FN      special
 
 
@@ -1107,8 +1117,8 @@ msg_esc:  DB 8,13,13,"Escape"
 ; must wait for ESC to be released
 escape:             ; A = msg address low
   JSR hide_cursor   ; uses A,Y; Y=0
-  LDY #<msg_esc     ; 
-  JSR printmsgln    ; 
+  LDY #<msg_esc     ;
+  JSR printmsgln    ;
 @wait:              ; wait for Escape to be released  (XXX -> opcode? 6b vs 4b)  -2
   LDA ModKeys       ; check key state
   BMI @wait         ; -> ESC still down
@@ -1294,7 +1304,7 @@ stmt_rev:                     ; [34] indices MUST match OPCODEs
 
 
 ; @@ skip_spc
-skip_spc:          ; 
+skip_spc:          ;
   LDA LineBuf,Y    ; [4] next input char
   INY              ; [2] advance input (assume match)
   CMP #32          ; [2] was it space?
@@ -1634,7 +1644,7 @@ cmdArt:             ; 29 bytes
 cmdDel:
   JSR lno_u16       ; num_u16 -> LineNo, CS=found
   BCC c_syn         ; -> require line
-  JSR if_comma      ; 
+  JSR if_comma      ;
   BNE delLine       ; -> no comma, single line
   JSR num_u16       ; last line
   BCC delLine       ; -> no number, single line
@@ -1782,9 +1792,9 @@ debug:
 prhex:              ; A=byte; (uses A,X,F,Src,Dst) preserves Y
   PHA               ; save A
   LSR               ; shift top 4 bits down
-  LSR               ; 
-  LSR               ; 
-  LSR               ; 
+  LSR               ;
+  LSR               ;
+  LSR               ;
   JSR @dig          ; print digit
   PLA               ; restore A
   AND #15           ; keep low 4 bits
@@ -1793,7 +1803,7 @@ prhex:              ; A=byte; (uses A,X,F,Src,Dst) preserves Y
   BCS @let          ; -> yes, print letter (CF=1)
   ADC #$FA          ; add 48 - 54 (-6)
   CLC               ; set CF=0 (for digits >=6)
-@let:               ; 
+@let:               ;
   ADC #54           ; 'A'65 - 10 - 1(CF)
   JMP wrchr         ; -> write char (uses A,X,F,Src,Dst) preserves Y
 
@@ -1845,7 +1855,7 @@ ins_line:           ; LineNo
   LDY #3            ; OPLN, NoL, NoH, Len, Pre
   LDA (Ptr),Y       ; get line length (including header)
   STA B             ; save line length
-; 
+;
 
   SEC
   SBC #5            ; minus header
@@ -1856,7 +1866,7 @@ ins_line:           ; LineNo
   LDA Ptr
   STA Src           ; Dst = Ptr
   CLC
-  ADC B             ; add 
+  ADC B             ; add
   LDA PtrH
   STA DstH
   JSR mem_copy      ; from (Src) to (Dst) with XY=size (uses A,X,Y,F,Src,Dst)
@@ -2152,17 +2162,17 @@ do_let:          ; assign VAR[$] = Expr                              (40b)
   AND #1         ; [2] num/str flag
   BNE @str       ; [2] -> str [+1]
   JSR eval_n     ; [6] evaluate numeric expression -> Acc
-  LDA Acc0       ; [3] 
+  LDA Acc0       ; [3]
   STA (Ptr),Y    ; [6] write to Var0
   INY            ; [2]
-  LDA Acc1       ; [3] 
+  LDA Acc1       ; [3]
   STA (Ptr),Y    ; [6] write to Var1
   INY            ; [2]
 @scpy:
-  LDA Acc2       ; [3] 
+  LDA Acc2       ; [3]
   STA (Ptr),Y    ; [6] write to Var2
   INY            ; [2]
-  LDA AccE       ; [3] 
+  LDA AccE       ; [3]
   STA (Ptr),Y    ; [6] write to VarE
   LDY B          ; [3] restore Y=CodeOfs
   JMP do_stmt     ; -> next stmt
@@ -2595,7 +2605,7 @@ find_var:         ; (uses A,X)
   ASL             ; [2] letter * 2
   TAX             ; [2] 0-50 index
   LDA VarPtrs,X   ; [4] var-list pointer low byte
-  STA Ptr         ; [3] 
+  STA Ptr         ; [3]
   LDA VarPtrs+1,X ; [4] var-list pointer high byte (zero if no VARs)
   BEQ @novar      ; [2] -> no VARs start with this letter [+1]
   STA PtrH        ; [3]
@@ -2616,7 +2626,7 @@ find_var:         ; (uses A,X)
   INY             ; [2] skip [$8x]
   INY             ; [2] skip [NextL]
   INY             ; [2] skip [NextH]
-  RTS             ; [6] -> Ptr=var, Y=slot-ofs, A=tag, B=code-ofs // [26] (80+15*n total: 95,110,125..) 
+  RTS             ; [6] -> Ptr=var, Y=slot-ofs, A=tag, B=code-ofs // [26] (80+15*n total: 95,110,125..)
 @miss:           ; skip rest of VAR (may be at end already)
   DEY            ; [2] for pre-increment
 @xlp:            ; [+9] per char:
@@ -3011,12 +3021,12 @@ num_u24:         ; from LineBuf,Y -> Acc,Y=end (uses A,X,Acc,Term)
   ROL Acc2       ; [5]
   BCS err_ovf    ; [2] -> unsigned overflow
   CLC            ; [2] Acc += digit 0-9
-  TXA            ; [2] 
-  ADC Acc0       ; [3] 
+  TXA            ; [2]
+  ADC Acc0       ; [3]
   BCC @noc       ; [2] -> no carry [+1]
-  INC Acc1       ; [5] 
+  INC Acc1       ; [5]
   BNE @noc       ; [2] -> no carry [+1]
-  INC Acc2       ; [5] 
+  INC Acc2       ; [5]
   BEQ err_ovf    ; [2] -> unsigned overflow [+1]
 @noc:
   ADC Term0      ; [3] Acc += Term (=Val*10)
@@ -3134,7 +3144,7 @@ div_u24:         ; Acc=dividend, Term=divisor -> Acc=quotient, BCD=remainder (us
   LDA B          ; [3] low byte
   CMP Term0      ; [3] is remainder >= divisor?
   BCC @next      ; [2] -> less, continue loop [+1]
-@ge10:           ; 
+@ge10:           ;
 ; subtract divisor from remainder
   SEC            ; [2]
   LDA B          ; [3] low byte
@@ -3254,7 +3264,7 @@ gfx_line:          ; uses (A,X,Y)
   ORA F            ; OR in semigraphics
   STA (Dst),Y      ; write back
 
-  ; 
+  ;
   RTS
 
 
@@ -3307,7 +3317,7 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
   RTS             ; [6] TOTAL Scan ~[110] cycles
 ; ...
 @key_hit:         ; X=col_bitmap(!=0) Y=row
-; debounce check 
+; debounce check
   CPX IO_KEYB     ; [3] check if stable                    3+3µs read 6/0.89Mhz = 6.7µs verify
   BNE @row_lp     ; [2] if not -> try again
   CPY #8          ; [2] is ModKeys row?
@@ -3315,8 +3325,8 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
   STY IRQTmp      ; [3] save keyscan row for @cont_bsf
   TYA             ; [2] active keyscan row
   ASL             ; [2] row * 8
-  ASL             ; [2] 
-  ASL             ; [2] 
+  ASL             ; [2]
+  ASL             ; [2]
   TAY             ; [2] scantab offset = row*8 as index  (X=col_bitmap Y=row*8 IRQTmp=row)
   TXA             ; [2] A = col_bitmap(!=0)
 ; find first bit set
@@ -3528,7 +3538,7 @@ nl_scrup:          ; (uses A,X,F,Src,Dest) preserves Y
   TYA              ; save Y for caller
   PHA
 ; set up Src
-  LDY WinT         ; 
+  LDY WinT         ;
   INY              ; row = WinT-1
   TYA              ;
   JSR txt_row      ; A=row -> AY=addr (uses A,X,Y,F)
@@ -3543,7 +3553,7 @@ nl_scrup:          ; (uses A,X,F,Src,Dest) preserves Y
   LDY WinH
   DEY              ; rows = WinH - 1
   BEQ @noscr       ; -> height = 1, no scroll
-  TYA              ; 
+  TYA              ;
   JSR txt_row      ; A=rows -> AY=size+VidBase (uses A,X,Y,F)
   SEC
   SBC VidBase      ; AY=size (subtract VidBase)
@@ -3560,7 +3570,7 @@ nl_scrup:          ; (uses A,X,F,Src,Dest) preserves Y
   JSR txt_clr      ; clear row at TXTP (uses A,Y)
 ; return
   PLA              ; restore Y for caller
-  TAY               
+  TAY
   RTS              ; [6]
 
 
@@ -3580,7 +3590,7 @@ wrctl:           ; (uses A,X,F,Src,Dst) preserves Y
   BEQ @up        ; [2] -> do move left [+1]
   CMP #$1D       ; [2] is it DOWN ARROW?
   BEQ @down      ; [2] -> do move left [+1]
-  RTS            ; 
+  RTS            ;
 
 @backsp:         ; go back one cell and clear it
   JSR @left      ; [12+] move cursor left one place
@@ -3591,7 +3601,7 @@ wrctl:           ; (uses A,X,F,Src,Dst) preserves Y
 
 @left:           ; move left one place
   DEC TXTP       ; [5] go back one space
-  LDA TXTP       ; [3] 
+  LDA TXTP       ; [3]
   CMP #$FF       ; [2] crossed page?
   BEQ @up_pg     ; [2] -> crossed page, go up one page [+1]
   RTS            ; [6] // 9
@@ -3642,7 +3652,7 @@ wrctl:           ; (uses A,X,F,Src,Dst) preserves Y
 ; @@ readline
 ; read a single line of input into the line buffer (zero-terminated)
 readline:         ; uses A,X,Y,B,C -> LineBuf, Y=length (EQ if zero)
-  LDA #0          ; 
+  LDA #0          ;
   STA B           ; init line length
   STA C           ; init line cursor (linear)
 @idle:
@@ -3712,8 +3722,10 @@ readline:         ; uses A,X,Y,B,C -> LineBuf, Y=length (EQ if zero)
 ;           0    1      2      3      4       5
 ;           Text 128x96 128x96 256x96 128x192 256x192
 ;           1bpp 1bpp   2bpp   1bpp   2bpp    1bpp
-mode_ctl DB $80, $81,   $86,   $82,   $87,    $83
-mode_siz DB 3,   6,     12,    12,    24,     24    ; in pages
+mode_ctl DB 3,   2,     4+1,   1,     4+0,    0
+mode_pgs DB 3,   6,     12,    12,    24,     24
+; 4K mem    13,  10,    4,     4,     -8,     -8
+; 8K mem    29,  26,    20,    20,    8,      8
 
 vid_bad:
   LDY #<msg_ovf  ; Too Big
@@ -3723,17 +3735,15 @@ vid_bad:
 vid_mode:        ; set screen mode, X=mode (uses A,X,Y,F)
   CPX #6         ; modes 0-5
   BCS vid_bad    ; -> bad mode
-  LDA MemSize    ; get end of memory             $10
+  LDA MemSize    ; get end of memory
   SEC            ; for SBC
-  SBC mode_siz,X ; subtract mode size in pages   $10 - 3 = $0D
-  BCC vid_bad    ; -> not enough memory
-  CMP #2         ; is it below the stack page?
-  BCC vid_bad    ; -> not enough memory
+  SBC mode_pgs,X ; subtract mode size in pages
+  BCC vid_bad    ; -> not enough memory (6K mode in 4K machine)
   STA VidBase    ; set base of video memory
-  STA IO_VPGC    ; set video page counter
-  LDA mode_ctl,X ; get mode control
+  AND #$F0       ; top 4 bits -> 4K bank
+  ORA mode_ctl,X ; low 4 bits -> mode select
   STA IO_VCTL    ; set video mode
-  LDA #0         ; BG=black FG=white (for APA mode)
+  LDA #0         ; BG=black FG=white (reset APA palette)
   STA IO_PAL1    ; reset palette
   STA IO_PAL2    ; reset palette
   STA WinT       ; reset text window top
@@ -3766,7 +3776,7 @@ vid_cls:                 ; (uses A,X,Y,F)
 ; update DMA address (DSTL,DSTH) for "text mode"
 txt_home:        ; (uses A,X,Y)
   LDX #0         ; top-left corner of text window
-  LDY #0         ; 
+  LDY #0         ;
   BEQ tab_e2     ; skip range checks
   ; +++ fall through to @@ txt_tab +++
 
@@ -3798,7 +3808,7 @@ txt_addr_tp:       ; A=row X=col -> TXTP(XY) (uses A,X,Y)
   JSR txt_addr_ax  ; AX -> AY
   STA TXTPH        ; set TXTPH
   STY TXTP         ; set TXTP
-  RTS              ; 
+  RTS              ;
 
 ; @@ txt_row
 ; calculate screen row address
@@ -3856,7 +3866,7 @@ mem_copy:                ; (uses A,X,Y,F,Src,Dst)
 
 ; @@ mcopyf
 ; copy memory forwards from (Src) to (Dst) with XY=size       (31b)
-; assume (Dst < Src) but Src/Dst may overlap 
+; assume (Dst < Src) but Src/Dst may overlap
 mcopyf:                  ; (uses A,X,Y,F,Src,Dst)             X=$03 Y=$00
   TYA                    ; [2] is Y=0?                        A=$00
   BEQ @strt              ; [2] -> Y=0, no partial page [+1]   ->
@@ -3883,7 +3893,7 @@ mcopyf:                  ; (uses A,X,Y,F,Src,Dst)             X=$03 Y=$00
 
 ; @@ mcopyb
 ; copy memory backwards from (Src) to (Dst) with XY=size      (37b)
-; assume (Dst > Src) but Src/Dst may overlap 
+; assume (Dst > Src) but Src/Dst may overlap
 mcopyb:                  ; uses (A,X,Y,F,Src,Dst)
   STX F                  ; [3] page count
 ; advance to last page (13b, 19s)
@@ -3958,7 +3968,7 @@ cur_show:         ; show cursor (uses A,Y; Y=0)
   LDA #$80        ; [2] set top bit (but not bit 6: inhibit)
   STA CurVis      ; [3] set top-bit (cursor now visible)
 cur_ret:
-  LDA #24         ; [2] 
+  LDA #24         ; [2]
   STA CurTime     ; [3] reset cursor timer
 cur_inh:
   RTS             ; [6]
@@ -3993,11 +4003,8 @@ irq_rom:
   PHA            ; save X
   TYA
   PHA            ; save Y
-; reset video base address
-  LDA VidBase    ; video mode base page
-  STA IO_VPGC    ; set video page counter
 ; keyboard scan
-  LDA #32        ; acknowledge 5:KBInt
+  LDA #128       ; acknowledge 5:KBInt
   STA IO_LINE    ; acknowledge interrupt
   JSR keyscan
 ; cursor blink
