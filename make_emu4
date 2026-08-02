@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -e -x
 
-asm6 rom6K.asm rom6K.bin rom6K.lst
+asm6 rom6K-native2.asm rom6K.bin rom6K-native2.lst
 
 clang -Wall -Wextra -pedantic \
 -I /opt/homebrew/Cellar/sdl2/2.32.0/include -L /opt/homebrew/Cellar/sdl2/2.32.0/lib -l SDL2 \

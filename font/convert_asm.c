@@ -25,8 +25,8 @@ int main() {
                 }
                 // re-pack [LLLLRRRR] pixels
                 //    into [RLRLRLRL] format
-                byte = ((byte&128)>>1) | ((byte&64)>>2) | ((byte&32)>>3) | ((byte&16)>>4)
-                     | ((byte&8)<<4) | ((byte&4)<<3) | ((byte&2)<<2) | ((byte&1)<<1);
+                // byte = ((byte&128)>>1) | ((byte&64)>>2) | ((byte&32)>>3) | ((byte&16)>>4)
+                //      | ((byte&8)<<4) | ((byte&4)<<3) | ((byte&2)<<2) | ((byte&1)<<1);
                 printf(cy==7?"%d":"%d,",byte);
                 chara += stride; // next line
             }
