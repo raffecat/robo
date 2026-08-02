@@ -447,17 +447,13 @@
     <comp lib="1" loc="(640,1140)" name="AND Gate">
       <a name="size" val="30"/>
     </comp>
-    <comp lib="1" loc="(700,730)" name="AND Gate">
-      <a name="inputs" val="3"/>
+    <comp lib="1" loc="(700,720)" name="AND Gate">
+      <a name="inputs" val="4"/>
       <a name="size" val="30"/>
     </comp>
     <comp lib="1" loc="(710,1110)" name="NOT Gate">
       <a name="facing" val="north"/>
       <a name="size" val="20"/>
-    </comp>
-    <comp lib="1" loc="(750,720)" name="AND Gate">
-      <a name="inputs" val="3"/>
-      <a name="size" val="30"/>
     </comp>
     <comp lib="1" loc="(760,600)" name="NOT Gate">
       <a name="size" val="20"/>
@@ -473,12 +469,8 @@
       <a name="inputs" val="3"/>
       <a name="size" val="30"/>
     </comp>
-    <comp lib="1" loc="(850,620)" name="AND Gate">
-      <a name="inputs" val="3"/>
-      <a name="size" val="30"/>
-    </comp>
-    <comp lib="1" loc="(900,630)" name="AND Gate">
-      <a name="inputs" val="3"/>
+    <comp lib="1" loc="(850,630)" name="AND Gate">
+      <a name="inputs" val="4"/>
       <a name="size" val="30"/>
     </comp>
     <comp lib="1" loc="(990,780)" name="NOT Gate">
@@ -1994,6 +1986,10 @@ e6 cc ca d0 c6 60
       <a name="font" val="SansSerif plain 14"/>
       <a name="text" val="Work-around for incorrectly timed RCO output"/>
     </comp>
+    <comp lib="9" loc="(680,758)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="Reset (57)"/>
+    </comp>
     <comp lib="9" loc="(685,1125)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U44A"/>
@@ -2010,10 +2006,6 @@ e6 cc ca d0 c6 60
     <comp lib="9" loc="(720,1075)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="011"/>
-    </comp>
-    <comp lib="9" loc="(730,745)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="Reset (57)"/>
     </comp>
     <comp lib="9" loc="(745,1315)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -2892,7 +2884,7 @@ e6 cc ca d0 c6 60
     <wire from="(4480,560)" to="(4480,1240)"/>
     <wire from="(4500,410)" to="(4500,1020)"/>
     <wire from="(4520,110)" to="(4520,910)"/>
-    <wire from="(460,500)" to="(680,500)"/>
+    <wire from="(460,500)" to="(650,500)"/>
     <wire from="(460,510)" to="(690,510)"/>
     <wire from="(460,520)" to="(700,520)"/>
     <wire from="(460,530)" to="(470,530)"/>
@@ -2969,12 +2961,17 @@ e6 cc ca d0 c6 60
     <wire from="(630,730)" to="(670,730)"/>
     <wire from="(640,1140)" to="(660,1140)"/>
     <wire from="(640,50)" to="(640,90)"/>
-    <wire from="(640,550)" to="(640,720)"/>
+    <wire from="(640,550)" to="(640,710)"/>
     <wire from="(640,550)" to="(720,550)"/>
-    <wire from="(640,720)" to="(670,720)"/>
+    <wire from="(640,710)" to="(670,710)"/>
     <wire from="(640,90)" to="(2270,90)"/>
     <wire from="(650,1060)" to="(660,1060)"/>
     <wire from="(650,1080)" to="(660,1080)"/>
+    <wire from="(650,500)" to="(1470,500)"/>
+    <wire from="(650,500)" to="(650,650)"/>
+    <wire from="(650,650)" to="(650,700)"/>
+    <wire from="(650,650)" to="(820,650)"/>
+    <wire from="(650,700)" to="(670,700)"/>
     <wire from="(660,1030)" to="(660,1060)"/>
     <wire from="(660,1030)" to="(710,1030)"/>
     <wire from="(660,1080)" to="(660,1140)"/>
@@ -2982,20 +2979,15 @@ e6 cc ca d0 c6 60
     <wire from="(660,1170)" to="(1070,1170)"/>
     <wire from="(670,1270)" to="(670,1470)"/>
     <wire from="(670,1270)" to="(690,1270)"/>
-    <wire from="(680,500)" to="(1470,500)"/>
-    <wire from="(680,500)" to="(680,640)"/>
-    <wire from="(680,640)" to="(680,710)"/>
-    <wire from="(680,640)" to="(860,640)"/>
-    <wire from="(680,710)" to="(710,710)"/>
-    <wire from="(690,510)" to="(690,630)"/>
+    <wire from="(690,510)" to="(690,640)"/>
     <wire from="(690,510)" to="(760,510)"/>
-    <wire from="(690,630)" to="(820,630)"/>
+    <wire from="(690,640)" to="(820,640)"/>
     <wire from="(700,170)" to="(700,280)"/>
     <wire from="(700,280)" to="(1200,280)"/>
     <wire from="(700,520)" to="(700,620)"/>
     <wire from="(700,520)" to="(750,520)"/>
     <wire from="(700,620)" to="(820,620)"/>
-    <wire from="(700,730)" to="(720,730)"/>
+    <wire from="(700,720)" to="(770,720)"/>
     <wire from="(710,1030)" to="(710,1060)"/>
     <wire from="(710,1060)" to="(880,1060)"/>
     <wire from="(710,1080)" to="(710,1110)"/>
@@ -3004,9 +2996,6 @@ e6 cc ca d0 c6 60
     <wire from="(710,1210)" to="(1620,1210)"/>
     <wire from="(710,150)" to="(710,270)"/>
     <wire from="(710,270)" to="(1350,270)"/>
-    <wire from="(710,710)" to="(710,720)"/>
-    <wire from="(710,710)" to="(720,710)"/>
-    <wire from="(710,720)" to="(720,720)"/>
     <wire from="(710,960)" to="(1350,960)"/>
     <wire from="(710,960)" to="(710,1030)"/>
     <wire from="(720,130)" to="(1840,130)"/>
@@ -3028,7 +3017,6 @@ e6 cc ca d0 c6 60
     <wire from="(750,520)" to="(1470,520)"/>
     <wire from="(750,520)" to="(750,580)"/>
     <wire from="(750,580)" to="(790,580)"/>
-    <wire from="(750,720)" to="(770,720)"/>
     <wire from="(760,510)" to="(1470,510)"/>
     <wire from="(760,510)" to="(760,570)"/>
     <wire from="(760,570)" to="(820,570)"/>
@@ -3050,15 +3038,11 @@ e6 cc ca d0 c6 60
     <wire from="(840,1020)" to="(880,1020)"/>
     <wire from="(840,1180)" to="(1620,1180)"/>
     <wire from="(850,580)" to="(910,580)"/>
-    <wire from="(850,620)" to="(870,620)"/>
+    <wire from="(850,630)" to="(950,630)"/>
     <wire from="(860,1040)" to="(860,1190)"/>
     <wire from="(860,1040)" to="(880,1040)"/>
     <wire from="(860,1190)" to="(1160,1190)"/>
-    <wire from="(860,630)" to="(860,640)"/>
-    <wire from="(860,630)" to="(870,630)"/>
-    <wire from="(860,640)" to="(870,640)"/>
     <wire from="(900,570)" to="(910,570)"/>
-    <wire from="(900,630)" to="(950,630)"/>
     <wire from="(940,1020)" to="(1000,1020)"/>
     <wire from="(940,1080)" to="(1020,1080)"/>
     <wire from="(940,570)" to="(1320,570)"/>
