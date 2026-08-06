@@ -156,10 +156,6 @@
     <comp lib="0" loc="(2390,510)" name="Constant">
       <a name="value" val="0x0"/>
     </comp>
-    <comp lib="0" loc="(2440,1850)" name="Constant">
-      <a name="facing" val="north"/>
-      <a name="value" val="0x0"/>
-    </comp>
     <comp lib="0" loc="(2450,550)" name="Constant">
       <a name="facing" val="west"/>
     </comp>
@@ -170,7 +166,6 @@
       <a name="facing" val="west"/>
       <a name="value" val="0x0"/>
     </comp>
-    <comp lib="0" loc="(300,670)" name="Constant"/>
     <comp lib="0" loc="(3010,1890)" name="Constant"/>
     <comp lib="0" loc="(3030,1280)" name="Constant">
       <a name="facing" val="west"/>
@@ -257,7 +252,7 @@
       <a name="value" val="0x0"/>
     </comp>
     <comp lib="0" loc="(480,2560)" name="Constant">
-      <a name="value" val="0x1a"/>
+      <a name="value" val="0xc"/>
       <a name="width" val="8"/>
     </comp>
     <comp lib="0" loc="(4830,690)" name="Splitter">
@@ -366,27 +361,27 @@
       <a name="facing" val="north"/>
       <a name="size" val="20"/>
     </comp>
-    <comp lib="1" loc="(1980,240)" name="NAND Gate">
-      <a name="size" val="30"/>
+    <comp lib="1" loc="(1960,510)" name="NOT Gate">
+      <a name="facing" val="north"/>
+      <a name="size" val="20"/>
     </comp>
-    <comp lib="1" loc="(2040,180)" name="NAND Gate">
-      <a name="size" val="30"/>
-    </comp>
-    <comp lib="1" loc="(2040,220)" name="NAND Gate">
-      <a name="size" val="30"/>
-    </comp>
-    <comp lib="1" loc="(2140,210)" name="NAND Gate">
-      <a name="size" val="30"/>
-    </comp>
-    <comp lib="1" loc="(2300,490)" name="NOT Gate">
+    <comp lib="1" loc="(2080,470)" name="NOT Gate">
       <a name="facing" val="south"/>
       <a name="size" val="20"/>
+    </comp>
+    <comp lib="1" loc="(2190,320)" name="NAND Gate">
+      <a name="size" val="30"/>
     </comp>
     <comp lib="1" loc="(2340,680)" name="NOT Gate">
       <a name="size" val="20"/>
     </comp>
+    <comp lib="1" loc="(2440,1190)" name="NOT Gate">
+      <a name="facing" val="north"/>
+      <a name="size" val="20"/>
+    </comp>
     <comp lib="1" loc="(2770,430)" name="NAND Gate">
       <a name="facing" val="west"/>
+      <a name="inputs" val="3"/>
       <a name="size" val="30"/>
     </comp>
     <comp lib="1" loc="(2840,200)" name="NOT Gate">
@@ -420,6 +415,10 @@
     <comp lib="1" loc="(3380,1070)" name="NOR Gate">
       <a name="facing" val="west"/>
       <a name="size" val="30"/>
+    </comp>
+    <comp lib="1" loc="(3380,1120)" name="NOT Gate">
+      <a name="facing" val="north"/>
+      <a name="size" val="20"/>
     </comp>
     <comp lib="1" loc="(3460,1080)" name="NOT Gate">
       <a name="facing" val="west"/>
@@ -1325,8 +1324,13 @@ fa 20 0 fc c6 da d0 3
       <a name="max" val="0x1ff"/>
       <a name="width" val="9"/>
     </comp>
+    <comp lib="6" loc="(2890,1830)" name="Button">
+      <a name="facing" val="north"/>
+      <a name="press" val="passive"/>
+    </comp>
     <comp lib="6" loc="(3380,1790)" name="Button">
       <a name="facing" val="north"/>
+      <a name="press" val="passive"/>
     </comp>
     <comp lib="6" loc="(4910,390)" name="RGB Video">
       <a name="color" val="VGA256 (8 bit)"/>
@@ -1354,6 +1358,10 @@ fa 20 0 fc c6 da d0 3
     </comp>
     <comp lib="7" loc="(2000,850)" name="74175">
       <a name="ShowInternalStructure" val="true"/>
+    </comp>
+    <comp lib="7" loc="(2030,400)" name="7451">
+      <a name="ShowInternalStructure" val="true"/>
+      <a name="facing" val="south"/>
     </comp>
     <comp lib="7" loc="(2230,1020)" name="74273">
       <a name="ShowInternalStructure" val="true"/>
@@ -1440,10 +1448,6 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="nVvis"/>
     </comp>
-    <comp lib="9" loc="(105,2115)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U1 6502 CPU"/>
-    </comp>
     <comp lib="9" loc="(1050,1013)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Vsync"/>
@@ -1459,10 +1463,6 @@ fa 20 0 fc c6 da d0 3
     <comp lib="9" loc="(1090,675)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="/T=1.5"/>
-    </comp>
-    <comp lib="9" loc="(110,2090)" name="Text">
-      <a name="font" val="SansSerif bold 18"/>
-      <a name="text" val="17 Bus and CPU"/>
     </comp>
     <comp lib="9" loc="(1105,625)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1492,21 +1492,17 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Vsel1"/>
     </comp>
-    <comp lib="9" loc="(1160,1825)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="Refresh"/>
-    </comp>
     <comp lib="9" loc="(1175,310)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U33A"/>
     </comp>
-    <comp lib="9" loc="(120,1415)" name="Text">
-      <a name="font" val="SansSerif bold 18"/>
-      <a name="text" val="11 Color Support"/>
-    </comp>
     <comp lib="9" loc="(1202,672)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="nHvis"/>
+    </comp>
+    <comp lib="9" loc="(1229,1579)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U70A"/>
     </comp>
     <comp lib="9" loc="(1245,1445)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1516,9 +1512,9 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U47F"/>
     </comp>
-    <comp lib="9" loc="(125,2290)" name="Text">
+    <comp lib="9" loc="(1258,1917)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U9 MK4027 DRAM 1"/>
+      <a name="text" val="U45"/>
     </comp>
     <comp lib="9" loc="(1265,690)" name="Text">
       <a name="font" val="SansSerif plain 10"/>
@@ -1528,45 +1524,13 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U38B"/>
     </comp>
-    <comp lib="9" loc="(127,1306)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U47 74LS04 6x INV"/>
-    </comp>
     <comp lib="9" loc="(1270,1710)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="V5432"/>
     </comp>
-    <comp lib="9" loc="(1274,1586)" name="Text">
+    <comp lib="9" loc="(1286,1583)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="nRefresh"/>
-    </comp>
-    <comp lib="9" loc="(130,2310)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U10 MK4027 DRAM 2"/>
-    </comp>
-    <comp lib="9" loc="(130,2330)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U11 MK4027 DRAM 3"/>
-    </comp>
-    <comp lib="9" loc="(130,2350)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U12 MK4027 DRAM 4"/>
-    </comp>
-    <comp lib="9" loc="(130,2375)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U13 MK4027 DRAM 5"/>
-    </comp>
-    <comp lib="9" loc="(130,2395)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U14 MK4027 DRAM 6"/>
-    </comp>
-    <comp lib="9" loc="(130,2415)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U15 MK4027 DRAM 7"/>
-    </comp>
-    <comp lib="9" loc="(130,2435)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U16 MK4027 DRAM 8"/>
     </comp>
     <comp lib="9" loc="(1329,715)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1575,14 +1539,6 @@ fa 20 0 fc c6 da d0 3
     <comp lib="9" loc="(1335,1415)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="H4"/>
-    </comp>
-    <comp lib="9" loc="(135,1080)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U40 NE555 (H Sync)"/>
-    </comp>
-    <comp lib="9" loc="(141,1105)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U41 NE555 (H Burst)"/>
     </comp>
     <comp lib="9" loc="(1415,475)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1600,29 +1556,21 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="VC4"/>
     </comp>
-    <comp lib="9" loc="(145,1240)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U44 74LS00 4x 2-NAND"/>
-    </comp>
-    <comp lib="9" loc="(145,1755)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U59 74LS166 Shift Register"/>
-    </comp>
-    <comp lib="9" loc="(145,835)" name="Text">
-      <a name="font" val="SansSerif bold 18"/>
-      <a name="text" val="12 Counter + Decode"/>
-    </comp>
     <comp lib="9" loc="(1465,1710)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="V4321"/>
     </comp>
-    <comp lib="9" loc="(1478,1406)" name="Text">
+    <comp lib="9" loc="(1480,1408)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U38D"/>
+      <a name="text" val="U70B"/>
     </comp>
-    <comp lib="9" loc="(150,1060)" name="Text">
+    <comp lib="9" loc="(1481,1485)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U39 74LS04 6x INV (4V)"/>
+      <a name="text" val="U69"/>
+    </comp>
+    <comp lib="9" loc="(1496,1917)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U46"/>
     </comp>
     <comp lib="9" loc="(1505,1153)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1632,29 +1580,13 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="V3210"/>
     </comp>
-    <comp lib="9" loc="(1549,1405)" name="Text">
+    <comp lib="9" loc="(1551,1406)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U36D"/>
-    </comp>
-    <comp lib="9" loc="(155,925)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U33 74LS04 6x INV (4H 2V)"/>
+      <a name="text" val="U70C"/>
     </comp>
     <comp lib="9" loc="(1557,1211)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="VDP Address"/>
-    </comp>
-    <comp lib="9" loc="(160,1015)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U37 74LS74 2x D-FF (H &amp; V)"/>
-    </comp>
-    <comp lib="9" loc="(160,1175)" name="Text">
-      <a name="font" val="SansSerif bold 18"/>
-      <a name="text" val="8 Mode + Address Gen"/>
-    </comp>
-    <comp lib="9" loc="(160,990)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U36 74LS00 4x 2-NAND (V)"/>
     </comp>
     <comp lib="9" loc="(1625,340)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1680,49 +1612,9 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="TextMode"/>
     </comp>
-    <comp lib="9" loc="(165,1035)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U38 74LS02 4x 2-NOR (Misc)"/>
-    </comp>
-    <comp lib="9" loc="(165,1260)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U45 74LS153 2x 1-of-4 (VMux)"/>
-    </comp>
-    <comp lib="9" loc="(165,1285)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U46 74LS153 2x 1-of-4 (VMux)"/>
-    </comp>
-    <comp lib="9" loc="(165,1665)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U58 SY2316 2Kx8 Character ROM"/>
-    </comp>
-    <comp lib="9" loc="(165,905)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U32 74LS02 4x 2-NOR (H &amp; V)"/>
-    </comp>
     <comp lib="9" loc="(1690,1978)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Mode"/>
-    </comp>
-    <comp lib="9" loc="(1698,224)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="HSel"/>
-    </comp>
-    <comp lib="9" loc="(170,1445)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U48 74LS175 4-bit D-FF (FG Attr)"/>
-    </comp>
-    <comp lib="9" loc="(170,1465)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U49 74LS175 4-bit D-FF (BG Attr)"/>
-    </comp>
-    <comp lib="9" loc="(170,2455)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U17 74LS138 1-of-8 (IO Decode)"/>
-    </comp>
-    <comp lib="9" loc="(172,2014)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U66 74S04 4x INV (Clock Generator)"/>
     </comp>
     <comp lib="9" loc="(1737,524)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
@@ -1736,26 +1628,6 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="HSel"/>
     </comp>
-    <comp lib="9" loc="(175,1775)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U60 74LS175 4-bit D-FF (DAC Latch)"/>
-    </comp>
-    <comp lib="9" loc="(175,1825)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U62 74LS74 2x D-FF (2BPP Decode)"/>
-    </comp>
-    <comp lib="9" loc="(175,1855)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U63 74LS153 2x 1-of-4 (Color MUX)"/>
-    </comp>
-    <comp lib="9" loc="(175,885)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U31 74LS138 1-of-8 (H Decode)"/>
-    </comp>
-    <comp lib="9" loc="(175,970)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U35 74LS138 1-of-8 (V Decode)"/>
-    </comp>
     <comp lib="9" loc="(1770,105)" name="Text">
       <a name="font" val="SansSerif plain 14"/>
       <a name="text" val="7.15909 MHz"/>
@@ -1768,30 +1640,6 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif plain 14"/>
       <a name="text" val="3.579545 MHz"/>
     </comp>
-    <comp lib="9" loc="(178,1328)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U67 74LS157 4-bit 1-of-2 (HMux)"/>
-    </comp>
-    <comp lib="9" loc="(180,2225)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U6 SY2316 2Kx8 mask ROM (System)"/>
-    </comp>
-    <comp lib="9" loc="(180,2245)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U7 SY2316 2Kx8 mask ROM (BASIC 1)"/>
-    </comp>
-    <comp lib="9" loc="(180,2265)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U8 SY2316 2Kx8 mask ROM (BASIC 2)"/>
-    </comp>
-    <comp lib="9" loc="(180,2550)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U19 74LS393 8-bit Ripple Counter (H)"/>
-    </comp>
-    <comp lib="9" loc="(181,1619)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U56 74LS02 4x 2-NOR (Attrib Decode)"/>
-    </comp>
     <comp lib="9" loc="(1847,1741)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Vcount"/>
@@ -1800,75 +1648,19 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="VDP Address"/>
     </comp>
-    <comp lib="9" loc="(185,1200)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U42 74LS161 4-bit Counter (VC 0-3)"/>
-    </comp>
-    <comp lib="9" loc="(185,1220)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U43 74LS161 4-bit Counter (VC 4-7)"/>
-    </comp>
-    <comp lib="9" loc="(185,1490)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U50 74LS157 4-bit 1-of-2 (FG Source)"/>
-    </comp>
-    <comp lib="9" loc="(185,1510)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U51 74LS157 4-bit 1-of-2 (BG Source)"/>
-    </comp>
-    <comp lib="9" loc="(185,1555)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U53 74LS273 8-bit Register (VDP Latch)"/>
-    </comp>
-    <comp lib="9" loc="(185,1725)" name="Text">
-      <a name="font" val="SansSerif bold 18"/>
-      <a name="text" val="6 Pixel Pipeline (Shielded Can)"/>
-    </comp>
-    <comp lib="9" loc="(185,1800)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U61 74LS00 4x 2-NAND (Double-wide)"/>
-    </comp>
-    <comp lib="9" loc="(185,2530)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U18 74LS273 8-bit Register (Frequency)"/>
-    </comp>
     <comp lib="9" loc="(1850,1642)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Video Out"/>
     </comp>
-    <comp lib="9" loc="(186,1641)" name="Text">
+    <comp lib="9" loc="(1915,525)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U57 74LS20 2x 4-NAND (Attrib Decode)"/>
+      <a name="text" val="U70D"/>
     </comp>
-    <comp lib="9" loc="(188,1351)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="Uxx 74LS273 8-bit Register (Mode IO)"/>
+    <comp lib="9" loc="(1917,553)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="2BPP"/>
     </comp>
-    <comp lib="9" loc="(190,865)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U30 74LS393 8-bit Ripple Counter (H)"/>
-    </comp>
-    <comp lib="9" loc="(190,945)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U34 74LS393 8-bit Ripple Counter (V)"/>
-    </comp>
-    <comp lib="9" loc="(195,1530)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U52 74LS273 8-bit Register (2BPP Palette)"/>
-    </comp>
-    <comp lib="9" loc="(195,1875)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U64 74LS153 2x 1-of-4 (Color MUX 2BPP)"/>
-    </comp>
-    <comp lib="9" loc="(195,1950)" name="Text">
-      <a name="font" val="SansSerif bold 18"/>
-      <a name="text" val="2 Clock Generation (Shielded Can)"/>
-    </comp>
-    <comp lib="9" loc="(195,1990)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U65 74LS161 4-bit Counter (Clock Divider)"/>
-    </comp>
-    <comp lib="9" loc="(1965,780)" name="Text">
+    <comp lib="9" loc="(1945,798)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U60"/>
     </comp>
@@ -1876,11 +1668,11 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Pixel Color"/>
     </comp>
-    <comp lib="9" loc="(200,2135)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U2 74LS257 4-bit -of-2 Tri-State (CPU Low)"/>
-    </comp>
     <comp lib="9" loc="(2015,750)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="In Shielded Can"/>
+    </comp>
+    <comp lib="9" loc="(2021,392)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="In Shielded Can"/>
     </comp>
@@ -1892,49 +1684,21 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="DAC Latch"/>
     </comp>
-    <comp lib="9" loc="(205,1575)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U54 74LS157 4-bit 1-of-2 (Char ROM Bypass)"/>
-    </comp>
-    <comp lib="9" loc="(205,2160)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U3 74LS257 4-bit -of-2 Tri-State (CPU High)"/>
-    </comp>
-    <comp lib="9" loc="(205,2180)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U4 74LS257 4-bit -of-2 Tri-State (VDP Low)"/>
-    </comp>
-    <comp lib="9" loc="(205,2200)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U5 74LS257 4-bit -of-2 Tri-State (VDP High)"/>
-    </comp>
-    <comp lib="9" loc="(2060,210)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="nWCLK"/>
-    </comp>
-    <comp lib="9" loc="(2065,170)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="nPCLK"/>
-    </comp>
-    <comp lib="9" loc="(210,1595)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U55 74LS157 4-bit 1-of-2 (Char ROM Bypass)"/>
-    </comp>
-    <comp lib="9" loc="(2145,140)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="In Shielded Can"/>
-    </comp>
-    <comp lib="9" loc="(2145,155)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="74LS00"/>
-    </comp>
-    <comp lib="9" loc="(2177,212)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="PWCLK"/>
-    </comp>
-    <comp lib="9" loc="(2195,155)" name="Text">
+    <comp lib="9" loc="(2032,555)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U61"/>
+    </comp>
+    <comp lib="9" loc="(2061,345)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="HSel"/>
+    </comp>
+    <comp lib="9" loc="(2108,465)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U66F"/>
+    </comp>
+    <comp lib="9" loc="(2167,354)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U36D"/>
     </comp>
     <comp lib="9" loc="(220,95)" name="Text">
       <a name="text" val="CLK"/>
@@ -1947,21 +1711,13 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="COL2/3"/>
     </comp>
-    <comp lib="9" loc="(2251,673)" name="Text">
+    <comp lib="9" loc="(2251,674)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="2BPP"/>
     </comp>
-    <comp lib="9" loc="(2273,485)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U66F"/>
-    </comp>
-    <comp lib="9" loc="(2275,125)" name="Text">
+    <comp lib="9" loc="(2277,521)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="PCLK"/>
-    </comp>
-    <comp lib="9" loc="(2275,510)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="\PCLK"/>
+      <a name="text" val="\PWCLK"/>
     </comp>
     <comp lib="9" loc="(2285,460)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1975,13 +1731,13 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif plain 10"/>
       <a name="text" val="Active Low"/>
     </comp>
+    <comp lib="9" loc="(2349,397)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U59"/>
+    </comp>
     <comp lib="9" loc="(235,120)" name="Text">
       <a name="font" val="SansSerif plain 14"/>
       <a name="text" val="14.31818 MHz"/>
-    </comp>
-    <comp lib="9" loc="(2355,385)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U59"/>
     </comp>
     <comp lib="9" loc="(2367,724)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -1993,7 +1749,7 @@ fa 20 0 fc c6 da d0 3
     </comp>
     <comp lib="9" loc="(2380,685)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U62"/>
+      <a name="text" val="U62A"/>
     </comp>
     <comp lib="9" loc="(2400,655)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -2011,9 +1767,9 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="LOAD on \CLK at last \PCLK edge"/>
     </comp>
-    <comp lib="9" loc="(2440,1880)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="IOQ_FE"/>
+    <comp lib="9" loc="(2469,1205)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U70F"/>
     </comp>
     <comp lib="9" loc="(2470,425)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
@@ -2051,6 +1807,10 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Col MUX 2,3"/>
     </comp>
+    <comp lib="9" loc="(2742,314)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="wide: odd count (inhibit)"/>
+    </comp>
     <comp lib="9" loc="(2755,765)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Y3"/>
@@ -2071,17 +1831,21 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U44D"/>
     </comp>
+    <comp lib="9" loc="(2891,1865)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="nWPal2"/>
+    </comp>
     <comp lib="9" loc="(290,510)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="/CLK"/>
     </comp>
-    <comp lib="9" loc="(2910,435)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="nAttrLd (inhibit)"/>
-    </comp>
     <comp lib="9" loc="(2940,200)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Delay beyond \PCLK edge"/>
+    </comp>
+    <comp lib="9" loc="(2959,435)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="nAttrLd (inhibit)"/>
     </comp>
     <comp lib="9" loc="(2985,1440)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -2139,14 +1903,6 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif plain 10"/>
       <a name="text" val="or"/>
     </comp>
-    <comp lib="9" loc="(3300,1135)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="IO Load"/>
-    </comp>
-    <comp lib="9" loc="(3300,1150)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="Palette"/>
-    </comp>
     <comp lib="9" loc="(3305,1080)" name="Text">
       <a name="font" val="SansSerif plain 10"/>
       <a name="text" val="or"/>
@@ -2169,7 +1925,7 @@ fa 20 0 fc c6 da d0 3
     </comp>
     <comp lib="9" loc="(3380,1830)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="IOW_FD"/>
+      <a name="text" val="nWPal1"/>
     </comp>
     <comp lib="9" loc="(3400,1030)" name="Text">
       <a name="font" val="SansSerif plain 10"/>
@@ -2178,6 +1934,14 @@ fa 20 0 fc c6 da d0 3
     <comp lib="9" loc="(3400,1070)" name="Text">
       <a name="font" val="SansSerif plain 10"/>
       <a name="text" val="and"/>
+    </comp>
+    <comp lib="9" loc="(3408,1132)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U70E"/>
+    </comp>
+    <comp lib="9" loc="(3412,1157)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="nWPal1"/>
     </comp>
     <comp lib="9" loc="(3440,1090)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
@@ -2202,10 +1966,6 @@ fa 20 0 fc c6 da d0 3
     <comp lib="9" loc="(3555,1030)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="n8x/9x"/>
-    </comp>
-    <comp lib="9" loc="(356,1643)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="U57B"/>
     </comp>
     <comp lib="9" loc="(3569,1126)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
@@ -2290,6 +2050,22 @@ fa 20 0 fc c6 da d0 3
     <comp lib="9" loc="(3985,240)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="Data ready by /CLK mid-cycle for VDP"/>
+    </comp>
+    <comp lib="9" loc="(399,1279)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U57B"/>
+    </comp>
+    <comp lib="9" loc="(399,1301)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U38D"/>
+    </comp>
+    <comp lib="9" loc="(400,1241)" name="Text">
+      <a name="font" val="SansSerif plain 10"/>
+      <a name="text" val="and"/>
+    </comp>
+    <comp lib="9" loc="(401,1222)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="and"/>
     </comp>
     <comp lib="9" loc="(405,510)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
@@ -2566,17 +2342,9 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U39A"/>
     </comp>
-    <comp lib="9" loc="(631,1188)" name="Text">
-      <a name="font" val="SansSerif plain 10"/>
-      <a name="text" val="and"/>
-    </comp>
     <comp lib="9" loc="(650,40)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="Not in BOM"/>
-    </comp>
-    <comp lib="9" loc="(660,1190)" name="Text">
-      <a name="font" val="SansSerif plain 12"/>
-      <a name="text" val="and"/>
     </comp>
     <comp lib="9" loc="(660,15)" name="Text">
       <a name="font" val="SansSerif plain 14"/>
@@ -2605,10 +2373,6 @@ fa 20 0 fc c6 da d0 3
     <comp lib="9" loc="(690,85)" name="Text">
       <a name="font" val="SansSerif plain 14"/>
       <a name="text" val="1 in 16"/>
-    </comp>
-    <comp lib="9" loc="(70,2500)" name="Text">
-      <a name="font" val="SansSerif bold 18"/>
-      <a name="text" val="2 PSG"/>
     </comp>
     <comp lib="9" loc="(705,945)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -2657,6 +2421,14 @@ fa 20 0 fc c6 da d0 3
     <comp lib="9" loc="(785,1085)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U36C"/>
+    </comp>
+    <comp lib="9" loc="(800,2447)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="U68"/>
+    </comp>
+    <comp lib="9" loc="(802,2466)" name="Text">
+      <a name="font" val="SansSerif plain 12"/>
+      <a name="text" val="ModeReg"/>
     </comp>
     <comp lib="9" loc="(805,1015)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -2726,9 +2498,21 @@ fa 20 0 fc c6 da d0 3
       <a name="font" val="SansSerif plain 12"/>
       <a name="text" val="and"/>
     </comp>
+    <comp lib="9" loc="(919,1654)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="XXX"/>
+    </comp>
     <comp lib="9" loc="(920,2637)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="IOW_ VDP"/>
+    </comp>
+    <comp lib="9" loc="(922,1687)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="Check timing!"/>
+    </comp>
+    <comp lib="9" loc="(924,1670)" name="Text">
+      <a name="font" val="SansSerif bold 12"/>
+      <a name="text" val="Counters don't reset"/>
     </comp>
     <comp lib="9" loc="(925,1055)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
@@ -2757,10 +2541,6 @@ fa 20 0 fc c6 da d0 3
     <comp lib="9" loc="(965,660)" name="Text">
       <a name="font" val="SansSerif bold 12"/>
       <a name="text" val="U33D"/>
-    </comp>
-    <comp lib="9" loc="(980,1625)" name="Text">
-      <a name="font" val="SansSerif bold 12"/>
-      <a name="text" val="Can only load on a clock!"/>
     </comp>
     <comp lib="9" loc="(990,960)" name="Text">
       <a name="font" val="SansSerif plain 12"/>
@@ -2888,6 +2668,9 @@ fa 20 0 fc c6 da d0 3
     <wire from="(1330,1650)" to="(1420,1650)"/>
     <wire from="(1340,1640)" to="(1340,1830)"/>
     <wire from="(1340,1640)" to="(1410,1640)"/>
+    <wire from="(1340,430)" to="(1340,500)"/>
+    <wire from="(1340,430)" to="(1790,430)"/>
+    <wire from="(1340,500)" to="(1370,500)"/>
     <wire from="(1340,690)" to="(1380,690)"/>
     <wire from="(1350,1080)" to="(1350,1140)"/>
     <wire from="(1350,1080)" to="(1430,1080)"/>
@@ -2997,12 +2780,12 @@ fa 20 0 fc c6 da d0 3
     <wire from="(1660,1280)" to="(1680,1280)"/>
     <wire from="(1670,1290)" to="(1670,1900)"/>
     <wire from="(1670,1290)" to="(1680,1290)"/>
-    <wire from="(1680,230)" to="(1680,510)"/>
-    <wire from="(1680,230)" to="(1880,230)"/>
+    <wire from="(1680,330)" to="(1680,510)"/>
+    <wire from="(1680,330)" to="(2080,330)"/>
     <wire from="(1680,510)" to="(1700,510)"/>
     <wire from="(1680,520)" to="(1680,680)"/>
     <wire from="(1680,520)" to="(1700,520)"/>
-    <wire from="(1680,680)" to="(2320,680)"/>
+    <wire from="(1680,680)" to="(1940,680)"/>
     <wire from="(1700,1380)" to="(1700,1700)"/>
     <wire from="(1700,1700)" to="(3870,1700)"/>
     <wire from="(1720,530)" to="(1720,1990)"/>
@@ -3011,54 +2794,66 @@ fa 20 0 fc c6 da d0 3
     <wire from="(1770,1650)" to="(4690,1650)"/>
     <wire from="(1770,380)" to="(1770,1650)"/>
     <wire from="(1790,1240)" to="(2580,1240)"/>
+    <wire from="(1790,310)" to="(1790,430)"/>
+    <wire from="(1790,310)" to="(2150,310)"/>
     <wire from="(1790,780)" to="(1790,1240)"/>
     <wire from="(1810,1160)" to="(2560,1160)"/>
     <wire from="(1810,730)" to="(1810,1160)"/>
-    <wire from="(1880,190)" to="(1880,230)"/>
-    <wire from="(1880,190)" to="(2000,190)"/>
-    <wire from="(1880,230)" to="(1930,230)"/>
-    <wire from="(1900,110)" to="(1900,210)"/>
-    <wire from="(1900,110)" to="(2300,110)"/>
-    <wire from="(1900,210)" to="(2000,210)"/>
-    <wire from="(1920,130)" to="(1920,170)"/>
-    <wire from="(1920,170)" to="(2000,170)"/>
-    <wire from="(1930,230)" to="(1930,250)"/>
-    <wire from="(1930,230)" to="(1940,230)"/>
-    <wire from="(1930,250)" to="(1940,250)"/>
+    <wire from="(1870,130)" to="(1870,410)"/>
+    <wire from="(1870,410)" to="(1980,410)"/>
+    <wire from="(1900,110)" to="(1900,370)"/>
+    <wire from="(1900,370)" to="(1900,470)"/>
+    <wire from="(1900,370)" to="(2130,370)"/>
+    <wire from="(1900,470)" to="(2000,470)"/>
     <wire from="(1940,1680)" to="(4760,1680)"/>
+    <wire from="(1940,450)" to="(1940,550)"/>
+    <wire from="(1940,450)" to="(2000,450)"/>
+    <wire from="(1940,550)" to="(1940,680)"/>
+    <wire from="(1940,550)" to="(1960,550)"/>
+    <wire from="(1940,680)" to="(2320,680)"/>
     <wire from="(1940,930)" to="(1940,1680)"/>
+    <wire from="(1960,490)" to="(1960,510)"/>
+    <wire from="(1960,490)" to="(2000,490)"/>
+    <wire from="(1960,530)" to="(1960,550)"/>
     <wire from="(1960,890)" to="(2030,890)"/>
     <wire from="(1960,900)" to="(2010,900)"/>
     <wire from="(1960,910)" to="(1980,910)"/>
     <wire from="(1960,920)" to="(1970,920)"/>
     <wire from="(1970,810)" to="(1970,920)"/>
     <wire from="(1970,810)" to="(2030,810)"/>
-    <wire from="(1980,240)" to="(1990,240)"/>
+    <wire from="(1980,410)" to="(1980,430)"/>
+    <wire from="(1980,410)" to="(2000,410)"/>
+    <wire from="(1980,430)" to="(2000,430)"/>
     <wire from="(1980,800)" to="(1980,910)"/>
     <wire from="(1980,800)" to="(2130,800)"/>
-    <wire from="(1990,230)" to="(1990,240)"/>
-    <wire from="(1990,230)" to="(2000,230)"/>
+    <wire from="(1990,510)" to="(1990,570)"/>
+    <wire from="(1990,510)" to="(2000,510)"/>
+    <wire from="(1990,570)" to="(2150,570)"/>
     <wire from="(2010,900)" to="(2010,920)"/>
     <wire from="(2010,920)" to="(2130,920)"/>
     <wire from="(2030,810)" to="(2030,820)"/>
     <wire from="(2030,880)" to="(2030,890)"/>
-    <wire from="(2040,180)" to="(2090,180)"/>
-    <wire from="(2040,220)" to="(2100,220)"/>
+    <wire from="(2060,430)" to="(2080,430)"/>
+    <wire from="(2060,490)" to="(2080,490)"/>
+    <wire from="(2060,510)" to="(2130,510)"/>
+    <wire from="(2060,530)" to="(2300,530)"/>
     <wire from="(2070,780)" to="(2070,820)"/>
     <wire from="(2070,780)" to="(2200,780)"/>
     <wire from="(2070,880)" to="(2070,900)"/>
     <wire from="(2070,900)" to="(3000,900)"/>
-    <wire from="(2090,180)" to="(2090,200)"/>
-    <wire from="(2090,200)" to="(2100,200)"/>
+    <wire from="(2080,330)" to="(2080,430)"/>
+    <wire from="(2080,330)" to="(2150,330)"/>
+    <wire from="(2080,430)" to="(2080,450)"/>
+    <wire from="(2080,470)" to="(2080,490)"/>
     <wire from="(2090,790)" to="(2090,820)"/>
     <wire from="(2090,790)" to="(2180,790)"/>
     <wire from="(2090,880)" to="(2090,910)"/>
     <wire from="(2090,910)" to="(3040,910)"/>
+    <wire from="(2130,370)" to="(2130,510)"/>
     <wire from="(2130,800)" to="(2130,820)"/>
     <wire from="(2130,880)" to="(2130,920)"/>
-    <wire from="(2140,210)" to="(2150,210)"/>
     <wire from="(2150,1560)" to="(2890,1560)"/>
-    <wire from="(2150,210)" to="(2150,820)"/>
+    <wire from="(2150,570)" to="(2150,820)"/>
     <wire from="(2150,950)" to="(2150,1560)"/>
     <wire from="(2150,950)" to="(2380,950)"/>
     <wire from="(2160,1570)" to="(2900,1570)"/>
@@ -3072,6 +2867,7 @@ fa 20 0 fc c6 da d0 3
     <wire from="(2180,920)" to="(2680,920)"/>
     <wire from="(2180,980)" to="(2180,1590)"/>
     <wire from="(2180,980)" to="(2280,980)"/>
+    <wire from="(2190,320)" to="(2890,320)"/>
     <wire from="(2190,690)" to="(2190,730)"/>
     <wire from="(2190,730)" to="(2540,730)"/>
     <wire from="(2200,780)" to="(2200,930)"/>
@@ -3089,9 +2885,7 @@ fa 20 0 fc c6 da d0 3
     <wire from="(2290,620)" to="(2500,620)"/>
     <wire from="(2290,660)" to="(2310,660)"/>
     <wire from="(2300,1070)" to="(2300,1530)"/>
-    <wire from="(2300,110)" to="(2300,470)"/>
     <wire from="(2300,1530)" to="(2590,1530)"/>
-    <wire from="(2300,490)" to="(2300,530)"/>
     <wire from="(2300,530)" to="(2300,640)"/>
     <wire from="(2300,530)" to="(2390,530)"/>
     <wire from="(2300,640)" to="(2310,640)"/>
@@ -3130,7 +2924,9 @@ fa 20 0 fc c6 da d0 3
     <wire from="(2400,890)" to="(2920,890)"/>
     <wire from="(2420,980)" to="(2420,990)"/>
     <wire from="(2420,980)" to="(2440,980)"/>
-    <wire from="(2440,980)" to="(2440,1850)"/>
+    <wire from="(2440,1210)" to="(2440,1800)"/>
+    <wire from="(2440,1800)" to="(2890,1800)"/>
+    <wire from="(2440,980)" to="(2440,1190)"/>
     <wire from="(2450,430)" to="(2770,430)"/>
     <wire from="(2450,450)" to="(2590,450)"/>
     <wire from="(2450,470)" to="(2500,470)"/>
@@ -3249,6 +3045,7 @@ fa 20 0 fc c6 da d0 3
     <wire from="(2780,1300)" to="(2780,1550)"/>
     <wire from="(2780,1550)" to="(3110,1550)"/>
     <wire from="(2810,420)" to="(2840,420)"/>
+    <wire from="(2810,430)" to="(2890,430)"/>
     <wire from="(2810,440)" to="(3290,440)"/>
     <wire from="(2820,710)" to="(2820,970)"/>
     <wire from="(2820,710)" to="(2980,710)"/>
@@ -3268,6 +3065,8 @@ fa 20 0 fc c6 da d0 3
     <wire from="(2890,1280)" to="(2890,1560)"/>
     <wire from="(2890,1280)" to="(2960,1280)"/>
     <wire from="(2890,1560)" to="(3110,1560)"/>
+    <wire from="(2890,1800)" to="(2890,1830)"/>
+    <wire from="(2890,320)" to="(2890,430)"/>
     <wire from="(2900,1340)" to="(2900,1570)"/>
     <wire from="(2900,1340)" to="(2960,1340)"/>
     <wire from="(2900,1570)" to="(3110,1570)"/>
@@ -3365,7 +3164,8 @@ fa 20 0 fc c6 da d0 3
     <wire from="(3320,920)" to="(3620,920)"/>
     <wire from="(3330,1050)" to="(3330,1090)"/>
     <wire from="(3330,1090)" to="(3380,1090)"/>
-    <wire from="(3380,1090)" to="(3380,1790)"/>
+    <wire from="(3380,1090)" to="(3380,1120)"/>
+    <wire from="(3380,1140)" to="(3380,1790)"/>
     <wire from="(3420,1020)" to="(3440,1020)"/>
     <wire from="(3420,1040)" to="(3490,1040)"/>
     <wire from="(3420,1060)" to="(3440,1060)"/>
@@ -3789,7 +3589,7 @@ fa 20 0 fc c6 da d0 3
     <wire from="(540,890)" to="(820,890)"/>
     <wire from="(540,980)" to="(570,980)"/>
     <wire from="(550,1040)" to="(570,1040)"/>
-    <wire from="(550,130)" to="(1920,130)"/>
+    <wire from="(550,130)" to="(1870,130)"/>
     <wire from="(550,510)" to="(1370,510)"/>
     <wire from="(550,510)" to="(550,580)"/>
     <wire from="(550,580)" to="(560,580)"/>
@@ -3987,7 +3787,7 @@ fa 20 0 fc c6 da d0 3
     <wire from="(920,2140)" to="(920,2400)"/>
     <wire from="(920,2420)" to="(920,2600)"/>
     <wire from="(920,970)" to="(980,970)"/>
-    <wire from="(940,500)" to="(1370,500)"/>
+    <wire from="(940,500)" to="(1340,500)"/>
     <wire from="(940,500)" to="(940,670)"/>
     <wire from="(940,670)" to="(990,670)"/>
     <wire from="(950,1060)" to="(950,1150)"/>
