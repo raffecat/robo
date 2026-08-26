@@ -158,23 +158,30 @@ CurrKey  = $D3    ; keyboard current key pressed, for auto-repeat (owned by IRQ)
 DeadKey  = $D4    ; keyboard last key pressed, to ignore it (owned by IRQ)
 KeyRep   = $D5    ; keyboard auto-repeat timer
 
-WinT     = $D6    ; text window top
+WinT     = $D6    ; text window top (Scroll, CLS, AT - but not Up/Down/Left/Right)
 WinH     = $D7    ; text window height
 
-TXTP     = $D8    ; text write address
-TXTPH    = $D9    ; text write address high
+; Text in Graphics (4x6):
+; 128x96 -> 32x16
+; 256x96 -> 64x16
+; 128x192 -> 32x32
+; 256x192 -> 64x64
 
-CurTime  = $DA    ; cursor flash timer
-CurChar  = $DB    ; character under cursor
-CurVis   = $DC    ; cursor visible flag
+TXTP     = $D8        ; text write address
+TXTPH    = $D9        ; text write address high
 
-;        = $DD    ;
-VidBase  = $DE    ; base of video memory (page)
-MemSize  = $DF    ; detected memory size in pages
+CurTime  = $DA        ; cursor flash timer
+CurChar  = $DB        ; character under cursor
+CurVis   = $DC        ; cursor visible flag (7:visible 6:inhibit)
+
+IOChan   = $DD        ; active #iochan (0,1=FCB 8=Serial 9=Parallel)
+VidBase  = $DE        ; base of video memory (page)
+MemSize  = $DF        ; detected memory size in pages
 
 ; -- $E0-EF Option Registers, OS Vectors (16)
 
-; Option = $E0-E7     ; OPT registers
+OptZone  = $E0        ; Color Zone enable (7:enable)
+; Option = $E1-E7     ; OPT registers
 
 IRQTmp   = $E8        ; Temp for IRQ handler #1
 IRQTmp2  = $E9        ; Temp for IRQ handler #2
@@ -183,38 +190,45 @@ IrqVec   = $ED        ; IRQ vector in RAM {JMP,Low,High} (for ROM override)
 
 ; -- $F0-FF  IO Area (16)
 
-IO_EXT0  = $F0        ; expansion slot 0 (modem/audio/etc)
-IO_EXT1  = $F1        ; expansion slot 1 (modem/audio/etc)
-IO_EXT2  = $F2        ; expansion slot 2 (modem/audio/etc)
-IO_EXT3  = $F3        ; expansion slot 3 (modem/audio/etc)
-IO_DSK0  = $F4        ; disk controller 0
-IO_DSK1  = $F5        ; disk controller 1
-IO_DSK2  = $F6        ; disk controller 2
-IO_DSK3  = $F7        ; disk controller 3
-IO_EXMM  = $F8        ; external memory mapping 6-bit [expansion box] (write)
-IO_DATA  = $F9        ; OUT 8-bit (7-6:Volume 2:RTS 1:TapeTx 0:TXD | 7-0 Parallel) / IN (2:CTS 1:TapeRx 0:RXD)
-IO_KEYB  = $FA        ; Keyboard column 4-bit (3:Strobe 2-0:KBCol) / read: KB row 8-bit
-IO_PSGF  = $FB        ; PSG frequency 8-bit (write: 7-0:Divider)(7860 Hz / divider)
-IO_LINE  = $FC        ; IRQAck (7:IRQAck 6:Parallel) / read: vertical line (>= 192 in vblank)
-IO_PAL1  = $FD        ; palette for APA 8-bit (7-4:BG 3-0:~FG)
-IO_PAL2  = $FE        ; palette for APA 8-bit (7-4:C2 3-0:C3)
-IO_VCTL  = $FF        ; video mode 8-bit (7-4:VideoBase 3:Grey 2:2Bpp 1-0:Mode)
+IO_EXT0  = $F0        ; A/B expansion IO
+IO_EXT1  = $F1        ; A/B expansion IO
+IO_EXT2  = $F2        ; A/B expansion IO
+IO_EXT3  = $F3        ; A/B expansion IO
+IO_EXT4  = $F4        ; A/B expansion IO
+IO_EXT5  = $F5        ; A/B expansion IO
+IO_EXT6  = $F6        ; A/B expansion IO
+IO_EXT7  = $F7        ; A/B expansion IO
+IO_KEY   = $F8        ; Keyboard 8-bit (7:TXD 6:RTS 5:TapeOut 4-0:KBCol) / read: KB row 8-bit
+IO_VID   = $F9        ; Video Control 8-bit (7-4:VideoBase 3-2:Mode 1:Wide 0:2BPP) / read: Junk (STROBE Parallel)
+IO_VLN   = $FA        ; IRQAck any-write / read: Vertical Line (>= 192 in vblank)
+IO_PAL   = $FB        ; Color Palette 6-bit (5-4:Entry 3-0:Color) / read: (7-4:Junk 3:TapeIn 2:BUSY 1:CTS 0:RXD)
+IO_PSG   = $FC        ; PSG Frequency 8-bit (7-0:Divider) (7860 Hz / divider; 255 = silent) [R/W]
+IO_CNF   = $FD        ; Configuration 8-bit (7-5:Volume 4:Reveal 3:TapeMotor 2:EFsel 1:CDsel 0:ABsel) [R/W]
+IO_PIO   = $FE        ; Parallel IO 8-bit (7-0 Parallel) [R/W]
+IO_EXP   = $FF        ; Expansion 8-bit (7:CDsel 6-5:ABsel 4-0:MemoryMap) [R/W]
+
+; I=0000   0=1000 1=2000 2=3000 3=4000 4=5000 5=6000 6=7000
+; 4KB +4   ^+A    ^+B    ^+B    ^+B    ^+B    ^+B    ^+B     (^+B ..)
+; 4KB +8   ^+A    ^+A    ^+B    ^+B    ^+B    ^+B    ^+B     (^+B ..)
+; 4KB +16  ^+A    ^+A    ^+A    ^+A    ^+B    ^+B    ^+B     (^+B ..)
+; 8KB +4          ^+A    ^+B    ^+B    ^+B    ^+B    ^+B     (^+B ..)
+; 8KB +8          ^+A    ^+A    ^+B    ^+B    ^+B    ^+B     (^+B ..)
+; 8KB +16         ^+A    ^+A    ^+A    ^+A    ^+B    ^+B     (^+B ..)
+; 16KB +4                       ^+A    ^+B    ^+B    ^+B     (^+B ..)
+; 16KB +8                       ^+A    ^+A    ^+B    ^+B     (^+B ..)
+; 16KB +16                      ^+A    ^+A    ^+A    ^+A     (^+B ..)
+;          tie=0   d0     d1     d2     d3     d4     d4
 
 ; ------------------------------------------------------------------------------
 ; PAGE ONE $100-1FF - STACK
 
 LineBuf  = $100    ; Input Buffer (128 bytes)
 EmitBuf  = $100    ; Emit Buffer (128 bytes)
-ExprStk  = $100    ; Expression stack (96 bytes = 24 numbers)x
+ExprStk  = $100    ; Expression stack (96 bytes = 24 numbers)
 StackBot = $180    ; Bottom of BASIC control-stack (cannot go below $180)
 
 ; ------------------------------------------------------------------------------
 ; Defines
-
-; IO_VCTL bits
-VCTL_APA    = $01   ; linear framebuffer at address $200
-VCTL_GREY   = $02   ; disable Colorburst for text legibility
-VCTL_BORDER = $F0   ; border color (high nibble)
 
 ModEsc   = $80    ; Escape is down
 ModShift = $40    ; Shift is down
@@ -235,22 +249,25 @@ reset:
   LDA #>End4K       ; end of memory (page)
   STA MemSize       ; set size of memory (in pages)
   LDX #0            ; X = 0
-  STX Acc0          ; Acc0 = 0
+  STX IOChan        ; reset active #channel
+  STX Acc0          ; Acc0 = 0 (for free memory)
   JSR vid_mode      ; set text mode (X=0)
   LDY #<msg_boot    ; boot message
   JSR printmsgln    ; print it
   ; print free memory
   LDX VidBase       ; get video base page
-  DEX               ; minus 2 (ASSUMES BasePg=$02)
+  DEX               ; minus 2 (assumes BASIC reserves 2 pages)
   DEX               ;
   STX Acc1          ;
-  JSR print_u16     ; print it (requires Acc0 = 0)
+  JSR print_u16     ; print free memory
   LDY #<msg_freemem ; free memory message
   JSR printmsgln    ; print it
-basic:
+basic:              ; <- return to BASIC
   SEI               ; disable interrupts
   CLD               ; disable BCD mode
-  JSR irq_init      ; set up IRQ handler (required for video)
+  LDX #0            ; X = 0
+  STX IOChan        ; reset active #channel
+  JSR irq_init      ; set up IRQ handler
   JSR cmdNew        ; init program
   LDY #<msg_ready   ; [2] ready message (MUST be <128)
   JSR printmsgln    ; [6] print it
@@ -271,7 +288,7 @@ repl_lp:
 @rdln:
   JSR readline      ; [6] read command or BASIC statement
   JSR newline       ; [6] move to new line
-; parse the line
+; parse line
   LDY #0            ; [2] input ofs = 0
   STY EmitOfs       ; [3] reset EmitOfs for code gen
   STY EmitPtch      ; [3] reset EmitPtch for code gen
@@ -286,7 +303,7 @@ repl_lp:
   JSR match_kwi     ; match command keywords
   BCS @docmd        ; -> found command
   JSR e_parse       ; parse and emit
-;  JSR debug         ; DEBUG
+  JSR debug         ; DEBUG
   LDA #>EmitBuf     ; EmitBuf page ($01)
   JSR setProg       ; set up for execution
   JMP do_stmt       ; -> execute the statement  (XXX how does this return without OP_END? poke it in?)
@@ -634,9 +651,9 @@ e_goln    JSR num_u16
           JMP emit_byte
 @stmt     JMP e_stmt
 
+
 ; ------------------------------------------------------------------------------
 ; PAGE 3 - Match / Emit Routines
-
 
 
 ; Match routines
@@ -1305,12 +1322,13 @@ stmt_rev:                     ; [34] indices MUST match OPCODEs
 
 ; @@ skip_spc
 skip_spc:          ;
+  DEY              ; [2] pre-decrement
+@lp:
+  INY              ; [2] pre-increment
   LDA LineBuf,Y    ; [4] next input char
-  INY              ; [2] advance input (assume match)
   CMP #32          ; [2] was it space?
-  BEQ skip_spc     ; [2] -> loop [+1]
-  DEY              ; [2] undo advance (didn't match)
-  RTS              ; [6] // [18]
+  BEQ @lp          ; [2] -> loop [+1]
+  RTS              ; [6] -> NE // [18]
 
 ; @@ is_alpha
 is_alpha:          ; A=char -> A=az-index, CC=alphabetic (preserves X,Y)
@@ -2516,12 +2534,12 @@ do_wait:
   BNE @loop        ; -> non-zero
   INX              ; wait 0 -> wait 1
 @loop:
-  LDA IO_LINE      ; get vertical line counter
-  CMP #192       ; at bottom of screen?
+  LDA IO_VLN       ; get vertical line counter
+  CMP #192         ; at bottom of screen?
   BNE @loop        ; wait for line == 192
 @stall:
-  LDA IO_LINE      ; get vertical line counter
-  CMP #192       ; at bottom of screen?
+  LDA IO_VLN       ; get vertical line counter
+  CMP #192         ; at bottom of screen?
   BEQ @stall       ; wait for line != 192
   DEX
   BNE @loop        ; -> is not zero, loop
@@ -3292,9 +3310,9 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
   LDY #8          ; [2] last key row (modifiers)
 ; ...
 @row_lp:          ; -> [13] cycles (Y=row)
-  STY IO_KEYB     ; [3] set keyscan row (0-7)              0µs (-> 7+3=10µs after prior)
+  STY IO_KEY      ; [3] set keyscan row (0-7)              0µs (-> 7+3=10µs after prior)
   NOP             ; [2] delay                              2µs
-  LDX IO_KEYB     ; [3] read col_bitmap                    2+3µs read 5/0.89Mhz = 5.6µs settle
+  LDX IO_KEY      ; [3] read col_bitmap                    2+3µs read 5/0.89Mhz = 5.6µs settle
   BNE @key_hit    ; [2] -> one or more keys pressed [+1]   2µs -> 1µs (3µs)
 @row_cont:
   DEY             ; [2] prev row                           2µs
@@ -3318,7 +3336,7 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
 ; ...
 @key_hit:         ; X=col_bitmap(!=0) Y=row
 ; debounce check
-  CPX IO_KEYB     ; [3] check if stable                    3+3µs read 6/0.89Mhz = 6.7µs verify
+  CPX IO_KEY      ; [3] check if stable                    3+3µs read 6/0.89Mhz = 6.7µs verify
   BNE @row_lp     ; [2] if not -> try again
   CPY #8          ; [2] is ModKeys row?
   BEQ @mods       ; [2] -> handle ModKeys [+1]
@@ -3524,6 +3542,8 @@ nl_npg:
 ; write a single character to the screen
 ; assumes we're in text mode with TXTP set up
 wrchr:            ; A=char; (uses A,X,F,Src,Dst) preserves Y [25]
+  LDX IOChan      ; [3] check #iochan
+  BNE redir       ; [2] -> redirect output [+1]
   CMP #32         ; [2] is it a control character?
   BCC wrctl       ; [2] -> ch < 32, do control code [+1]  (uses A,X preserves Y)
   LDX #0          ; [2] const for (TXTP,X) ie (TXTP)
@@ -3531,6 +3551,8 @@ wrchr:            ; A=char; (uses A,X,F,Src,Dst) preserves Y [25]
   INC TXTP        ; [5] advance text position
   BEQ nl_page     ; [2] -> crossed page boundary [+1]
   RTS             ; [6] -> NE (unless scrolled)
+redir:            ; A=char, X=channel
+  RTS
 
 ; @@ nl_scrup
 ; scroll the text window up one line
@@ -3613,12 +3635,15 @@ wrctl:           ; (uses A,X,F,Src,Dst) preserves Y
   STA TXTP       ; [3]
   BCS @done      ; [2] -> no page-cross [+1]
 @up_pg:
-  DEC TXTPH      ; [5] go up one page
   LDA TXTPH      ; [3] test TXTPH
-  CMP #$01       ; [2] off top of screen?      [$02 $03 $04]
-  BNE @done      ; [2] -> no, we're done [+1]
-  LDA #$04       ; [2] last screen page
-  STA TXTPH      ; [3] wrap around to top of screen
+  CMP VidBase    ; [3] first page of video memory?
+  BNE @go_up     ; [2] -> no, go up one [+1]
+  LDX MemSize    ; [3] top of memory
+  DEX            ; [2] minus one page
+  STX TXTPH      ; [3] wrap around to top of screen
+  RTS            ; [6] // 22
+@go_up:
+  DEC TXTPH      ; [5] go up one page
   RTS            ; [6] // 22
 
 @right:          ; move right one place
@@ -3635,9 +3660,9 @@ wrctl:           ; (uses A,X,F,Src,Dst) preserves Y
 @down_pg:
   INC TXTPH      ; [5] go down one page
   LDA TXTPH      ; [3] test TXTPH
-  CMP #$05       ; [2] off bottom of screen?    [$02 $03 $04]
+  CMP MemSize    ; [2] off bottom of screen?
   BNE @done      ; [2] -> no, we're done [+1]
-  LDA #$02       ; [2] first screen page
+  LDA VidBase    ; [3] first screen page
   STA TXTPH      ; [3] wrap around to top of screen
 @done:
   RTS            ; [6] // 22
@@ -3722,7 +3747,7 @@ readline:         ; uses A,X,Y,B,C -> LineBuf, Y=length (EQ if zero)
 ;           0    1      2      3      4       5
 ;           Text 128x96 128x96 256x96 128x192 256x192
 ;           1bpp 1bpp   2bpp   1bpp   2bpp    1bpp
-mode_ctl DB 3,   2,     4+1,   1,     4+0,    0
+mode_ctl DB $C,  $A,    $5,    $4,    $1,     $0
 mode_pgs DB 3,   6,     12,    12,    24,     24
 ; 4K mem    13,  10,    4,     4,     -8,     -8
 ; 8K mem    29,  26,    20,    20,    8,      8
@@ -3742,11 +3767,16 @@ vid_mode:        ; set screen mode, X=mode (uses A,X,Y,F)
   STA VidBase    ; set base of video memory
   AND #$F0       ; top 4 bits -> 4K bank
   ORA mode_ctl,X ; low 4 bits -> mode select
-  STA IO_VCTL    ; set video mode
-  LDA #0         ; BG=black FG=white (reset APA palette)
-  STA IO_PAL1    ; reset palette
-  STA IO_PAL2    ; reset palette
+  STA IO_VID     ; set video mode
+  LDA #0         ; Entry 0, Color 0 (black)
   STA WinT       ; reset text window top
+  STA IO_PAL     ; set palette 0 (BG)
+  LDA #16        ; Entry 1, Color 0 (white, inverted = 15)
+  STA IO_PAL     ; set palette 1 (FG)
+  LDA #32+2      ; Entry 2, Color 2 (red)
+  STA IO_PAL     ; set palette 2
+  LDA #48+11     ; Entry 3, Color 11 (yellow, inverted = 4)
+  STA IO_PAL     ; set palette 3
   LDA #24        ;
   STA WinH       ; reset text window height
   ; +++ fall through to @@ vid_cls +++
@@ -3780,7 +3810,7 @@ txt_home:        ; (uses A,X,Y)
   BEQ tab_e2     ; skip range checks
   ; +++ fall through to @@ txt_tab +++
 
-; @@ tab
+; @@ tab/AT
 ; move the cursor to X,Y in index registers (unsigned)
 ; relative to the top-left corner of the text window, zero-based.
 ; update DMA address (DSTL,DSTH) for "text mode"
@@ -3833,7 +3863,6 @@ txt_addr_ax:       ; A=row X=col -> AY=addr (uses A,X,Y,F)   (19b) [36]
   CLC              ; [2] for ADC
   ADC VidBase      ; [2] add video base page
   RTS              ; [6] -> AY=addr
-
 
 ; @@ txt_clr
 ; fill a text row at TXTP (does not change TXTP)
@@ -3998,27 +4027,26 @@ irq_init:
 ; @@ irq_rom
 ; standard ROM IRQ handler: keyboard scan
 irq_rom:
-  PHA            ; save A
-  TXA
-  PHA            ; save X
-  TYA
-  PHA            ; save Y
+  STA IO_VLN     ; [3] acknowledge interrupt
+  PHA            ; [3] save A
+  TXA            ; [2]
+  PHA            ; [3] save X
+  TYA            ; [2]
+  PHA            ; [3] save Y
 ; keyboard scan
-  LDA #128       ; acknowledge 5:KBInt
-  STA IO_LINE    ; acknowledge interrupt
-  JSR keyscan
+  JSR keyscan    ; [6]
 ; cursor blink
-  DEC CurTime     ; [5]
-  BNE @done       ; [2] -> not yet [+1]
-  JSR cur_toggle  ; [] toggle cursor
+  DEC CurTime    ; [5]
+  BNE @done      ; [2] -> not yet [+1]
+  JSR cur_toggle ; [6] toggle cursor
 @done:
-  PLA            ; restore Y
-  TAY
-  PLA            ; restore X
-  TAX
-  PLA            ; restore A
+  PLA            ; [4] restore Y
+  TAY            ; [2]
+  PLA            ; [4] restore X
+  TAX            ; [2]
+  PLA            ; [4] restore A
 nmi_vec:
-  RTI
+  RTI            ; [6]
 
 ; testkey:
 ; mem_fill:
