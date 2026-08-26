@@ -2,14 +2,14 @@
 #include <stdio.h>
 
 enum io_reg {
-    IO_DATA = 0xF8, // OUT 8-bit (7-5:Volume 2:RTS 1:TXD 0:TapeOut) / IN (2:CTS 1:RXD 0:TapeIn)
-    IO_KEYB = 0xF9, // Keyboard column 4-bit (3:Strobe 2-0:KBCol) / read: KB row 8-bit
-    IO_LINE = 0xFA, // IRQAck 3-bit (7:VSync 6:VRow 5:KBInt) / read: vertical line (>= 192 in vblank)
-    IO_PSGF = 0xFB, // PSG frequency 8-bit (write: 7-0:Divider)(7860 Hz / divider)
-    IO_PAL1 = 0xFC, // palette for APA 8-bit (7-4:BG 3-0:~FG)
-    IO_PAL2 = 0xFD, // palette for APA 8-bit (7-4:C2 3-0:C3)
-    IO_VPGC = 0xFE, // video page 8-bit (video base page, page counter)
-    IO_VCTL = 0xFF, // video mode 8-bit (7:VSync 6:VRow 5:Parallel 4:? 3:Grey 2:2Bpp 1-0:VMux)
+    IO_KEY   = 0xF8, // Keyboard/Serial 8-bit (7:TXD 6:RTS 5:TapeOut 4-0:KBCol) / read: KB row 8-bit
+    IO_VID   = 0xF9, // Video Control 8-bit (7-4:VideoBase 3-2:Mode 1:Wide 0:2BPP) / read: Junk (STROBE Parallel)
+    IO_VLN   = 0xFA, // IRQAck any-write / read: Vertical Line (>= 192 in vblank)
+    IO_PAL   = 0xFB, // Color Palette 6-bit (5-4:Entry 3-0:Color) / read: (7-4:Junk 3:TapeIn 2:BUSY 1:CTS 0:RXD)
+    IO_PSG   = 0xFC, // PSG Frequency 8-bit (7-0:Divider) (7860 Hz / divider; 255 = silent) [R/W]
+    IO_CNF   = 0xFD, // Configuration 8-bit (7-5:Volume 4:Reveal 3:TapeMotor 2:EFsel 1:CDsel 0:ABsel) [R/W]
+    IO_PIO   = 0xFE, // Parallel IO 8-bit (7-0 Parallel) [R/W]
+    IO_EXP   = 0xFF  // Expansion 8-bit (7:CDsel 6-5:ABsel 4-0:MemoryMap) [R/W]
 };
 
 uint8_t OpenBus[8*1024] = { 0xEE };
@@ -21,8 +21,7 @@ extern uint16_t vdp_vcount; // 9-bit vertical line count
 
 uint8_t  VidCtl    = 0x2E;   // 8-bit video control ()
 uint8_t  VidPgC    = 0x23;   // 5-bit video page counter
-uint8_t  VidPal1   = 0x3E;   // 8-bit register      (7-4:BG 3-0:~FG)
-uint8_t  VidPal2   = 0xC1;   // 8-bit register      (7-4:C2 3-0:C3)
+uint8_t  VidPal[4] = {0x3,0xE,0xC,0x1}; // 4-bit registers
 uint8_t  KbdCol    = 0x03;   // 4-bit register
 uint8_t  PSGVol    = 0x03;   // 2-bit register
 uint8_t  PSGFrq    = 0x28;   // 8-bit register
@@ -52,22 +51,40 @@ static uint8_t MemMapWR[8] = {
 static uint8_t ula_io_read(uint16_t address) {
     // catch up the VDP before reading IO
     advance_vdp();
-    // open bus value
     uint8_t value = 0xEE;
     // now read the IO port
     switch (address) {
         // F-page
-        case IO_KEYB: {     // (read: KBRow)
+        case IO_KEY: {
+            // Read Keyboard Row
             value = scanKeyCol(KbdCol);
             break;
         }
-        case IO_LINE:       // (0-191 are visible lines)
+        case IO_VID: {
+            // Read Junk (STROBE Parallel port)
+            value = 0xFF;
+            break;
+        }
+        case IO_VLN: {
+            // Read Video Line (modulo 256)
             value = vdp_vcount & 0xFF;
             break;
-        default:
-            return 0xEE;    // open bus
+        }
+        case IO_PAL: {
+            // Read IO (7-4:Junk 3:TapeIn 2:BUSY 1:CTS 0:RXD)
+            value = 0xF0;
+            break;
+        }
+        case IO_PSG:
+        case IO_CNF:
+        case IO_PIO:
+        case IO_EXP:
+        default: {
+            // Read back from RAM
+            return MainRAM[address];
+        }
     }
-    if (address != IO_KEYB) {
+    if (address != IO_KEY) {
         printf("IO Read: [$%02X] -> $%02X\n", address, value);
     }
     return value;
@@ -76,37 +93,51 @@ static uint8_t ula_io_read(uint16_t address) {
 static void ula_io_write(uint16_t address, uint8_t value) {
     // catch up the VDP before reading IO
     advance_vdp();
-    // now write the IO value
     switch (address) {
         // F-page
-        case IO_VCTL:       // (7:VSync 6:VRow 5:Parallel 4:Grey 3:Bpp 2:Text 1:VRes 0:HRes)
-            VidCtl = value;
-            break;
-        case IO_VPGC:
-            VidPgC = value; // Video page counter (8-bit)
-            break;
-        case IO_PAL2:       // Palette (7-4:C2 3-0:C3)
-            VidPal2 = value;
-            break;
-        case IO_PAL1:       // Palette (7-4:BG 3-0:~FG)
-            VidPal1 = value;
-            break;
-        case IO_PSGF:       // PSG Divider (read: last write)
-            PSGFrq = value;
-            break;
-        case IO_LINE:       // (IRQAck 7:VSync 6:VRow 5:KBInt)
-            break;
-        case IO_KEYB:       // (3-0:KBCol)
+        case IO_KEY: {
+            // Write Keyboard/Serial (7:TXD 6:RTS 5:TapeOut 4-0:KBCol)
             KbdCol = value & 0x0F;
             break;
-        case IO_DATA:       // (7-6:Volume 2:RTS 1:TXD 0:TapeOut)
-            PSGVol = value >> 6;
+        }
+        case IO_VID: {
+            // Write Video Control (7-4:VideoBase 3-2:Mode 1:Wide 0:2BPP)
+            VidCtl = value;
             break;
+        }
+        case IO_VLN: {
+            // Acknowledge Interrupt (ignore data)
+            break;
+        }
+        case IO_PAL: {
+            // Write Palette (5-4:Entry 3-0:Color)
+            int idx = (value >> 4) & 3; // color index
+            VidPal[idx] = value & 15;
+            break;
+        }
+        case IO_PSG: {
+            // Write PSG Frequency (7-0:Divider)
+            PSGFrq = value;
+            break;
+        }
+        case IO_CNF: {
+            // Write Configuration (7-5:Volume 4:Reveal 3:TapeMotor 2:EFsel 1:CDsel 0:ABsel)
+            PSGVol = value >> 5;
+            break;
+        }
+        case IO_PIO: {
+            // Write Parallel Port (7-0:Data)
+            break;
+        }
+        case IO_EXP: {
+            // Write Expansion (7:CDsel 6-5:ABsel 4-0:MemoryMap)
+            break;
+        }
     }
-    // write-through to RAM.
+    // Write-through to RAM
     MainRAM[address] = value;
     // log IO writes (except keyboard row / irq ack)
-    if (address != IO_KEYB && address != IO_LINE) {
+    if (address != IO_KEY && address != IO_VLN) {
         printf("IO Write: [$%02X] <- $%02X\n", address, value);
     }
 }

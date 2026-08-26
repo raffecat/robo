@@ -41,9 +41,7 @@ void dbg_decode_next_op(uint16_t pc);
 uint8_t read6502(uint16_t address);
 void write6502(uint16_t address, uint8_t value);
 extern uint8_t VidCtl;
-extern uint8_t VidPgC;
-extern uint8_t VidPal1;
-extern uint8_t VidPal2;
+extern uint8_t VidPal[4];
 extern uint8_t KbdCol;
 extern uint8_t PSGVol;
 extern uint8_t PSGFrq;
@@ -61,14 +59,8 @@ extern uint8_t vdp_vbusy; // 1-bit latch (VDP is using VRAM)
 uint8_t scanKeyCol(uint8_t);
 
 enum vctl_bits {
-    VCTL_COLOR     = 0x01,  // Color Semigraphics mode
-    VCTL_W128      = 0x02,  // APA width 256/128 (column double mode)
-    VCTL_V96       = 0x04,  // APA height 192/96 (row double mode)
-    VCTL_APA       = 0x03,  // linear framebuffer at address $200
-    VCTL_GREY      = 0x10,  // disable Colorburst for text legibility
-};
-enum vpal_bits {
-    PAL_FG         = 0x07,     // low 3 bits
-    PAL_BG         = 0x07<<3,  // next 3 bits
-    PAL_BORDER     = 0x03<<6,  // top 2 bits
+    VCTL_2BPP      = 0x01,  // 4-color mode
+    VCTL_W128      = 0x02,  // width 128 mode (lo-res)
+    VCTL_MODE      = 0x0C,  // mode mask (0=256x192 1=256x96 2=128x96 3=Text)
+    VCTL_BASE      = 0xf0,  // base address mask (top 4 bits of base address; 4K page)
 };

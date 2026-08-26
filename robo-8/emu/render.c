@@ -44,6 +44,7 @@ static uint64_t vdp_clk = 0;
 // vdp timing
 uint16_t vdp_hcount = 0; // 8-bit horizontal count
 uint16_t vdp_vcount = 0; // 9-bit vertical line count (visible to ula.c)
+uint16_t vdp_vbase = 0; // 16-bit video page counter
 uint8_t vdp_hborder = 1;  // 1-bit latch (visible to ula.c)
 uint8_t vdp_hblank = 0;  // 1-bit latch
 uint8_t vdp_hc1en = 0;  // 1-bit latch (apply C1 control codes)
@@ -185,7 +186,7 @@ void advance_vdp() {
         if (vdp_hborder == 0 && vdp_vborder == 0 ) { // 
             if (FBrow < fb_height && FBcol < fb_width) { // safety check
                 // clock in the pixel from the palette MUX output on this clock edge
-                int pixel = (vdp_shift>>7) ? ((VidPal1 & 15)^15) : (VidPal1 >> 4); // palette select MUX
+                int pixel = (vdp_shift>>7) ? (VidPal[1]^15) : VidPal[0]; // palette select MUX
                 // drive the resistor DAC from the pixel latch
                 uint32_t dac_color = hw_pal[pixel]; // HW palette (phase select MUX)
                 int coord = ((fb_vbord+FBrow) * fb_width) + FBcol; // FBSpan+FBcol
@@ -206,15 +207,15 @@ void advance_vdp() {
         // MUST happen on the first pixel (vdp_hsub == 0)
         // MUST happen on the first visible character cell (not prior)
         if (vdp_hc1en && vdp_hsub == 0) {
-            if ((vdp_latch & 0xF0) == 0x80) VidPal1 = (VidPal1 & 0xF0) | (vdp_latch & 0x0F); // FG
-            if ((vdp_latch & 0xF0) == 0x90) VidPal1 = (VidPal1 & 0x0F) | ((vdp_latch & 0x0F) << 4); // BG
+            if ((vdp_latch & 0xF0) == 0x80) VidPal[1] = (vdp_latch & 15); // FG
+            if ((vdp_latch & 0xF0) == 0x90) VidPal[0] = (vdp_latch & 15); // BG
         }
 
         // load a character every bus cycle when fetch is enabled (0px)
         if ( vdp_hsub == 4) { // vdp_hfetch == 1
             // HAddress: low 5 bits (0-31); VAddress: 5 bits above that (0-23)
             // Base: VidPgC (this will access up to 1KB, only 768 displayed)
-            uint16_t address = (VidPgC<<8) + ((((vdp_vcount>>3)&7)<<5)|((vdp_hcount>>3)&31)); // [0,767]
+            uint16_t address = vdp_vbase + ((((vdp_vcount>>3)&7)<<5)|((vdp_hcount>>3)&31)); // [0,767]
             vdp_latch = MemMap[address >> 13][address & 0x1fff]; // 8K Banks
         }
 
@@ -233,7 +234,8 @@ void advance_vdp() {
         if (vdp_hcount == fb_hdelay+fb_viswidth) {
             vdp_hborder = 1;     // turn on border (after 33 characters) (at 8+256+1 = 265)
             vdp_hc1en = 0;       // stop processing color codes (allow CPU to set palette)
-            VidPal1 = 0;         // reset VidPal latch for each line (Black BG, White FG)
+            VidPal[0] = 0;       // reset VidPal latch for each line (Black BG, White FG)
+            VidPal[1] = 0;       // reset VidPal latch for each line (Black BG, White FG)
         }
         if (vdp_hcount == fb_hdelay+fb_viswidth+fb_hrightbord) {
             vdp_hblank = 1;      // turn on HBLANK (at 8+256+64+1 = 329)
@@ -254,13 +256,14 @@ void advance_vdp() {
             vdp_vcount++;
 
             // advance page counter
-            // Text    H=0 (H:43210) VV=00 (V:6543) 2^6  Text = NOR(V1,V0)
-            // 128x96  H=1 (H:14321) VV=01 (V:5432) 2^5     H = AND(~V1,V0)
-            // 256x96  H=0 (H:43210) VV=10 (V:4321) 2^4
-            // 256x192 H=0 (H:43210) VV=11 (V:3210) 2^3
+            // how many vcount-lines does it take to fill a page?
+            // Text    VMux=11 (V:6543) 32 per line, 8 copies -> 256/32*8 = 64 (2^6)  Text = V1 AND V0
+            // 128x96  VMux=10 (V:5432) 16 per line, 2 copies -> 256/16*2 = 32 (2^5)  Base = V1 OR ~V0
+            // 256x96  VMux=01 (V:4321) 32 per line, 2 copies -> 256/32*2 = 16 (2^4)
+            // 256x192 VMux=00 (V:3210) 32 per line, 1 copy   -> 256/32*1 = 8  (2^3)
             if (!vdp_vborder) {
-                int page_mask = (64 >> (VidCtl&3)) - 1;
-                if ((vdp_vcount & page_mask) == 0) VidPgC++;
+                int page_mask = (8 << ((VidCtl&0xC)>>2)) - 1;
+                if ((vdp_vcount & page_mask) == 0) vdp_vbase += 256;
             }
 
             // vertical decodes
@@ -278,6 +281,13 @@ void advance_vdp() {
                 vdp_vcount = 0;    // end of field (262 lines)
                 vdp_vborder = 0;   // turn off vertical border
                 FBrow = 0;         // reset output row
+                unsigned VMux1 = (VidCtl>>3)&1;
+                unsigned VMux0 = (VidCtl>>2)&1;
+                unsigned HSel = (VidCtl>>1)&1;
+                unsigned Text = (VMux1 & VMux0);
+                unsigned Base = (VMux1 | ~VMux0)&1;
+                unsigned VC = (Base<<3)|(VMux0<<2)|(HSel<<1)|Text;
+                vdp_vbase = ((VidCtl>>4)<<12) | (VC<<8);
                 //vdp_nextbus = 0;   // TESTING (bus rates other than 7)
                 render();
             }
