@@ -9,13 +9,13 @@
 ; Graphics        0.25 ($100)  |  1K          09
 ; Keywords        0.5  ($200)  /              0A 0B
 ; ---------------------------
-; Casette         164b ($a4)   \              0C
+; Cassette        164b ($a4)   \              0C
 ; Keyboard        256b ($100)  |              0D
 ; Print/Wrchr     231b ($e7)   |              0E
 ; Readline        103b ($67)   |  1K          0F
 ; Cls/Tab/XY      106b ($6a)   |
 ; Copy fw/bw       85b ($55)   |
-; INT/Cursor       79b ($4f)   /
+; IRQ/Cursor       79b ($4f)   /
 ;                 -----------
 ; 256+231+103+106+85+79+164
 
@@ -198,12 +198,12 @@ IO_EXT4  = $F4        ; A/B expansion IO
 IO_EXT5  = $F5        ; A/B expansion IO
 IO_EXT6  = $F6        ; A/B expansion IO
 IO_EXT7  = $F7        ; A/B expansion IO
-IO_KEY   = $F8        ; Keyboard 8-bit (7:TXD 6:RTS 5:TapeOut 4-0:KBCol) / read: KB row 8-bit
+IO_KEY   = $F8        ; Keyboard 8-bit (7:TXD 6:RTS 5:TapeOut 4:??? 3-0:KBCol) / read: KB row 8-bit
 IO_VID   = $F9        ; Video Control 8-bit (7-4:VideoBase 3-2:Mode 1:Wide 0:2BPP) / read: Junk (STROBE Parallel)
 IO_VLN   = $FA        ; IRQAck any-write / read: Vertical Line (>= 192 in vblank)
 IO_PAL   = $FB        ; Color Palette 6-bit (5-4:Entry 3-0:Color) / read: (7-4:Junk 3:TapeIn 2:BUSY 1:CTS 0:RXD)
 IO_PSG   = $FC        ; PSG Frequency 8-bit (7-0:Divider) (7860 Hz / divider; 255 = silent) [R/W]
-IO_CNF   = $FD        ; Configuration 8-bit (7-5:Volume 4:Reveal 3:TapeMotor 2:EFsel 1:CDsel 0:ABsel) [R/W]
+IO_CFG   = $FD        ; Configuration 8-bit (7-5:Volume 4:Reveal 3:TapeMotor 2:EFsel 1:CDsel 0:ABsel) [R/W]
 IO_PIO   = $FE        ; Parallel IO 8-bit (7-0 Parallel) [R/W]
 IO_EXP   = $FF        ; Expansion 8-bit (7:CDsel 6-5:ABsel 4-0:MemoryMap) [R/W]
 
@@ -249,7 +249,7 @@ reset:
   LDA #>End4K       ; end of memory (page)
   STA MemSize       ; set size of memory (in pages)
   LDX #0            ; X = 0
-  STX IOChan        ; reset active #channel
+  STX IOChan        ; reset active #channel (for printmsgln)
   STX Acc0          ; Acc0 = 0 (for free memory)
   JSR vid_mode      ; set text mode (X=0)
   LDY #<msg_boot    ; boot message
@@ -1114,8 +1114,6 @@ msg_stop:
   DB 4,"STOP"
 msg_record:
   DB 6,"RECORD"
-msg_tape:
-  DB 5," TAPE"
 
 ; ~64 bytes error messages
 msg_exp:  DB 8,"Missing "
@@ -1123,8 +1121,8 @@ msg_syn:  DB 6,"Syntax"
 msg_div:  DB 8,"Div by 0"
 msg_ovf:  DB 7,"Too big"
 msg_prg:  DB 7,"Corrupt"
-msg_var:  DB 9,"Not set: "
-msg_typ:  DB 10,"Wrong type"
+msg_var:  DB 8,"No Var: "
+msg_typ:  DB 8,"Bad Type"
 msg_rng:  DB 6,"Range?"
 msg_blk:  DB 5,"Block"
 msg_esc:  DB 8,13,13,"Escape"
@@ -3894,7 +3892,7 @@ mem_copy:                ; (uses A,X,Y,F,Src,Dst)
   RTS                    ; [6] no copy
 
 ; @@ mcopyf
-; copy memory forwards from (Src) to (Dst) with XY=size       (31b)
+; copy memory forwards from (Src) to (Dst) with XY=size       (30b)
 ; assume (Dst < Src) but Src/Dst may overlap
 mcopyf:                  ; (uses A,X,Y,F,Src,Dst)             X=$03 Y=$00
   TYA                    ; [2] is Y=0?                        A=$00

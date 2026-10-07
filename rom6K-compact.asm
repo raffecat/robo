@@ -312,7 +312,7 @@ basic_esc:         ; <- entry point after Escape
   STA EmitBuf,Y     ; [DEBUG]
   TAY               ; [DEBUG]
 @debug:
-  LDA EmitBuf,Y      ; [DENUG]
+  LDA EmitBuf,Y      ; [DEBUG]
   BEQ repl           ; [DEBUG]
   STA Acc0           ; [DEBUG]
   LDA #0             ; [DEBUG]

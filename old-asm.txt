@@ -822,3 +822,269 @@ kwrev:
   DB "ENV", <kw_env
   DB "END", <kw_end
 
+
+
+
+cmd_auto:
+  LDA #10
+  STA LineNo        ; set default start line
+  STA AutoInc       ; set default increment
+  LDA #0
+  STA LineNoH
+  STA B             ; 2nd-arg flag
+  JSR ln_range      ; parse line-range -> Acc
+  LDA B             ; check 2nd arg
+  BEQ @lp           ; -> no 2nd arg
+  LDA Acc1
+  BNE cmd_range
+  LDA Acc0
+  BEQ @lp
+  STA AutoInc
+@lp:
+  LDA LineNo
+  STA Acc0
+  LDA LineNoH
+  STA Acc1
+  JSR print_u16
+  JSR wrspc
+  JSR readline
+  LDY #0            ; [2] input offset
+  STY EmitOfs       ; [3] reset EmitOfs for code gen
+  STY EmitPtch      ; [3] reset EmitPtch for code gen
+  JSR tokenize      ; [6] tokenize the line
+  JSR debug
+;;  JSR insLine      ; [6] insert the line into the BASIC program
+; next line
+  LDA AutoInc
+  CLC
+  ADC LineNo
+  STA LineNo
+  BCC @lp           ; -> continue
+  INC LineNoH
+  BNE @lp           ; -> continue (unless line number wraps around)
+  RTS
+
+
+  STA B            ; save Y (for low bit)
+  LSR              ; [000YYYYY] div 2 (0..23)
+  TAY              ; save Y/2 (0..23)
+; high byte
+  CMP #13          ; >= 13 needs +4 else +1
+  BCC @skip        ; -> below 13
+  ADC #2           ; (Y+16+4)>>3 add 3 (CF=1)
+@skip:
+  ADC #17          ; (Y+16+1)>>3 (includes VidBase $02)
+  LSR              ; [0000YYYY] >> 3
+  LSR              ; [00000YYY]
+  LSR              ; [000000YY]      11 bytes (same as semlnh, minus table lookup)
+  STA DstH         ; set destination high
+; low byte
+  TYA              ; restore Y/2 (0..23)
+  LSR              ; [000YYYYY] div 2 (0..11) CF=Y0
+  TAY
+  LDA semlnl,Y     ; load low byte
+  BCC @no40
+  ADC #39          ; add 40 (CF=Y0=1)    4 bytes saves 12 (net 8 saved)
+@no40:
+  STA Dst          ; set destination low
+
+
+
+
+cmd_auto:
+  LDA #10
+  STA LineNo        ; set default start line
+  STA AutoInc       ; set default increment
+  LDA #0
+  STA LineNoH
+  STA B             ; 2nd-arg flag
+  JSR ln_range      ; parse line-range -> Acc
+  LDA B             ; check 2nd arg
+  BEQ @lp           ; -> no 2nd arg
+  LDA Acc1
+  BNE cmd_range
+  LDA Acc0
+  BEQ @lp
+  STA AutoInc
+@lp:
+  LDA LineNo
+  STA Acc0
+  LDA LineNoH
+  STA Acc1
+  JSR print_u16
+  LDA #32
+  JSR wrchr
+  JSR readline
+  LDY #0            ; [2] input offset
+  STY EmitOfs       ; [3] reset EmitOfs for code gen
+  STY EmitPtch      ; [3] reset EmitPtch for code gen
+  JSR tokenize      ; [6] tokenize the line
+  JSR debug
+;;  JSR ins_line      ; [6] insert the line into the BASIC program
+; next line
+  LDA AutoInc
+  CLC
+  ADC LineNo
+  STA LineNo
+  BCC @lp           ; -> continue
+  INC LineNoH
+  BNE @lp           ; -> continue (unless line number wraps around)
+  RTS
+
+cmd_range:
+  LDY #<msg_rng
+  JMP report_err     ; [3] -> out of range
+
+
+
+
+; @@ ART
+cmd_art:            ; 21 bytes
+  LDX #0            ; text mode
+  JSR vid_cls       ; clear screen (X=mode, uses A,X,Y,B)
+@idle:
+  JSR show_cursor   ; enable cursor (uses A,Y)
+@wait:
+  BIT ModKeys       ; detect ESC
+  BMI @esc
+  JSR readchar      ; get char from keyboard
+  BEQ @wait         ; -> continue waiting
+  TAX               ; save key
+  JSR hide_cursor   ; disable cursor (uses A,Y)
+  TXA               ; restore key
+@loop:
+  JSR wrchr         ; print it, or do control code (uses A,X,F,Src,Dst) preserves Y
+  JSR readchar      ; get char from keyboard
+  BNE @loop         ; -> more chars
+  BEQ @idle         ; -> go idle
+@esc:
+  JMP escape
+
+
+
+
+
+; greater than / less than
+  CMP #60            ; <> <= <
+  BEQ @ltgt          ; -> tokenize less than
+  CMP #62            ; >= >
+  BEQ @ltgt          ; -> tokenize greater than
+@emitx:
+  TXA                ; emit X
+@emitc:              ; output character: ^ + - * / ( ) # , ; $
+  JSR tok_emit       ; output character (uses X=0; preserves A,Y) -> PL
+  INY                ; advance input
+  BPL tok_loop       ; -> ALWAYS: continue tokenize
+@ltgt:               ; less than / greater than
+  ASL                ; A=(60|62) (<|>) x2 = (120|124)
+  AND #$1F           ; A=(24|28)
+  STA B              ; A -> B
+  INY                ; advance input (<|>)
+  LDA LineBuf,Y      ; next input char
+  SEC                ;
+  SBC #60            ; '<'
+  CMP #3             ; '<'=0 '='=1 '>'=2
+  BCS @emitx         ; -> no match, just emit (<|>) (A >= 3)
+  INY                ; advance input (<|=|>)
+  ORA B              ; A = (24|28)|(0-2) = 24:<< 25:<= 26:<> 28:>< 29:>= 30:>>
+  BNE @emitc         ; -> ALWAYS: emit and continue (A!=0)
+
+
+
+
+; Arrows move within the line; insert or delete text within the line.
+; TAB calls up an existing line in edit mode.
+
+; @@ readline
+; read a single line of input into the line buffer (zero-terminated)
+readline:         ; uses A,X,Y,B,C -> LineBuf, Y=length (EQ if zero)
+  LDA #0          ; 
+  STA B           ; init line length
+  STA C           ; init line cursor (linear)
+@idle:
+  JSR show_cursor ; uses A,Y; Y=0
+@wait:
+  BIT ModKeys     ; check for Escape
+  BMI @esc
+  JSR readchar    ; from keyboard (uses A,X,Y -> A,ZF)
+  BEQ @wait       ; if no char -> @wait
+  TAX             ; save key
+  JSR hide_cursor ; uses A,Y; Y=0
+  TXA             ; restore key
+@cont:
+  CMP #32         ; is it a control code?
+  BCC @ctrl       ; -> char < 32, control code
+  LDY B           ; current length
+  CPY #119        ; is buffer full? (3 lines)
+  BEQ @more       ; buffer full -> do nothing
+  ; write new char at cursor
+  JSR wrchr       ; print A=char (uses A,X,F,Src,Dst) preserves Y •••
+  ; move up and write chars betwen C and B
+  LDY C           ; current cursor position
+  CPY B           ; same as length?
+  BEQ @nomv       ; -> nothing to move
+  PHA             ; save A=char
+@mvup:
+  LDA LineBuf,Y   ; read char (starting at cursor)
+  STA LineBuf+1,Y ; write char (move up 1 pos)
+  JSR wrchr       ; print A=char (uses A,X,F,Src,Dst) preserves Y •••
+  INY             ; next char
+  CPY B           ; at line length?
+  BNE @mvup       ; -> no, loop
+  PLA             ; restore A=char
+  LDY C           ; current cursor position
+@nomv:
+  STA LineBuf,Y   ; write char (insert at cursor)
+  INC B           ; increase length
+  INC C           ; increse cursor
+
+@more:            ; keep reading chars
+  JSR readchar    ; from keyboard (uses A,X,Y -> A,ZF)
+  BNE @cont       ; -> got another char
+  BEQ @idle       ; -> return to idle
+@ctrl:
+  CMP #13         ; is it RETURN?
+  BEQ @return     ; -> return
+  LDY C           ; get cursor (C)
+  BEQ @noleft     ; -> cannot move left
+  CMP #8          ; is it BACKSPACE?
+  BEQ @backsp     ; -> backspace
+  CMP #$1E        ; is it Left Arrow
+  BEQ @left       ; -> move cursor left
+@noleft:
+  CMP #$1F        ; is it Right Arrow
+  BEQ @right      ; -> move cursor right
+  BNE @more       ; -> always
+@esc:
+  JMP escape
+@backsp:
+  DEC B           ; length -= 1
+@left:
+  DEY             ; cursor -= 1 (move left)
+@wrcur:
+  STY C           ; update cursor
+  JSR wrctl       ; write the control code (uses A,X, preserves Y -> CC=fail)
+  JMP @more
+@right:
+  CPY B           ; cursor == length?
+  BEQ @more       ; -> at end of buffer, do nothing
+  INY             ; cursor += 1 (move right)
+  BNE @wrcur      ; -> always
+@return:
+  LDY B           ; get line length
+  LDA #0          ; terminator
+  STA LineBuf,Y   ; write terminator to line buffer
+  RTS             ; returns Y=length (ZF=1 if zero)
+
+
+; 77 bytes error messages
+msg_mis:  DB 8,"Missing "
+msg_syn:  DB 7,"Syntax?"
+msg_div:  DB 5,"Div 0"
+msg_ovf:  DB 7,"Too Big"
+msg_var:  DB 7,"No VAR "
+msg_for:  DB 6,"No FOR"
+msg_gos:  DB 9,"No GOSUB"
+msg_typ:  DB 5,"Type?"
+msg_rng:  DB 6,"Range?"
+msg_esc:  DB 8,13,13,"Escape"
