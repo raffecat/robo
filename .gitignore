@@ -1,7 +1,8 @@
 .DS_Store
-/robo
-/emu/robo
-/emu/robo.dSYM/
+/emu/chroma-zero/zero
+/emu/chroma-zero/zero.dSYM
+/emu/robo-48/robo
+/emu/robo-48/robo.dSYM
 /font/ASCII
 *.bin
 *.lst
