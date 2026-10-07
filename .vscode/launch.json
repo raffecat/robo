@@ -16,7 +16,7 @@
             "type": "lldb",
             "request": "launch",
             "name": "Chroma-4",
-            "program": "${workspaceFolder}/robo-8/emu/emu4",
+            "program": "${workspaceFolder}/emu/chroma-zero/zero",
             "args": [],
             "preLaunchTask": "build_chroma"
         }

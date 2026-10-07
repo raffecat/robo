@@ -1,0 +1,7 @@
+-xc
+-Wall
+-Wextra
+-pedantic
+-I /opt/homebrew/Cellar/sdl2/2.32.0/include
+-L /opt/homebrew/Cellar/sdl2/2.32.0/lib
+-l SDL2
