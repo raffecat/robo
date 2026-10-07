@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 set -e -x
 
-asm6 rom6K-native2.asm rom6K.bin rom6K-native2.lst
+asm6 rom4K.asm rom4K.bin rom4K.lst
 
 clang -Wall -Wextra -pedantic \
 -I /opt/homebrew/Cellar/sdl2/2.32.0/include -L /opt/homebrew/Cellar/sdl2/2.32.0/lib -l SDL2 \
--g robo-8/emu/sdl_main.c robo-8/emu/fake6502.c robo-8/emu/charrom.c robo-8/emu/ula.c robo-8/emu/render.c robo-8/emu/debugger.c \
--o robo-8/emu/emu4
+-g emu/chroma-zero/sdl_main.c emu/chroma-zero/fake6502.c emu/chroma-zero/charrom.c emu/chroma-zero/ula.c emu/chroma-zero/render.c emu/chroma-zero/debugger.c \
+-o emu/chroma-zero/zero
