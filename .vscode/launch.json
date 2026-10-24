@@ -19,6 +19,14 @@
             "program": "${workspaceFolder}/emu/chroma-zero/zero",
             "args": [],
             "preLaunchTask": "build_chroma"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Frontier SBC",
+            "program": "${workspaceFolder}/emu/sbc/emu",
+            "args": [],
+            "preLaunchTask": "build_sbc"
         }
     ]
 }

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+clang font/cv_2513_asm.c -o font/cv_2513_asm
+clang font/cv_2513_inc.c -o font/cv_2513_inc
+
+./font/cv_2513_inc >font/S2513.inc
+
+./font/cv_2513_asm >font/S2513.asm
+asm6 font/S2513.asm font/S2513.bin

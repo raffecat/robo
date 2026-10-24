@@ -35,6 +35,14 @@
 			"args": [],
 			"group": "build",
 			"problemMatcher": [], // Keep this if you don't want problem matching
-		}		
+        },
+		{
+			"type": "process",
+			"label": "build_sbc",
+			"command": "./make_sbc",
+			"args": [],
+			"group": "build",
+			"problemMatcher": [], // Keep this if you don't want problem matching
+		}
 	]
 }
