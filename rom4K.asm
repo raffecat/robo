@@ -139,8 +139,8 @@ CurrKey  = $D3        ; keyboard current key pressed, for auto-repeat (owned by 
 DeadKey  = $D4        ; keyboard last key pressed, to ignore it (owned by IRQ)
 KeyRep   = $D5        ; keyboard auto-repeat timer
 
-CurX     = $D6        ; cursor X position
-; xxx    = $D7        ; xxx
+; xxx    = $D6        ; xxx
+CurX     = $D7        ; cursor X position
 
 TXTP     = $D8        ; text write address
 TXTPH    = $D9        ; text write address high
@@ -176,7 +176,7 @@ IO_EXT6  = $F6        ; A/B expansion IO
 IO_EXT7  = $F7        ; A/B expansion IO
 IO_KEY   = $F8        ; Keyboard 8-bit (7:TXD 6:RTS 5:TapeOut 4:Speaker 3-0:KBCol) / read: KB row 8-bit
 IO_VID   = $F9        ; IO Read: (2:TapeIn 1:CTS 0:RXD)
-IO_VLN   = $FA        ; Reserved
+IO_ACK   = $FA        ; IRQ Acknowledge
 IO_PAL   = $FB        ; Reserved
 IO_PSG   = $FC        ; Reserved
 IO_CFG   = $FD        ; Reserved
@@ -227,14 +227,14 @@ messages:           ; page-aligned
 ; ------------------------------------------------------------------------------
 ; Messages
 
-; boot messages (50b)
+; boot messages (46b)
 msg_boot:
   DB $92,$93,$94,$95,$96,$90,13,13
-  DB "Frontier BASIC 1.0",13,13,0
+  DB "Frontier BASIC",13,13,0
 msg_freemem:
   DB " bytes free",13,13,0
-msg_ready:
-  DB "Ready",13,0
+msg_ok:
+  DB "OK",13,0
 
 ; error messages (36b)
 msg_mis:  DB "MIS",0
@@ -289,11 +289,11 @@ reset:
   LDX #$FF          ; X = $FF
   TXS               ; reset SP = $FF
   JSR irq_init      ; set up IRQ handler (cursor blink)
-  LDY #<msg_ready   ; [2] "Ready"
-  JSR err_wrn       ; [6] print it (uses A,X,Y)
 repl:
+  LDY #<msg_ok      ; [2] "OK"
+  JSR err_wrn       ; [6] print it (uses A,X,Y)
   JSR readline      ; [6] read command or BASIC statement
-  JSR wr_eol        ; [6] move to new line (REQUIRES: Y=0)
+  JSR wr_eol        ; [6] move to new line (uses A,X,Y -> Y=0)
   ; using Ptr is compatible with VAL(A$)
   ; use the screen as the input buffer instead?
   ; costs 6 bytes, saves 7 bytes LineBuf addressing
@@ -348,6 +348,7 @@ report_err:
 err_rep:            ; Y=msg_ofs
   JSR newline       ; new line (uses A,X) preserves Y
   LDA #35           ; `#`
+  DEY               ; for INY
   JSR err_wr        ; write #<MSG>
 @wait:              ; wait for Escape to be released (for Escape)
   JSR newline       ; new line (uses A,X) preserves Y
@@ -360,6 +361,7 @@ err_rep:            ; Y=msg_ofs
 ; also used by TAPE routines
 err_wr:             ; Y=message A=prefix_char
   JSR wrchr         ; write char (A=char, uses A,X) preserves Y
+  INY               ; 
 err_wrn:            ; Y=message (no prefix)
   LDA messages,Y    ; next char
   BNE err_wr        ; loop until zero
@@ -474,44 +476,41 @@ tok_data:            ; copy rest of line verbatim
 tok_done:
   RTS
 
-; @@ emit_num
+; @@ emit_num        (46b)
 ; assumes next char is digit
 emit_num:
-@loop:
   JSR num_u24        ; from LineBuf,Y-> Y,Acc,CS=ovf (uses A,X,Term)
   BCS tok_ovf        ; -> overflow
-  LDA Acc2
-  BNE @int4          ; -> 3 bytes plus opcode
-  LDA Acc1
-  BNE @int3          ; -> 2 bytes plus opcode
-  LDA Acc0
+  STY B              ; save Y
+  LDY #3             ; OP_INT4 (+3) "extra +1" for BPL loop
+  LDA Acc2           ; high byte
+  BNE @out           ; -> 3 bytes plus opcode
+  DEY                ; OP_INT3 (+2)
+  LDA Acc1           ;
+  BNE @out           ; -> 2 bytes plus opcode
+  DEY                ; OP_INT2 (+1)
+  LDA Acc0           ;
   CMP #10            ; CS if >= 10
-  BCS @int2          ; -> 1 byte plus opcode
+  BCS @out           ; -> 1 byte plus opcode
 ; single-digit number
-  ORA #$F0           ; 0xF0 - 0xF9 (nums >= 0xF0)
-  JMP @done          ; -> ALWAYS
-@int2:
-  LDA #OP_INT2       ; 2-byte integer (with opcode)
+  SBC #8             ; minus 9 (CS=0)
+  TAY                ; [-9..0]
+@out:                ; <- CS=1
+  TYA                ; Y=OP_INTn|OP_In
+  SEC                ; for single-digit path
+  ADC #OP_INT2-2     ; 3->OP_INT4 2->OP_INT3 1->OP_INT2 (-2 for CS=1 and "extra +1")
+@lp:
   JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
-  JMP @out1
-@int3:
-  LDA #OP_INT3       ; 3-byte integer (with opcode)
-  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
-  JMP @out2
-@int4:
-  LDA #OP_INT4       ; 4-byte integer (with opcode)
-  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
-;out3:
-  LDA Acc2
-  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
-@out2:
-  LDA Acc1
-  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
-@out1:
-  LDA Acc0
+  LDA Acc0-1,Y       ; 3->Acc2 2->Acc1 1->Acc0 done
+  DEY                ; 3->2    2->1    1->0    0->-1
+  BPL @lp            ; -> loop until Y<0
 @done:
-  JSR tok_emit       ; emit byte (uses X=0; preserves A,Y; PL)
+  LDY B              ; restore Y
   JMP tok_loop       ; -> ALWAYS
+
+tok_ovf:
+  LDY #<msg_rng      ; [2] #RNG
+  JMP err_rep        ; [3] -> report error
 
 ; @@ emi_var
 ; copy VAR[$] to output (assumes 1st char is alpha)
@@ -566,10 +565,6 @@ patch_len:
   STA EmitBuf,X      ; [5] write fixup byte
   RTS                ; [6] -> PL
 
-tok_ovf:
-  LDY #<msg_rng      ; [2] #RNG
-  JMP err_rep        ; [3] -> report error
-
 ; @@ match_kws
 ; find matching keyword, terminated by a byte with top-bit set (8x,9x,Ax,Bx)
 ; if no match, continue until bit 6 is set (Cx,Dx,Ex,Fx)
@@ -579,12 +574,11 @@ match_kws:       ; Y=ofs XA=table -> CF=found, Y=ofs, A=high-byte (uses A,X,B,Sr
   STA Src        ; [3] table-low (offset)
   STX SrcH       ; [3] table-high (page)
   LDX #0         ; [2] const X=0
-@next_kw:
-  DEY            ; [2] set up for pre-increment
-  DEC Src        ; [5] set up for pre-increment
+  BEQ @next_kw   ; [3] -> start
 @match_lp:
   INY            ; [2] pre-increment input position
   INC Src        ; [5] pre-increment keyword position
+@next_kw:
   LDA (Src,X)    ; [6] next keyword char
   BMI @found     ; [2] -> matched keyword (top bit set) [+1] (MUST check LDA flags not CMP flags)
   CMP LineBuf,Y  ; [4] does it match input?
@@ -2702,7 +2696,7 @@ keyscan:          ; uses A,X,Y returns nothing (CANNOT use B,C,D,E)
   TXA             ; [2] restore remaining col_bitmap
   BNE @bsf_lp     ; [3] -> continue bsf loop if A != 0 (more keys are down)   (XXX will invert this, $FF)
   LDY IRQTmp      ; [3] restore keyscan row
-  BPL @row_cont   ; [3] -> ALWAYS: continue scanning rows (Y in [0..8])
+  JMP @row_cont   ; [3] -> ALWAYS: continue scanning rows (Y in [0..8])
 ; ...
 @mods:
   STX ModKeys     ; [3] update ModKeys (X=col_bitmap)
@@ -2869,7 +2863,7 @@ wr_eol:           ; (uses A,X,Y) -> (Y=0)
   LDA #0          ; [2] to row = 0
   STA Dst         ; [3]
 ; move contents up one line
-  LDA #192        ; [2] 960 bytes = 192 bytes
+  LDY #152        ; [2] 192-40 = 152
   LDX #3          ; [2] plus 3 pages // [50]
   JSR mcopyf      ; [6] copy forwards XY=size (uses A,X,Y,F,Src,Dst) // [3*4111 + 192*18 + 20] = [15809]
 ; clear the bottom row
@@ -3151,12 +3145,14 @@ mcopyf:                  ; (uses A,X,Y,F,Src,Dst)
   BNE @plp               ; [2] -> another page (Y=0) [+1] // [+15] = [PG*4111]
 @part:                   ; (Y=0)
   LDX F                  ; [3] restore part-len // [3]
+  BEQ @done              ; [2] -> no part [+1]
 @olp:
   LDA (Src),Y            ; [5] read byte
   STA (Dst),Y            ; [6] write byte
   INY                    ; [2] advance
   DEX                    ; [2] decrement length
   BNE @olp               ; [3] -> until X=0 [+1] // [OFS*18]
+@done:
   RTS                    ; [6] -> // [PG*4111 + OFS*18 + 18]
 
 ; @@ mcopyb
@@ -3231,7 +3227,7 @@ cur_show:         ; show cursor (uses A,Y; Y=0)
   LDY CurX        ; [2] Y = CurX
   LDA (TXTP),Y    ; [5] get char under cursor
   STA CurChar     ; [3] save char under cursor
-  LDA #$EF        ; [2] cursor block
+  LDA #$FF        ; [2] cursor block
   STA (TXTP),Y    ; [6] write cursor block
   LDA #$80        ; [2] set top bit
   STA CurVis      ; [3] set top-bit (cursor visible, no inhibit)
@@ -3266,7 +3262,7 @@ irq_init:
 ; @@ irq_rom
 ; standard ROM IRQ handler: keyboard scan
 irq_rom:
-  STA IO_VLN     ; [3] acknowledge interrupt
+  STA IO_ACK     ; [3] acknowledge interrupt
   PHA            ; [3] save A
   TXA            ; [2]
   PHA            ; [3] save X

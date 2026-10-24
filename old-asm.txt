@@ -1088,3 +1088,131 @@ msg_gos:  DB 9,"No GOSUB"
 msg_typ:  DB 5,"Type?"
 msg_rng:  DB 6,"Range?"
 msg_esc:  DB 8,13,13,"Escape"
+
+
+
+
+; ------------------------------------------------------------------------------
+; DISASSEMBLER v2
+
+ALIGN 256
+ds_pg = $
+
+dsnext:
+  JSR wrnl
+disasm:
+; print address
+  LDA PtrH
+  JSR prhex
+  LDA Ptr
+  JSR wrhex
+; decode instruction
+  LDY #0         ;
+  LDA (Ptr),Y    ; fetch opcode
+  TAY            ; save opcode (Y)
+  AND #15        ; low-nibble
+  PHA            ; push low-nibble (*)
+  TAX            ; index
+  CMP c_undef,X  ; explicit undef?
+  BEQ @ndef      ; -> not defined
+@ldx:            ; <- LDX #
+  LDA c_base,X   ; base address
+  BEQ @ndef      ; -> not defined
+  STA C          ; set base address
+  TAX            ; save base (X)
+  TYA            ; restore opcode (Y)
+  LSR            ; [0HHHHLLL]
+  LSR            ; [00HHHHLL]
+  LSR            ; [000HHHHL]
+  LSR            ; [0000HHHH] high-nibble
+  CPX #<di_tab   ; is base a table? (X)
+  BCS @table     ; -> use table
+  JSR prmne      ; print mnemonic (1 of 16)     XXX must also call prmnd
+@cont:
+  PLA            ; pop low-nibble (*)
+  TAX            ; index
+  LDA ds_jmp,X   ; low byte
+  PHA            ;
+  LDA #>di_pg    ; high byte
+  PHA            ;
+  RTS            ; jump to it (10b)
+
+@table:          ; A=high-nibble
+  CLC            ; 
+  ADC C          ; add table base address
+  TAX            ; index
+  LDA mnem,X     ; look up mnemonic in table
+  BEQ @ndef      ; -> not defined
+  JSR print      ; print it
+  JMP @cont      ; -> addressing
+
+@ndef:
+  CMP #$A2       ; special case (LDX #)
+  BEQ @ldx       ; -> resume
+  ; display hex
+
+ds_jmp:
+  DB <a_rel  -1 ; 0
+  DB <a_ind  -1 ; 1
+  DB <a_im   -1 ; 2
+  DB <a_none -1 ; 3
+  DB <a_zpc  -1 ; 4
+  DB <a_zpc  -1 ; 5
+  DB <a_zpc  -1 ; 6
+  DB <a_none -1 ; 7
+  DB <a_none -1 ; 8
+  DB <a_abi  -1 ; 9
+  DB <a_A    -1 ; A
+  DB <a_none -1 ; B
+  DB <c_abc  -1 ; C
+  DB <c_abc  -1 ; D
+  DB <c_abc  -1 ; E
+  DB <a_none -1 ; F
+
+a_rel:
+a_ind:
+a_im:
+a_zpc:
+a_abi:
+a_A:
+c_abc:
+a_none:
+
+
+c_undef:
+  DB $80       ; 0  not defined
+  DB 0         ; 1  div2
+  DB $A2       ; 2  •• only $A2 mapped (LDX #)
+  DB 0         ; 3
+  DB 0         ; 4
+  DB 0         ; 5  div2
+  DB 0         ; 6  div2
+  DB 0         ; 7
+  DB 0         ; 8
+  DB $89       ; 9  not defined  div2
+  DB 0         ; A
+  DB 0         ; B
+  DB $9C       ; C  not defined
+  DB 0         ; D  div2
+  DB $9E       ; E  not defined  div2
+  DB 0         ; F
+
+c_base:
+  DB <n_0      ; 0
+  DB <n_159D   ; 1  div2
+  DB <n_LDX-$A ; 2  (high-nibble will be $A)
+  DB 0         ; 3
+  DB <di_c4    ; 4  >= di_tab
+  DB <n_159D   ; 5  div2
+  DB <n_6E     ; 6  div2
+  DB 0         ; 7
+  DB <n_8      ; 8
+  DB <n_159D   ; 9  div2
+  DB <di_cA    ; A  >= di_tab
+  DB 0         ; B
+  DB <di_c4    ; C  >= di_tab
+  DB <n_159D   ; D  div2
+  DB <n_6E     ; E  div2
+  DB 0         ; F
+
+

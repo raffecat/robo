@@ -1,0 +1,106 @@
+
+; CLS                                                    -> {CLS}
+; END                                                    -> {END}
+; REPEAT                                                 -> {REPEAT}
+; RETURN                                                 -> {RETURN}
+; WAIT                                                   -> {WAIT}
+; GOTO <expr_n>                                          -> {GOTO}<expr_n>
+; GOSUB <expr_n>                                         -> {GOSUB}<expr_n>
+; RESTORE <expr_n>                                       -> {RESTORE}<n16>
+; UNTIL <expr_n>                                         -> {UNTIL}<expr_n>
+; MODE <expr_n>                                          -> {MODE}<expr_n>
+; POKE <expr_n> ',' <expr_n>                             -> {POKE}<expr_n><expr_n>
+; OPT <expr_n> ',' <expr_n>                              -> {OPT}<expr_n><expr_n>
+; PLOT <expr_n> ',' <expr_n>                             -> {PLOT}<expr_n><expr_n>
+; SOUND <expr_n> ',' <expr_n>                            -> {SOUND}<expr_n><expr_n>
+; LINE <expr_n> ',' <expr_n> ',' <expr_n> ',' <expr_n>   -> {DRAW}<expr_n><expr_n><expr_n><expr_n>
+; LET <var> '=' <expr>                                   -> {LETn|LETs|LETa}<var><expr> (x2?)
+; DIM <var> '(' <expr> ')'                               -> {DIM}<var><expr_n>
+; FOR <var> '=' <expr_n> 'TO' <expr_n> ['STEP' <expr_n>] -> {FOR}<var><expr_n><expr_n><expr_n|$00>
+; NEXT [<var>|$00]                                       -> {NEXT}<var|$00>
+; ELSE <line>/<stmts>                                    -> {ELSE}<len>       | {ELLN}<n16>
+; READ {<var> ','}                                       -> {READ}<len>{<var>}
+; PRINT { [,;'] "str" | <expr_n> | <expr_s> } [;]        -> {PRINT|PRINT;}<len>{<op|lit|expr>}
+; INPUT { [,;'] "str" | <var> }                          -> {INPUT}<len>{<op|lit|var>}
+; DEF FN <name> '(' {<var>} ')'                          -> {DEFFN}<name><len>{<var>}
+; OPEN #<n> ',' <expr_s>                                 -> {OPEN}<n><expr_s>
+; CLOSE #<n>                                             -> {CLOSE}<n>
+; REM <text>                                             -> {REM}<len><data>
+; DATA <text>                                            -> {DATA}<len><data>    (XXX "DATA 1.02e1" -> A$)
+; IF <expr_n> THEN <line>/<stmts> [ELSE <line>/<stmts>]  -> {IF}<expr_n><len> | {IFLN}<expr_n><n16>
+; '=' <expr>                                             -> {RETFN}<expr>   (not a keyword)
+
+; %0ccccccc ASCII match
+; %1E0000nn $8n num expr (#n 1..4) $84 string expr $85 num/str expr
+; %1E010nnn $9x keyword match
+; %1E100000 $A0 var $A1 var[$] $A2 var[$](num) $A3 name $A4 channel $A5 string
+; %1E110000 $B0 if[inc opcode <jump>] $B1 lineno $B2 end,expect_stmt
+;           $B3 if <jump> $B4 emit_data,end $B5 emit <byte> $B6 always <jump>
+; $90 "TO"
+; $91 "STEP"
+; $92 "FN"
+; $93 "THEN"
+
+OP_COMMA = $81
+OP_SEMI = $82
+
+y_syn:
+y_x     DB $00                                     ; CLS,END,REPEAT,RETURN,WAIT
+y_n1    DB $80                                     ; GOTO,GOSUB,RESTORE,UNTIL,MODE <expr_n>
+y_n2    DB $81                                     ; POKE,PLOT,SOUND <expr_n> ',' <expr_n>
+y_n3    DB $83                                     ; LINE <expr_n> ',' <expr_n> ',' <expr_n> ',' <expr_n>
+y_let   DB $A2,$3D,$85,$00                         ; LET <var> '=' <expr>
+y_dim   DB $A1,$28,$80,$29,$00                     ; DIM <var> '(' <expr_n> ')'
+y_for   DB $A0,$3D,$80,$90,$80,$91,$B0,<y_step,$00 ; FOR <var> '=' <expr_n> 'TO' <expr_n> ['STEP' <expr_n>]
+y_step  DB $80,$00                                 ; STEP <expr_n>
+y_next  DB $A0,$B0,<y_x,$00                        ; NEXT [<var>]
+y_else  DB $B1,$B0,<y_x,$B2                        ; ELSE <line>/<stmts>
+y_read  DB $A2,$2C,$B3,<y_read,$00                 ; READ {<var> ','}
+y_def   DB $92,$A0,$28,$A1,$B3,<y_rpa              ; DEF FN <name> '(' {<var>} ')'
+y_rpa   DB $29,$00                                 ; ')'
+y_open  DB $23,$A4,$2C,$84,$00                     ; OPEN #<n> ',' <expr_s>
+y_close DB $23,$A4,$00                             ; CLOSE #<n>
+y_rem   DB $B4                                     ; REM <text>
+y_data  DB $B4                                     ; DATA <text>
+y_if    DB $80,$93,$B3,<y_then,$B2                 ; IF <expr_n> (THEN <line>/<stmts> | <stmts>)
+y_then  DB $B1,$B0,<y_x,$B2                        ; THEN <line>/<stmts>
+y_fnret DB $A2,$00                                 ; '=' <expr>
+
+; 21b
+y_print DB $2C,$B3,<y_pcom  ; comma                ; PRINT { [,;] "str" | <expr_n> | <expr_s> } [;]
+        DB $3B,$B3,<y_psem  ; semi
+        DB $A5,$B3,<y_print ; "str"
+        DB $85,$B6,<y_print ; expr
+        DB $00
+y_pcom  DB $B5,OP_COMMA,$B6,<y_print
+y_psem  DB $B5,OP_SEMI,$B6,<y_print
+
+; 21b
+y_input DB $2C,$B3,<y_icom  ; comma                ; INPUT { [,;] "str" | <var> }
+        DB $3B,$B3,<y_isem  ; semi
+        DB $A5,$B3,<y_input ; "str"
+        DB $A2,$B6,<y_input ; var[$](num)
+        DB $00
+y_icom  DB $B5,OP_COMMA,$B6,<y_input
+y_isem  DB $B5,OP_SEMI,$B6,<y_input
+
+; 108 bytes
+
+
+$8n num expr (#n 1..4)
+$84 var
+$85 var[$]
+$86 var[$](num)
+$87 string
+$88 string expr
+$89 num/str expr
+$8A lineno
+$8B emit <byte> 
+$8C channel
+$8D always <jump>
+$8E if <jump>
+$8F if[inc opcode <jump>]
+$90 end,expect_stmt
+$91 emit_data,end
+
+$Ax keyword match
