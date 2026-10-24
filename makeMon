@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+asm6 mon.asm mon.bin mon.lst

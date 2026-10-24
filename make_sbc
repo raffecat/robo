@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+set -e -x
+
+asm6 mon.asm mon.bin mon.lst
+asm6 rom2K.asm rom2K.bin rom2K.lst
+
+clang -Wall -Wextra -pedantic \
+-I /opt/homebrew/Cellar/sdl2/2.32.0/include -L /opt/homebrew/Cellar/sdl2/2.32.0/lib -l SDL2 \
+-g emu/sbc/sdl_main.c emu/sbc/fake6502.c emu/sbc/charrom.c emu/sbc/ula.c emu/sbc/render.c emu/sbc/debugger.c \
+-o emu/sbc/emu

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+asm6 rom2K.asm rom2K.bin rom2K.lst
