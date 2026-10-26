@@ -17,14 +17,22 @@ int main(int argc, char *argv[]) {
     if (!getcwd(cwd, sizeof(cwd))) { cwd[0] = 'X'; cwd[1] = 0; }
     printf("dir %s\n", cwd);
 
+    // fill DRAM with random bytes
+    srand(time(NULL));
+    for (int i=0; i<8192; i++) {
+        SysROM[i] = rand();
+        MainRAM[i] = rand();
+        VRAM[i] = rand();
+    }
+
     // load the ROM image.
     memset(SysROM, 0xEE, sizeof(SysROM));
     size_t mon_size = read_binary_file("mon.bin", (char*)(SysROM), 512);
     printf("loaded monitor %zu\n", mon_size);
     for (size_t to = 512; to <= sizeof(SysROM)-512; to += 512) {
-        memcpy((char*)(SysROM)+to, (char*)(SysROM), 512);
+        memcpy((char*)&SysROM[to], (char*)(SysROM), 512);
     }
-    size_t bas_size = read_binary_file("rom2K.bin", (char*)(MainRAM)+512, 2048);
+    size_t bas_size = read_binary_file("rom2K.bin", (char*)(MainRAM+0x200), 2048);
     printf("loaded BASIC %zu\n", bas_size);
 
     // create window.
@@ -39,11 +47,11 @@ int main(int argc, char *argv[]) {
 
     // start the CPU.
     reset6502();
-    //pc = 0xE000; // Monitor ROM
+    pc = 0x200; // BASIC
 
     // DEBUGGER
     dbg_enable = 0;
-    dbg_break = 0x0F0E4;
+    dbg_break = 0x200;
     Uint32 held_time = 0;
 
     // run the simulator.

@@ -96,12 +96,6 @@ int init_render() {
         width, height
     );
     if (!texture) return 0;
-    // fill DRAM with random bytes
-    srand(time(NULL));
-    for (int i=0; i<8192; i++) {
-        MainRAM[i] = rand();
-        VRAM[i] = rand();
-    }
     return 1;
 }
 
