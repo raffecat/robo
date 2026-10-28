@@ -173,7 +173,7 @@ tokn    LDA #46           ; DEBUG (dot)
         LDA LineBuf,Y     ; next input char
         CMP #32           ; space?
         BEQ tkskp         ; -> skip it
-        TAX               ; X=next-char
+        TAX               ; X=next-char (NE/EQ)
         BEQ tkeol         ; -> end of line
         EOR #64           ; '@' to 0
         CMP #27           ; 26 letters plus @
@@ -231,11 +231,11 @@ dcmd    LDA #OP_EOP       ; end of program
         ;
 debug   LDY #0            ; DEBUG
 dbglp   LDA EmitBuf,Y
-        JSR prhx
-        JSR wrsp
+        JSR prhx          ; saves Y
+        JSR wrsp          ; saves Y
         INY
-        CPY EmitOfs
-        BCC dbglp
+        CPY EmitOfs       ; emit length
+        BCC dbglp         ; -> less, loop
         JSR wrnl          ; DEBUG
         ; 
         LDA #>EmitBuf     ; page ($01)
@@ -264,30 +264,37 @@ tkstl   JSR tkemi         ; emit char (uses X=0; preserves A,Y; sets PL)
 tksyn   LDY <msg_syn      ; syntax error
         BNE erro          ; -> report error
 
-        ; emit a number
+        ; emit a number (52b)
 tknum   JSR num_u16       ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Acc/Src,Term/Dst)
         STY B             ; save Y
         LDY #2            ; #2 -> OP_INT2
         LDA $01           ; high byte
         BNE tknmo         ; -> 2 bytes plus opcode
-        DEY               ; #1 -> OP_INT1
+        DEY               ; #1 -> OP_INN1
+        CMP #$FF          ; high byte = $FF?
+        BEQ tknmo         ; -> 1 byte plus opcode
+        DEY               ; #0 -> OP_INT1
         LDA $00           ; low byte
         CMP #10           ; CS if >= 10
-        BCS tknmo         ; -> 1 byte plus opcode
+        BCS tknmo         ; -> 1 byte plus opcode (CS)
         ; single-digit number
-        SBC #8            ; minus 9 (CS=0)
-        TAY               ; Y=[-9..0]
-tknmo   TYA               ; A=2 OP_I9 +A=2 = OP_INT2
+        SBC #9            ; minus 10 (CC)
+        TAY               ; Y=[-10..-1]
+tknmo   TYA               ; A=2 OP_I9 +A=2 = OP_INT2 <- CS/CC
         CLC               ; A=1 OP_I9 +A=1 = OP_INT1
-        ADC #OP_I9        ; A=[-9..0] OP_I9 +A=[-9..0]
+        ADC #OP_INT1      ; OP_INT1 +A=[-10..-1]
+        JSR tkemi         ; (uses X=0; preserves A,Y; PL)  2 emit 1 ld -> emit 0 ld -> emit -1 stop
         ; emit opcode, then bytes
-tknem   JSR tkemi         ; (uses X=0; preserves A,Y; PL)  2 emit 1 ld -> emit 0 ld -> emit -1 stop
-        DEY               ; 2 -> 1, 1 -> 0, 0 -> -1
-        LDA $00,Y         ; 1=$01, 0=$00
-        CPY #0            ; restore flags, ugh
+        TYA               ;
+        BMI tknuz         ; -> single-digit, done
+        LSR               ; 2>1 1>0 0>0
+        TAY               ;
+tknem   LDA $00,Y         ; 1=$01, 0=$00 (big-endian)        LDA tknof,Y   2>1 1>0 0>0
+        JSR tkemi         ; (uses X=0; preserves A,Y; PL)  2 emit 1 ld -> emit 0 ld -> emit -1 stop
+        DEY               ; 1>0 0>FF
         BPL tknem         ; -> until Y<0
         LDY B             ; restore Y
-        JMP tokn          ; 
+tknuz   JMP tokn          ; 
 
         ; emit code
         ; uses X; preserves A,Y -> NE,PL
@@ -307,7 +314,7 @@ erro    LDA #63           ; `?`
 errl    JSR wrch          ; write char (A=char, uses A,X) preserves Y
         INY               ; 
         LDA msgs,Y        ; next char
-        BNE errl          ; loop until zero
+        BPL errl          ; loop until >= $80
         JSR wrnl          ; new line (uses A,X) preserves Y
         JMP repl          ; -> always
 
@@ -451,8 +458,9 @@ OP_RPAR    = $B0     ; 0 close parenthesis (lowest, forces all ops to eval up to
 ; numbers (non-operator)
 OP_I0      = $C0     ; 1-byte (OP_I0 + [0-9])
 OP_I9      = $C9     ; 1-byte
-OP_INT1    = $CA     ; 1-byte (opc|int8)
-OP_INT2    = $CB     ; 2-byte (opc|int16)
+OP_INT1    = $CA     ; 1-byte (opc|int8) high byte $00
+OP_INN1    = $CB     ; 1-byte (opc|int8) high byte $FF
+OP_INT2    = $CC     ; 2-byte (opc|int16)
 
 kws_at:
 kws_a:
@@ -468,9 +476,11 @@ kw_dim    DB "DIM",      OP_DIM      +0
 kws_e:
 kw_end    DB "END",      OP_END      +0
 kws_f:
+msg_for   ;
 kw_for    DB "FOR",      OP_FOR      +0
 kws_g:
 kw_goto   DB "GOTO",     OP_GOTO     +$40
+msg_gos   ;
 kw_gosub  DB "GOSUB",    OP_GOSUB    +0
 kws_h:
 kws_i:
@@ -533,12 +543,12 @@ ex_rp     DB ")",       OP_RPAR   +0       ; operator  41
 
 
           ; messages
-msg_syn   DB "SYN",0
-msg_ovf   DB "OVF",0
-msg_for   DB "FOR",0
-msg_gos   DB "GOS",0
-msg_typ   DB "TYP",0
-msg_esc   DB "ESC",0
+msg_syn   DB "SYN",$80
+msg_ovf   DB "OVF",$80
+msg_typ   DB "TYPE",$80
+msg_esc   DB "BRK",$80
+msg_bad   DB "BAD",$80
+msg_mem   DB "FULL",$80
 
 ; Keyword Index
 kw_tab:
@@ -634,6 +644,7 @@ stml:
   DB <repl         ; OP_EOP
   DB <line         ; OP_LN
   DB <clss         ; OP_CLS
+  DB <call         ; OP_CALL
   DB <skip         ; OP_DATA
   DB <do_dim       ; OP_DIM
   DB <repl         ; OP_END
@@ -656,10 +667,11 @@ stml:
   DB <run          ; OP_RUN
   DB <save         ; OP_SAVE
   DB <do_tone      ; OP_TONE
-stmh:
+stmh:                                   
   DB >repl         ; OP_EOP
   DB >line         ; OP_LN
   DB >clss         ; OP_CLS
+  DB >call         ; OP_CALL
   DB >skip         ; OP_DATA
   DB >do_dim       ; OP_DIM
   DB >repl         ; OP_END
@@ -692,24 +704,29 @@ DB "CMD"
 
 ; @@ LIST
 ; display program listing
-list    JSR expr          ; line number -> Args[0]  ; XXX or exprs?
-        JSR fndln         ; find matching line, or next (Args[0] -> Args[0])  ; pass X?
+list    JSR expr          ; line number -> Args[0]
+        JSR fndln         ; find matching line, or next (Args[0] -> XA/Ptr)
+        STA D             ; low
+        STX E             ; high
         LDA (CODE),Y      ; read code
         CMP #44           ; comma?
         BNE lsts          ; -> no, start listing
         INY               ; comma
-        JSR expr          ; line number -> Args[1]
-        JSR fndln         ; find matching line, or next (Args[1] -> Args[1]) -> X
-lsts    LDY #0            ; skip OP_LINE
-        LDA (CODE),Y      ; get LineL
-        CMP #OP_EOP       ; end of program marker
-        BEQ lstx          ; -> end of program (0)
-        INY               ; skip OP
-        INY               ; LnHi
-        INY               ; LnLo
-        INY               ; skip LineLen
+        LDX #0            ; reset ArgTop (pop Args[0])
+        STX ArgTop
+        JSR expr          ; line number -> Args[0]
+        JSR fndln         ; find matching line, or next (Args[0] -> XA/Ptr)
+lsts    LDY #2            ; Y=2
+        LDA (D),Y         ; (OP LnLo >LnHi< Len)
+        BMI lstx          ; -> end of program (negative line)
+        STA $01
+        DEY               ; Y=1
+        LDA (D),Y         ; (OP LnLo >LnHi< Len)
+        STA $00
         JSR num_print     ; print Args[ArgTop] (uses A,X)
         JSR wrsp          ; print space (A=char, uses A,X) preserves Y
+        LDY #4            ; skip header
+
 lstx    JMP repl
 
 save    JMP repl
@@ -799,7 +816,7 @@ stmt    LDA (CODE),Y      ; [5] load token
         INY               ; [2] advance CODE
         ; debug check [+4 cycles]
         CMP #OP_NSTMT     ; [2] check code
-        BCS esyn0         ; [2] -> bad code
+        BCS ebad          ; [2] -> bad code
         ; token dispatch
         TAX               ; [2]
         LDA stmtl,X       ; [4]
@@ -807,6 +824,9 @@ stmt    LDA (CODE),Y      ; [5] load token
         LDA stmth,X       ; [4]
         STA SrcH          ; [3] PHA
         JMP (Src)         ; [5] RTS // [30]
+
+ebad    LDY #<msg_bad
+        JMP erro
 
         ; OP_LET or implied
         ; assign VAR[$] = Expr
@@ -889,6 +909,7 @@ rdnp    LDY D             ; restore Y = Code ofs
         BEQ rdnx          ; -> next var
         JMP stmt          ; -> next stmt
 rdfd    LDY D             ; find next DATA line
+        ; load len, add to Data (data must be a Line ptr)
         ;;                                                 XXX find next DATA
         JMP stmt
 
@@ -925,6 +946,13 @@ clss    STY E             ; save CODE offset
         JSR cls           ; (uses A,X,Y)
         LDY E             ; restore CODE offset
         JMP stmt          ; -> next stmt
+
+call    JSR expr          ; -> Args[0]
+        STY E             ; save CODE offset
+        JSR callj         ; 
+        LDY E             ; restore CODE offset
+        JMP stmt          ; -> next stmt
+callj   JMP ($00)         ; jump to Args[0]
 
 
 
@@ -1249,31 +1277,36 @@ expr    LDA (CODE),Y
         BCS expi
 expz    JMP esyn0         ; not impl
 
-        ; OP_In, OP_INTn
-expi    INY
-        CMP #OP_INT1
-        BCC expi0
-        BEQ expi1
-        CMP #OP_INT2
-        BNE expz
+        ; OP_In, OP_INTn    (32b)
+expi    INY               ; [2]
+        CMP #OP_INT2      ; [2]
+        BEQ expi2         ; [2] -> 2-byte int [+1] // 7
+        LDX #0            ; [2]
+        STX $01           ; [3] clear high byte
+        CMP #OP_INT1      ; [2]
+        BEQ expi1         ; [2] -> 1-byte int [+1] // 16
+        BCS expz          ; [2] -> invalid op
+        ; single-digit
+        EOR #$C0          ; [2] clear top two bits
+        STA $00           ; [3] //0 22
+        RTS               ; [6]
         ; OP_INT2
-        LDA (CODE),Y
-        STA $00           ; low
-        INY
-        LDA (CODE),Y
-        STA $01           ; high
-        INY
-        RTS
-        ; OP_INT1        
-expi1   LDA (CODE),Y
-        INY
-        BNE exp0r
-        ; single digit
-expi0   EOR #$C0          ; clear top two bits
-exp0r   STA $00
-        LDA #0
-        STA $01
-        RTS
+expi2   LDA (CODE),Y      ; [5] high (big-endian)
+        INY               ; [2]
+        STA $01           ; [3] 
+        LDA (CODE),Y      ; [5] low
+        INY               ; [2] 
+        STA $00           ; [3] (10b)
+        RTS               ; [6]
+        ; OP_INT1
+expi1   LDA (CODE),Y      ; [5] low
+        INY               ; [2] 
+        STA $00           ; [3] 
+        ASL               ; [2] test sign
+        BCC expir         ; [2] -> positive [+1]
+        LDA #$FF          ; [2] sign bits
+        STA $01           ; [3] (12b)
+expir   RTS               ; [6]
 
 
 
