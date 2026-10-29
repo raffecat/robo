@@ -68,6 +68,31 @@ int main(int argc, char *argv[]) {
                 uint16_t mod = event.key.keysym.mod;
 
                 if (sym >= SDLK_a && sym <= SDLK_z) sym &= 0xDF; // map to uppper-case.
+                if (mod & KMOD_SHIFT) {
+                    switch (sym) {
+                        case '`': sym = '~'; break;
+                        case '1': sym = '!'; break;
+                        case '2': sym = '@'; break;
+                        case '3': sym = '#'; break;
+                        case '4': sym = '$'; break;
+                        case '5': sym = '%'; break;
+                        case '6': sym = '^'; break;
+                        case '7': sym = '&'; break;
+                        case '8': sym = '*'; break;
+                        case '9': sym = '('; break;
+                        case '0': sym = ')'; break;
+                        case '-': sym = '_'; break;
+                        case '=': sym = '+'; break;
+                        case '[': sym = '{'; break;
+                        case ']': sym = '}'; break;
+                        case '\\': sym = '|'; break;
+                        case ';': sym = ':'; break;
+                        case '\'': sym = '"'; break;
+                        case ',': sym = '<'; break;
+                        case '.': sym = '>'; break;
+                        case '/': sym = '?'; break;
+                    }
+                }
                 if (mod & KMOD_CTRL) {
                     if (sym >= 0x40 && sym <= 0x5F) {
                         sym &= 0x1F; // clear bits 5 and 6.
