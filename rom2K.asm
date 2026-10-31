@@ -1,9 +1,9 @@
 ; Frontier 2K BASIC
 ; Use `asm6` to compile: https://github.com/parasyte/asm6
 
-BasROM   = $200   ; 2K BASIC
-ProgPg   = $A00   ; start of program memory (constant)
-End4K    = $10    ; end of 4KB memory (minimum RAM fitted)
+BasROM   = $0200   ; 2K BASIC
+ProgPg   = $0A00   ; start of program memory (constant)
+End4K    = $10     ; end of 4KB memory (minimum RAM fitted)
 
 ; ------------------------------------------------------------------------------
 ; Monitor Routines
@@ -125,16 +125,33 @@ ORG BasROM
 
 reset   SEI               ; disable interrupts
         CLD               ; disable BCD mode
-        LDA #End4K        ; end of memory (page)                XXX detect memory
-        STA MemSize       ; set size of memory (in pages)
+        ; detect memory   (27b)
+        LDY #0            ; const
+        TYA               ; A=0 (store non-match at $A0)
+        LDX #$A0          ; highest RAM page (+1)
+        STX PtrH          ; PtrL can be any ($00 from Monitor)
+msetl   STA (Ptr),Y       ; write page number
+        DEC PtrH          ; decr Ptr
+        DEX               ; decr Page
+        TXA               ; A = Page
+        CPX #>ProgPg      ; stop above BASIC! ($0A)
+        BNE msetl         ; -> until $00
+mchkl   INC PtrH          ; incr Ptr
+        INX               ; incr Page
+        TXA               ; A = Page
+        CMP (Ptr),Y       ; compare page number
+        BEQ mchkl         ; -> until differs
+        STX MemSize       ; set size of memory (in pages)
+        ; initialise BASIC
         JSR cls           ; clear screen
         JMP new           ; init program -> jumps to repl
-
         ; return to repl
         ; reset the stack, errors jump out of subroutines
 repl    LDX #$FF          ; X = $FF
         TXS               ; reset SP = $FF
         INX               ; X = 0
+        TXA               ; A = 0
+        PHA               ; push 0 (TAG_EMPTY at $FF)
         STX ArgTop        ; reset Args stack
         STX OpTop         ; reset Oprs stack
         LDA #62           ; `>`
@@ -210,7 +227,7 @@ dcmd    LDA #OP_EOP       ; end of program
         JSR tkemi         ; terminate the line
         ;
 debug   LDY #0            ; DEBUG
-dbglp   LDA EmitBuf,Y
+dbglp   LDA EmitBuf,Y     ; 
         JSR prhx          ; saves Y
         JSR wrsp          ; saves Y
         INY
@@ -222,11 +239,9 @@ dbglp   LDA EmitBuf,Y
         STA CODEH         ; set CODE page
         LDY #0            ; 
         STY CODE          ; set CODE ofs
-        STY Data          ; clear data pointer  (should clear this only on code edits)
-        STY DataH         ; clear data pointer  (along with all arrays)
         STY OpTop         ; clear operator stack
         STY ArgTop        ; clear args stack
-        JMP stmt          ; -> execute statement
+        JMP stmtj         ; -> execute statement (at Y=0)
 
         ; copy a string (28b)
 tkstr   TXA               ; A=next-char
@@ -262,8 +277,8 @@ tknum   JSR num_u16       ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Src)
         TAX               ;
 tknmo   TXA               ; X=OP
 tknlp   JSR tkemi         ; (uses X=0; preserves A,Y; PL)
-        LDX $FF,Y         ; 2=$01, 1=$00, 0=$FF (wrap-around)
-        TXA               ; 
+        LDX $FF,Y         ; 2=$01, 1=$00, 0=$FF (relies on zp,Y wrap-around)
+        TXA               ; can't LDA zp,Y
         DEY               ; 2>1 1>0 0>FF
         BPL tknlp         ; -> until Y<0
         LDY B             ; restore Y
@@ -274,13 +289,13 @@ tknlp   JSR tkemi         ; (uses X=0; preserves A,Y; PL)
 tkemi   LDX EmitOfs       ; [3] get emit offset
         STA EmitBuf,X     ; [5] emit token
         INC EmitOfs       ; [5] advance emit offset (NE)
-        BMI tkovf         ; [2] -> buffer overflow [+1] -> MI
+        BMI enumb         ; [2] -> buffer overflow [+1] -> MI
         RTS               ; [6] -> NE,PL,X=EmitOfs-1 (for emit_str)
 
-tkovf   JMP enumb
-
         ; report an error (Y=msg)
-escap   LDY #<msg_esc     ; escape pressed
+enumb   LDY #<msg_num     ; "?NUM"
+        DB $2C            ; BIT abs
+ebrk    LDY #<msg_brk     ; "?BRK"                                          XXX "at line NNN" !!!
 erro    LDA #63           ; `?`
         DEY               ; for INY
 errl    JSR wrch          ; write char (A=char, uses A,X) preserves Y
@@ -300,63 +315,61 @@ kwpg = BasROM+$100
 ; start-of-line
 OP_EOP     = $80
 OP_LN      = $81
-OP_EOL     = $82  ; use BCC
+OP_EOL     = $82     ; use BCC
+OP_COLN    = $82
+OP_EOS     = $83     ; use BCC
 ; keywords
-OP_CLS     = $82
-OP_CALL    = $83
-OP_DATA    = $84
-OP_DIM     = $85
-OP_END     = $86
-OP_FOR     = $87
-OP_GOTO    = $88
-OP_GOSUB   = $89
-OP_IF      = $8A
-OP_INPUT   = $8B
-OP_LET     = $8C
-OP_LOAD    = $8D
-OP_LIST    = $8E
-OP_MON     = $8F
-OP_NEXT    = $90
-OP_NEW     = $91
-OP_PRINT   = $92
-OP_POKE    = $93
-OP_READ    = $94
-OP_RESTORE = $95
-OP_RETURN  = $96
-OP_REM     = $97
-OP_RUN     = $98
-OP_SAVE    = $99
-OP_TONE    = $9A
-OP_NSTMT   = $9B     ; first non-stmt
+OP_CLS     = $83
+OP_CALL    = $84
+OP_END     = $85
+OP_FOR     = $86
+OP_GOTO    = $87
+OP_GOSUB   = $88
+OP_IF      = $89
+OP_INPUT   = $8A
+OP_LET     = $8B
+OP_LOAD    = $8C
+OP_LIST    = $8D
+OP_MON     = $8E
+OP_NEXT    = $8F
+OP_NEW     = $90
+OP_PRINT   = $91
+OP_POKE    = $92
+OP_RETURN  = $93
+OP_REM     = $94
+OP_RUN     = $95
+OP_SAVE    = $96
+OP_TONE    = $97
+OP_NSTMT   = $98     ; first non-stmt
 ; context keywords
-OP_STEP    = $9B
-OP_TO      = $9C
-OP_THEN    = $9D
+OP_STEP    = $99
+OP_TO      = $9A
+OP_THEN    = $9B
 ; unary operators (highest precedence, evaluated post-fix, right-associative!)
-OP_PRE     = $9E     ; first prefix operator:
+OP_PRE     = $9C     ; first prefix operator:
 OP_NPRE    = 6       ; number of prefix operators (includes OP_SUB)
-OP_LPAR    = $9E     ; 0 open parenthesis (lowest [never forced to eval])
-OP_NOT     = $9F     ; 6 unary NOT
-OP_KEY     = $A1     ; 6 unary fn (arg)
-OP_PEEK    = $A2     ; 6 unary fn (arg)
-OP_RND     = $A3     ; 6 unary fn (arg)
+OP_LPAR    = $9C     ; 0 open parenthesis (lowest [never forced to eval])
+OP_NOT     = $9D     ; 6 unary NOT
+OP_KEY     = $9E     ; 6 unary fn (arg)
+OP_PEEK    = $9F     ; 6 unary fn (arg)
+OP_RND     = $A0     ; 6 unary fn (arg)
 ; infix binary (from highest to lowest, left-associative)
-OP_IFX     = $A4     ; first infix operator:
+OP_IFX     = $A1     ; first infix operator:
 OP_NIFX    = 12      ; number of infix operators
-OP_SUB     = $A4     ; 4 binary op (MUST be first: also OP_NEG)
-OP_ADD     = $A5     ; 4 binary op
-OP_MUL     = $A6     ; 5 binary op  LSR for prec
-OP_DIV     = $A7     ; 5 binary op
-OP_EQ      = $A8     ; 3 binary `=`
-OP_NE      = $A9     ; 3 binary
-OP_LT      = $AA     ; 3 binary `<`
-OP_LE      = $AB     ; 3 binary
-OP_GT      = $AC     ; 3 binary `>`
-OP_GE      = $AD     ; 3 binary
-OP_AND     = $AE     ; 2 binary op
-OP_OR      = $AF     ; 1 binary op
+OP_SUB     = $A1     ; 4 binary op (MUST be first: also OP_NEG)
+OP_ADD     = $A2     ; 4 binary op
+OP_MUL     = $A3     ; 5 binary op  LSR for prec
+OP_DIV     = $A4     ; 5 binary op
+OP_EQ      = $A5     ; 3 binary `=`
+OP_NE      = $A6     ; 3 binary
+OP_LT      = $A7     ; 3 binary `<`
+OP_LE      = $A8     ; 3 binary
+OP_GT      = $A9     ; 3 binary `>`
+OP_GE      = $AA     ; 3 binary
+OP_AND     = $AB     ; 2 binary op
+OP_OR      = $AC     ; 1 binary op
 ; special case (not prefix or infix)
-OP_RPAR    = $B0     ; close parenthesis (forces all ops to eval up to OP_LPAR [which always stops eval])
+OP_RPAR    = $AD     ; close parenthesis (forces all ops to eval up to OP_LPAR [which always stops eval])
 ; numbers (non-operator)
 OP_I0      = $C0     ; 1-byte (OP_I0 + [0-9])
 OP_I9      = $C9     ; 1-byte
@@ -371,9 +384,6 @@ kws_c:
 kw_call   DB "CALL",     OP_CALL     +$40
 kw_cls    DB "CLS",      OP_CLS      +0
 kws_d:
-msg_data  ;
-kw_data   DB "DATA",     OP_DATA     +$40
-kw_dim    DB "DIM",      OP_DIM      +0
 kws_e:
 kw_end    DB "END",      OP_END      +0
 kws_f:
@@ -409,8 +419,6 @@ kw_poke   DB "POKE",     OP_POKE     +0
 kws_q:
 kws_r:
 ex_rnd    DB "RND",      OP_RND      +$40
-kw_read   DB "READ",     OP_READ     +$40
-kw_rest   DB "RESTORE",  OP_RESTORE  +$40
 kw_retr   DB "RETURN",   OP_RETURN   +$40
 kw_rem    DB "REM",      OP_REM      +$40
 kw_run    DB "RUN",      OP_RUN      +0
@@ -440,14 +448,15 @@ ex_le     DB "<=",      OP_LE     +$40
 ex_gt     DB ">",       OP_GT     +$40
 ex_ge     DB ">=",      OP_GE     +$40
 ex_lp     DB "(",       OP_LPAR   +$40
-ex_rp     DB ")",       OP_RPAR   +0
+ex_rp     DB ")",       OP_RPAR   +$40
+ex_co     DB ":",       OP_COLN   +0
           DB 0,0        ; tkmat needs two
 
           ; messages
 msg_syn   DB "SYN",$80
 msg_num   DB "NUM",$80
-msg_esc   DB "BRK",$80
-msg_mem   DB "MEM",$80
+msg_big   DB "BIG",$80
+msg_brk   DB "BRK",$80
 
 ; Keyword Index
 kw_tab:
@@ -480,13 +489,11 @@ kw_tab:
   DB (kws_z - kwpg) ; Z
 
 ; Keyword Reverse Lookup
-stmt_rev:                ; [34] indices MUST match OPCODEs
-  DB 0                   ; OP_EOP
-  DB 0                   ; OP_LN
+kwrvs = kwrev - OP_EOL
+kwrev:                   ; indices MUST match OPCODEs
+  DB (ex_co - kwpg)      ; `:`
   DB (kw_cls - kwpg)     ; OP_CLS
   DB (kw_call - kwpg)    ; OP_CALL
-  DB (kw_data - kwpg)    ; OP_DATA
-  DB (kw_dim - kwpg)     ; OP_DIM
   DB (kw_end - kwpg)     ; OP_END
   DB (kw_for - kwpg)     ; OP_FOR
   DB (kw_goto - kwpg)    ; OP_GOTO
@@ -501,8 +508,6 @@ stmt_rev:                ; [34] indices MUST match OPCODEs
   DB (kw_new - kwpg)     ; OP_NEW
   DB (kw_print - kwpg)   ; OP_PRINT
   DB (kw_poke - kwpg)    ; OP_POKE
-  DB (kw_read - kwpg)    ; OP_READ
-  DB (kw_rest - kwpg)    ; OP_RESTORE
   DB (kw_retr - kwpg)    ; OP_RETURN
   DB (kw_rem - kwpg)     ; OP_REM
   DB (kw_run - kwpg)     ; OP_RUN
@@ -539,12 +544,11 @@ stmt_rev:                ; [34] indices MUST match OPCODEs
 ; jump table (30 entries)
 stmtl = stml - $80
 stmth = stmh - $80
-stml    DB <repl         ; OP_EOP
-        DB <line         ; OP_LN
+stml    DB <repl         ; OP_EOP  (executed in direct mode)
+        DB <esyn         ; OP_LN   (not a stmt)
+        DB <esyn         ; OP_COLN (not a stmt)
         DB <clss         ; OP_CLS
         DB <call         ; OP_CALL
-        DB <skip         ; OP_DATA
-        DB <dims         ; OP_DIM
         DB <repl         ; OP_END
         DB <for          ; OP_FOR
         DB <goto         ; OP_GOTO
@@ -559,19 +563,16 @@ stml    DB <repl         ; OP_EOP
         DB <new          ; OP_NEW
         DB <print        ; OP_PRINT
         DB <poke         ; OP_POKE
-        DB <read         ; OP_READ
-        DB <resto        ; OP_RESTORE
         DB <retn         ; OP_RETURN
         DB <skip         ; OP_REM
         DB <run          ; OP_RUN
         DB <save         ; OP_SAVE
         DB <tone         ; OP_TONE
 stmh    DB >repl         ; OP_EOP
-        DB >line         ; OP_LN
+        DB >esyn         ; OP_LN
+        DB >esyn         ; OP_COLN
         DB >clss         ; OP_CLS
         DB >call         ; OP_CALL
-        DB >skip         ; OP_DATA
-        DB >dims         ; OP_DIM
         DB >repl         ; OP_END
         DB >for          ; OP_FOR
         DB >goto         ; OP_GOTO
@@ -586,8 +587,6 @@ stmh    DB >repl         ; OP_EOP
         DB >new          ; OP_NEW
         DB >print        ; OP_PRINT
         DB >poke         ; OP_POKE
-        DB >read         ; OP_READ
-        DB >resto        ; OP_RESTORE
         DB >retn         ; OP_RETURN
         DB >skip         ; OP_REM
         DB >run          ; OP_RUN
@@ -631,7 +630,7 @@ ins_line:           ; LineNo
   ; cpy(To=Ptr+Ins,From=Ptr,Len=Top-From) to make room
   ; Top += Ins
 @copyin:
-  ; copy EmitBuf -> Ptr
+  ; copy EmitBuf -> Ptr                                         XXX need ins line !!!
   ; done
 
 @replace:
@@ -662,35 +661,56 @@ ins_line:           ; LineNo
 ; @@ del_line
 ; delete the program line at LineNo
 del_line:
-  ; XXX
+  ;                                                              XXX need del line !!!
   RTS
 
-        ; OP_LIST
+        ; OP_LIST         (80b)
 list    JSR expr          ; line number -> Args[0]
         JSR fndln         ; find matching line, or next (Args[0] -> XA/Ptr)
-        STA D             ; low
-        STX E             ; high
-        LDA (CODE),Y      ; read code
-        CMP #44           ; comma?
-        BNE lsts          ; -> no, start listing
-        INY               ; comma
-        JSR expr          ; line number -> Args[0]
-        JSR fndln         ; find line, or next (Args[0] -> XA/Ptr, CS=found)
-lsts    LDY #2            ; Y=2
-        LDA (D),Y         ; (OP LnLo >LnHi< Len)
+        ; line number
+lstln   LDY #2            ; Y=2
+        LDA (Ptr),Y       ; (OP LnLo >LnHi< Len)
         BMI lstx          ; -> end of program (negative line)
         STA $01
         DEY               ; Y=1
-        LDA (D),Y         ; (OP LnLo >LnHi< Len)
+        LDA (Ptr),Y       ; (OP LnLo >LnHi< Len)
         STA $00
-        JSR prnum         ; print Args[0] (uses A,X)
+        JSR prnum         ; print Args[0] (uses A,X,B,C,F,Src,Dst)
         JSR wrsp          ; print space (A=char, uses A,X) preserves Y
         LDY #4            ; skip header
-        ;;; XXX
+        ; line contents
+lstco   LDA (Ptr),Y       ; next byte
+        BPL lstch         ; -> char
+        CMP #OP_EOL       ; end of line?
+        BCC lstnx         ; -> next line
+        ; print token                                            XXX bad token check?
+        STY B             ; save line ofs
+        TAX               ; as index
+        LDY kwrvs,X       ; look up token offset (-1)
+        LDA #32           ; space before token
+lsttk   JSR wrch          ; print it (uses A,X,F,Src,Dst) preserves Y
+        INY               ; advance
+        LDA kwpg,Y        ; next char
+        BPL lsttk         ; -> more
+        LDA #32           ; space after token
+        LDY B             ; restore line ofs
+        ; print char
+lstch   JSR wrch          ; print it (uses A,X,F,Src,Dst) preserves Y
+        JMP lstco         ; -> continue
+        ; next line
+lstnx   JSR wrnl          ; crlf
+        TYA               ; get accumulated Y
+        CLC               ; thanks crlf
+        ADC Ptr           ; add Y to Ptr
+        STA Ptr           ; update Ptr
+        BCC lstln         ; -> no page cross
+        INC PtrH          ;
+        BNE lstln         ; -> always
+        ; done
 lstx    JMP repl
 
         ; OP_SAVE
-save    JMP repl
+save    JMP repl          ;                                   XXX need SAVE !!!
 
         ; OP_MON
 mon     JMP montr         ; enter monitor
@@ -704,9 +724,8 @@ mon     JMP montr         ; enter monitor
 TAG_FOR    = $F0
 TAG_GOSUB  = $F1
 
-
         ; OP_NEW
-        ; sets up a new program at ProgPg ($A00)
+        ; sets up a new program at ProgPg ($0A00)
         ; above the BASIC interpreter
         ; drops into RUN to reset all BASIC state
 new     LDA #>ProgPg      ; set top of program
@@ -719,25 +738,21 @@ new     LDA #>ProgPg      ; set top of program
         STA ProgPg+2      ; $8080
         LDA #0
         STA ProgPg+3      ; zero length (EOP mark)
-        ; +++ fall through: run the empty program +++
+        ; +++ fall through: run empty program +++
 
         ; OP_RUN
         ; start running the BASIC program
-        ; clear all variables, reset BASIC stacks, set CODE and Data
-run     LDA TopPtr        ; reset free space
-        STA FreePtr
-        LDA TopPtrH
-        STA FreePtrH
-        LDA #0            ; clear vars (9b)
-        LDX #92           ; ArrPt(16),ArrSz(16),IVar(54),OpTop(1),ArgTop(1),Data(3),CODE(1)
-runcl   STA ArrPt,X       ; clear
+        ; clear all variables, reset BASIC stacks, set CODE
+run     LDA #0            ; clear vars (9b)
+        LDX #92           ; ArrPt(16),ArrSz(16),IVar(54),OpTop(1),ArgTop(1),Data(3),CODE(2)
+runcl   STA ArrPt,X       ; clear zp,X
         DEX
-        BPL runcl         ; -> loop
+        BNE runcl         ; -> loop
         TAY               ; CODE offset = 0
-        LDA #>ProgPg      ; start of BASIC program
+        LDA #>ProgPg      ; start of BASIC program (NE)
         STA CODEH         ; set CODE page
-        STA DataH         ; set DATA page
-        BNE stmt          ; -> start
+        STY CODE          ; ensure 0
+        JMP colon         ; -> expect OP_LN/OP_EOP (Y=0)
 
 
         ; OP_IF
@@ -750,41 +765,49 @@ ifs     JSR expr          ; condition -> Args[0]
 ifsl    LDA (CODE),Y      ; read code
         INY               ; assume match
         CMP #OP_THEN      ; "THEN"?
-        BEQ ifsl          ; -> skip it
+        BNE stmtj         ; -> next stmt (no colon)
         DEY               ; undo
         CMP #OP_I0        ; is it a number?
         BCS goto          ; -> implied GOTO
-        BNE stmt          ; -> next stmt
+        BNE stmtj         ; -> next stmt (no colon)
 
 
         ; OP_REM
-        ; OP_DATA
         ; advance to end of line
 skip    LDY #3            ; (OP_LN,LnL,LnH,>Len<)
         LDA (CODE),Y      ; get line length
         TAY               ; set Y = line length (NE)
-        BNE stmt          ; -> OP_LINE / OP_EOP
+        ; +++ fall through: colon +++
 
+        ; expect `:` or OP_LN / OP_EOP
+colon   LDA (CODE),Y      ; [5] read code
+        CMP #OP_COLN      ; [2] is it `:`?
+        BEQ stmtc         ; [2] -> next stmt [+1]
+        CMP #OP_LN        ; [2] is it OP_LN?
+        BEQ line          ; [2] -> next line [+1]
+        CMP #OP_EOP
+        BEQ lstx          ; -> to REPL
+        BNE esyn
+        ; +++ fall through: line (Y=OP_LN) +++
 
-        ; OP_LINE
-        ; start of line: advance CODE by Y.
+        ; start of line: advance CODE by Y
 line    TYA               ; [2] get accumulated Y
-        LDY #3            ; [2] skip 4 (OP,LnL,LnH,Len,><) +1 from skcol
+        LDY #3            ; [2] skip 4 (OP_LN,LnL,LnH,Len,><) +1 from stmtc
         CLC               ; [2]
-        ADC CODE          ; [3] add Y to CODE
+        ADC CODE          ; [3] add Y to CODE (points at OP_LN)
         STA CODE          ; [3] update CODE
-        BCC skcol         ; [2] -> no page cross [+1] // [15]
+        BCC stmtc         ; [2] -> no page cross [+1] // [15]
         INC CODEH         ; [5]
-        ; +++ fall through: skcol +++
+        ; +++ fall through: stmtc +++
 
         ; STMT dispatch
-skcol   INY               ; [2] skip colon
-stmt    LDA (CODE),Y      ; [5] read code
+stmtc   INY               ; [2] skip `:`
+stmtj   LDA (CODE),Y      ; [5] read code
         PHA               ; DEBUG
         JSR prhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
         JSR wrnl          ; DEBUG (uses A,X,F,Src,Dst) -> X=0
         PLA               ; DEBUG
-        BPL leti          ; [2] -> implied LET [+1]
+        BPL let           ; [2] -> implied LET [+1]
         INY               ; [2] advance code
         ; guard [+4 cycles]
         CMP #OP_NSTMT     ; [2] non-statement?
@@ -797,21 +820,23 @@ stmt    LDA (CODE),Y      ; [5] read code
         STA SrcH          ; [3] PHA
         JMP (Src)         ; [5] RTS // [34] [colon +15]
 
+;;colx    CMP #OP_EOP       ; is it OP_EOP?
+;;        BNE esyn          ; -> no, syntax error [+1]
+;;        JMP repl          ; -> end of program
+
 
         ; OP_LET or implied
         ; assign VAR[(N)] = Expr
-leti    CMP #58           ; `:`
-        BEQ skcol         ; -> skip colon
 let     JSR findv         ; find [@-Z] var -> ofs (A)      XXX common A(N) -> Ptr (3 callers)
-        PHA               ; save var ofs
+        PHA               ; push var ofs
         LDA (CODE),Y      ; read code
         CMP #OP_EQ        ; `=`
         BNE esyn          ; -> syntax error
-        INY               ;
+        INY               ; `=`
         JSR expr          ; -> Args[0]
         PLA               ; pop var ofs
         JSR setv          ; assign Args[0]
-        JMP stmt          ; -> next stmt                   XXX comma -> more?
+        JMP colon         ; -> colon
 
 
         ; find [@-Z] var -> ofs (A)
@@ -820,9 +845,9 @@ findv   LDA (CODE),Y      ; [5] read code
         EOR #64           ; [2] 64->0
         CMP #27           ; [2] @-Z
         BCS esyn          ; [2] -> syntax error
-        INY               ; [2] for var
         ASL               ; [2] ofs = [@-Z] x 2
-        RTS               ; [6] // [21]
+        INY               ; [2] for var
+        RTS               ; [6] -> NE // [21]
 
         ; assign Args[0] to var ofs (A)
         ; used by OP_LET, OP_FOR, OP_INPUT
@@ -837,17 +862,17 @@ setv    TAX               ; as index (10b)
         ; OP_GOTO
 goto    JSR expr          ; -> Args[0]
 goln    JSR fndln         ; find line (Args[0] -> XA/Ptr, CS=found)
-        BCC enumb         ; -> not found
+        BCC enum1         ; -> not found
         STX CODEH
         STA CODE
-        LDY #3            ; skip (LnL,LnH,Len)
-        BNE stmt          ; always OP_LINE/OP_EOP
+        LDY #4            ; skip (OP_LN,LnL,LnH,Len,><)
+        BNE stmtj         ; expect stmt (Y=4)
 
 
         ; OP_GOSUB
 gosub   JSR expr          ; -> Args[0]
         LDA CODE          ; 
-        PHA               ; push CODE
+        PHA               ; push CODE                        XXX stack full check !!!
         LDA CODEH         ; 
         PHA               ; push CODEH
         TYA               ;
@@ -857,108 +882,10 @@ gosub   JSR expr          ; -> Args[0]
         BNE goln          ; -> ALWAYS
 
 
-        ; OP_RESTORE
-        ; Find specified line, set Data (READ does most of the work)
-resto   JSR expr          ; -> Args[0]
-        JSR fndln         ; find line, or next (Args[0] -> XA/Ptr, CS=found)
-        BCC enumb         ; -> not found
-        STX DataH         ; pointer to next data, high
-        STA Data          ; pointer to next data, low
-        JMP stmt   
-
-
-enumb   LDY #<msg_num
-        BNE ej0
+enum1   LDY #<msg_num
+        DB $2C            ; BIT abs
 esyn    LDY #<msg_syn
-        BNE ej0
-edata   LDY #<msg_data
-ej0     JMP erro
-
-
-        ; OP_READ
-        ; Data always points into the program (start of program, last RESTORE, last READ)
-        ; @lp if (Data) >= $80 we're at eol; find next DATA line
-        ; read num at (Data), assign to var, advance Data -> @lp
-rdnxt   INY               ; comma (in Code)
-read    JSR findv         ; find [@-Z] var (uses A) reads code -> ofs (A)      XXX common A(N) -> Ptr
-        TAX               ; var ofs -> X
-        STY D             ; save Y
-        LDY DataY         ; data ofs
-rdfnd   LDA (Data),Y      ; 
-        INY               ; assume comma
-        CMP #44           ; `,`
-        BEQ rdfnd         ; -> skip comma
-        DEY               ; undo
-        CMP #OP_I0        ; number?
-        BCC rdnon         ; -> non-number
-        ; can't use expr (Data not CODE)          XXX evaluate number! (common with LIST)
-        STA IVar,X        ; low byte
-        INY               ;
-        LDA (Data),Y      ; 
-        STA IVar+1,X      ; high byte
-        INY               ;
-        STY DataY         ; save data ofs
-        ; next var
-        LDY D             ; restore Y = Code ofs
-        LDA (CODE),Y      ; read code
-        CMP #44           ; comma
-        BEQ rdnxt         ; -> next var
-        JMP stmt          ; -> next stmt
-        ; find next DATA
-rdnon   AND #$FE          ; clear low bit
-        CMP #OP_EOP       ; is it end of line? (OP_LN/OP_EOP)
-        BNE esyn          ; -> syntax error in DATA
-rdskp   LDY #3            ; find next DATA line
-        LDA (Data),Y      ; get Line length
-        BEQ edata         ; -> out of data (end of program)
-        CLC               ;
-        ADC Data          ; Data += Y
-        STA Data          ;
-        BCC rdnpg         ; -> no page cross
-        INC DataH         ;
-rdnpg   INY               ; first opcode
-        LDA (Data),Y      ; 
-        CMP #OP_DATA      ; is it data?
-        BNE rdskp         ; -> skip this line
-        INY               ; OP_DATA
-        BEQ rdfnd         ; -> match data
-
-
-emem    LDY #<msg_mem
-        BNE ej0
-
-
-        ; OP_DIM          (56b)
-dims    JSR findv         ; find var -> A=ofs            XXX raw VAR only
-        CMP #16           ; beyond [@-G]?
-        BCS esyn          ; -> not a valid array
-        TAX               ; as index
-        LDA ArrPt+1,X     ; check high byte
-        BNE esyn          ; -> already DIM'd
-        TXA
-        PHA               ; save X=ofs
-        JSR expr          ; -> dimension Args[0]
-        ASL $00           ; CF << dim << 0
-        ROL $01           ; OV << dim << CF
-        BCS emem          ; -> out of memory
-        PLA
-        TAX               ; restore X=ofs
-        LDA $00           ; dim size
-        STA ArrSz,X       ; set size low
-        LDA $01           ; dim size
-        STA ArrSz+1,X     ; set size high
-        LDA FreePtrH      ; free space
-        STA ArrPt+1,X     ; set array low
-        LDA FreePtr       ; free space
-        STA ArrPt,X       ; set array high
-        CLC
-        ADC $00           ; add size low
-        STA FreePtr       ; bump Free
-        LDA FreePtrH      ; reload free high
-        ADC $01           ; add size high
-        STA FreePtrH      ; bump Free
-        BCS emem          ; -> out of memory
-        JMP stmt          ; -> next stmt
+        JMP erro
 
 
         ; OP_INPUT
@@ -987,14 +914,14 @@ poke    JSR exp2          ; $00 = Addr, $02 = Byte
         LDA $02           ; byte
         LDX #0
         STA ($00,X)       ; write to memory
-        JMP stmt          ; -> next stmt
+        JMP colon         ; -> colon
 
 
         ; OP_CLS
 clss    STY E             ; save CODE offset
         JSR cls           ; (uses A,X,Y)
         LDY E             ; restore CODE offset
-        JMP stmt          ; -> next stmt
+        JMP colon         ; -> colon
 
 
         ; OP_CALL
@@ -1002,187 +929,216 @@ call    JSR expr          ; -> Args[0]
         STY E             ; save CODE offset
         JSR callj         ; 
         LDY E             ; restore CODE offset
-        JMP stmt          ; -> next stmt
+        JMP colon         ; -> colon
 callj   JMP ($00)         ; jump to Args[0]
 
 
-        ; OP_FOR          (74b)
-for     JSR findv         ; find var -> A=ofs           XXX raw VAR only / maybe Ptr?
-        PHA               ; push var ofs
+        ; OP_FOR          (75b)
+        ; TAG_FOR Vofs StL StH ToH ToL CoH CoL CoY (9 bytes)
+for     JSR findv         ; find var -> A=ofs
+        STA $06           ; save var ofs
         LDA (CODE),Y
         CMP #OP_EQ        ; `=`
-        BNE esyn1         ; -> syntax error
+        BNE esyn          ; -> syntax error
         INY
-        JSR expr          ; start expression -> Args+0
-        PLA               ; A=var-ofs
-        PHA               ; re-push
+        JSR expr          ; start expression -> $00-01
+        LDA $06           ; get var ofs
         JSR setv          ; assign Args[0] to var ofs (A)
         ; expect "TO"
         LDA (CODE),Y
         CMP #OP_TO        ; "TO"
-        BNE esyn1         ; -> syntax error
-        JSR expr          ; "TO" expression -> Args+2
-        LDA $02
-        PHA               ; low byte
-        LDA $03
-        PHA               ; high byte
-        ; check for "STEP"
+        BNE esyn          ; -> syntax error
+        JSR expr          ; "TO" expression -> $02-03 L,H
+        ; optional "STEP"
+        LDX #1            ; set STEP = $0001
+        STX $04           ; low byte
+        DEX               ; #0
+        STX $05           ; high byte
         LDA (CODE),Y      ; peek next byte
         CMP #OP_STEP      ; "STEP"
-        BEQ forst         ; -> handle "STEP"
-        LDA #1            ; push $0001
-        PHA               ; low byte
-        LDA #0
-        PHA               ; high byte
-forco   LDA CODE          ; 
-        PHA               ; push CODE
-        LDA CODEH         ; 
-        PHA               ; push CODEH
-        TYA               ;
-        PHA               ; push Offset
-        LDA #TAG_FOR      ;
-        PHA               ; push TAG
-        JMP stmt          ; -> next stmt
-forst   INY               ; OP_STEP
-        JSR expr          ; "STEP" expression -> Args
-        LDA $04
-        PHA               ; low byte
-        LDA $05
-        PHA               ; high byte
-        JMP forco         ; -> continue FOR
+        BNE forco         ; -> no, continue
+        INY               ; OP_STEP
+        JSR expr          ; "STEP" expression -> $04-05 L,H
+forco   TYA               ; push Offset                          XXX stack full check !!!
+        PHA
+        LDA CODEH         ; push CODEH
+        PHA
+        LDA CODE          ; push CODE
+        PHA
+        LDA $02           ; ToL   (15b)
+        PHA
+        LDA $03           ; ToH
+        PHA
+        LDA $05           ; StH
+        PHA
+        LDA $04           ; StL
+        PHA
+        LDA $06           ; Vofs
+        PHA
+        LDA #TAG_FOR      ; TAG_FOR
+        PHA
+        JMP colon         ; -> colon
 
 
 esyn1   JMP esyn
 
 
-        ; OP_PRINT
-print   LDA (CODE),Y    ; [5] read code
-        CMP #64         ; [2] below letters?
-        BCC prsym       ; [2] -> symbol [+1]
-        AND #$FE        ; [2] clear bottom bit
-        CMP #OP_EOP     ; [2] end of line?
-        BEQ prend       ; [2] -> end print [+1]
+        ; OP_PRINT        (89b)
+prnl    JSR wrnl          ; newline (uses A,X,F,Src,Dst)
+print   LDA (CODE),Y      ; [5] read code
+        BPL prsym         ; [2] -> var name
+        CMP #OP_EOS       ; [2] end of stmt?
+        BCC prend         ; [2] -> end print [+1]
         ; print number
-prexp   JSR expr        ; evaluate expression -> Args[0]
-        JSR prnum       ; print Args[0] (uses A,X,B,C,F,Src,Dst) -> EQ
+prexp   JSR expr          ; evaluate expression -> Args[0]
+        JSR prnum         ; print Args[0] (uses A,X,B,C,F,Src,Dst) -> EQ
         LDA #0
-        STA ArgTop      ; pop Args[0]
-        BEQ print       ; -> always
-        ; not a number
-prsym   INY             ; advance
-        CMP #34         ; `"`
-        BEQ prstr       ; -> string
-        CMP #44         ; `,`?
-        BEQ prcom       ; -> comma
-        CMP #59         ; `;`?
-        BEQ print       ; -> semi
-        CMP #39         ; `'`?
-        BEQ prnl        ; -> new line
+        STA ArgTop        ; pop Args[0]
+        BEQ print         ; -> always
+        ; symbol or alpha
+prsym   CMP #64           ; letter?
+        BCS prexp         ; -> yes [+1]
+        INY               ; advance
+        CMP #34           ; `"`
+        BEQ prstr         ; -> string
+        CMP #44           ; `,`?
+        BEQ prcom         ; -> comma
+        CMP #59           ; `;`?
+        BEQ print         ; -> semi
+        CMP #39           ; `'`?
+        BEQ prnl          ; -> new line
+        DEY               ; undo advance
         ; assume colon
-        DEY             ; undo advance
-prend   JSR wrnl        ; write newline (uses A,X,F,Src,Dst)         ; XXX semi no newline
-        JMP stmt        ; -> next stmt (colon/EOL)
+prend   DEY               ; go back one
+        LDA (CODE),Y      ; test semi (+8b)
+        INY               ; go fwd one
+        CMP #59           ; `;`?
+        BEQ prret         ; -> no CRLF
+        JSR wrnl          ; write newline (uses A,X,F,Src,Dst)
+prret   JMP colon         ; -> colon
         ; print string
-prdqt   INY             ; skip second `"`
-prstl   JSR wrch        ; print it
-prstr   LDA (Ptr),Y     ; read code
-        BMI esyn1       ; -> bad code (guard)
-        INY             ; advance
-        CMP #34         ; `"`
-        BNE prstl       ; -> loop
-        ; found a quote
-        CMP (Ptr),Y     ; is next char `"`?
-        BEQ prdqt       ; -> skip quote, loop
-        ; end of string
-        BNE print       ; -> always
+prdqt   INY               ; skip second `"`
+prstl   JSR wrch          ; print it
+prstr   LDA (Ptr),Y       ; read code
+        BMI esyn1         ; -> bad code (guard)
+        INY               ; advance
+        CMP #34           ; `"`
+        BNE prstl         ; -> loop
+        CMP (Ptr),Y       ; is next char `"`?
+        BEQ prdqt         ; -> skip quote, loop
+        BNE print         ; -> always
         ; comma
-prcml   JSR wrsp        ; write a space
-prcom   LDA RemX        ; remaining space                            ; XXX field-width control
-        AND #7          ; 8 spaces
-        BNE prcml       ; -> more spaces
-        BEQ print       ; -> always
-        ; semi
-prnl    JSR wrnl        ; newline (uses A,X,F,Src,Dst)
-        JMP print       ; -> always
+prcml   JSR wrsp          ; write a space
+prcom   LDA RemX          ; remaining space                            ; XXX field-width control
+        AND #7            ; 8 spaces
+        BNE prcml         ; -> more spaces
+        BEQ print         ; -> always
 
 
-        ; OP_NEXT         ()
-next    LDA (CODE),Y      ; (optional, can't use findv)
-        EOR #64           ; @->0
-        CMP #27
-        BCS nexf          ; -> find frame
-        INY
-        ASL
-        ;;;                                                 XXX do something with var
-nexf    STY F             ; save code ofs
-        LDA #TAG_FOR
-        JSR popfr         ; pop frames until TAG match
-        TSX               ; get SP (>empty< TAG CoY CoH CoL StH StL ToH ToL Vofs)
-        ; add STEP to Var
-        LDY $109,X        ; Vofs
-        LDA $106,X        ; StL                            XXX PLA is non-destructive..
-        CLC               ;                                    need to re-order in FOR
-        ADC IVar,Y        ; add Step to Var           (TAG Vofs StL StH ToH ToL CoH CoL CoY)
-        STA IVar,Y        ; low
-        LDA $105,X        ; StH
-        ADC IVar+1,Y      ; add Step to Var
-        STA IVar+1,Y      ; high
-        BVS enum2         ; -> overflow
-        ; compare TO
-        CMP $107,X        ; var >= to? (high)
-        BCC nexc          ; -> less, continue FOR
-        BNE nexx          ; -> greater, exit FOR
-        LDA IVar,Y        ; high equal, test low
-        CMP $108,X        ; var >= to? (low)
-        BCC nexc          ; -> less, continue FOR
-        BEQ nexc          ; -> less, continue FOR
-        ; exit FOR (CS)
-nexx    TXA
-        ADC #9-1          ; pop 9 items
+        ; OP_NEXT (pop frame) (20b)
+nxtno   CMP #TAG_GOSUB
+        BNE efor          ; -> "?FOR"
+        LDA #3            ; TAG_GOSUB frame (minus TAG)
+        DB $2C            ; BIT abs
+nxtsk   LDA #7            ; TAG_FOR frame (minus TAG and VAR)
+        STA F             ; frame size
+        TSX
+        TXA
+        CLC
+        ADC F             ; add frame size
         TAX
         TXS
-        LDY F             ; save code ofs
-        JMP stmt          ; -> next stmt
+        BNE nxtfr         ; -> always
+
+        ; OP_NEXT         (65b)
+        ; Stack: TAG_FOR Vofs StL StH ToH ToL CoH CoL CoY (9 bytes)
+next    JSR findv         ; find var -> A=ofs
+        STA B             ; save var ofs
+        ; check tag
+nxtfr   PLA               ; pop TAG
+        CMP #TAG_FOR
+        BNE nxtno         ; -> no FOR (TAG_EMPTY at $FF)
+        ; check var
+        PLA               ; pop Vofs
+        CMP B             ; matches var?
+        BNE nxtsk         ; -> skip FOR
+        TAX               ; as var index
+        ; add STEP to Var
+        PLA               ; pop StL
+        CLC               ; 
+        ADC IVar,X        ; add StL to VarL
+        STA IVar,X        ; 
+        PLA               ; pop StH
+        ADC IVar+1,X      ; add StH to VarH
+        STA IVar+1,X      ; 
+        BVS enum2         ; -> overflow
+        ; compare TO
+        PLA               ; pop ToH
+        CMP IVar+1,X      ; ToH > VarH?
+        BEQ nexcl         ; -> ToH = VarH, compare low
+        BCS nexc1         ; -> ToH is greater, continue FOR
+nexcl   PLA               ; pop ToL
+        CMP IVar,X        ; ToL > VarL?
+        BCS nexco         ; -> ToL is greater/equal, continue FOR
+        ; exit FOR (CC)
+        PLA               ; pop CoH
+        PLA               ; pop CoL
+        PLA               ; pop CoY
+        JMP colon         ; -> colon
         ; continue FOR
-nexc    LDA $103,X        ; CoH
-        STA CODEH         ; set CODE
-        LDA $104,X        ; CoL
+nexc1   PLA               ; pop ToL (CS)
+nexco   PLA               ; pop CoL (CS)
+        STA CODEH         ; set CODEH
+        PLA               ; pop CoH
         STA CODE          ; set CODE
-        LDA $102,X        ; CoY
+        PLA               ; pop CoY
         TAY               ; set CODE offset
-        JMP stmt          ; -> next stmt
+        TSX               ; re-push  (6b)   TSX, STX B, LDX B, TXS (6b)
+        TXA
+        SBC #9            ; push 9 bytes (TAG_FOR)
+        TAX
+        TXS
+        JMP colon         ; -> colon (after FOR)
 
 
+egos    LDY #<msg_gos
+        DB $2C            ; BIT abs
+efor    LDY #<msg_for     ; "?FOR"
+        JMP erro          ; -> report error
 enum2   JMP enumb
 
 
-        ; OP_RETURN
-retn    LDA #TAG_GOSUB
-        JSR popfr         ; pop frames until TAG match
-        PLA               ; TAG
-popcd   PLA               ; restore saved CODE address
+        ; OP_RETURN       ; (27b)
+retpo   CMP #TAG_FOR
+        BNE egos          ; -> no GOSUB (TAG_EMPTY at $FF)
+        TSX
+        TXA
+        CLC
+        ADC #8            ; size of TAG_FOR (minus TAG)
+        TAX
+        TXS
+retn    PLA               ; pop TAG
+        CMP #TAG_GOSUB
+        BNE retpo         ; -> pop TAG_FOR (5b)
+popcd   PLA
         STA CODE          ; restore CODE
         PLA
         STA CODEH         ; restore CODEH
         PLA
         TAY               ; restore CODE ofs
-        JMP stmt   
+        JMP colon         ; -> colon (after GOSUB)
 
 
         ; OP_LOAD
 load    ; clear vars? (must clear data, arrays, set top & free, reset CODE)
-        JMP repl         ; -> back to REPL
+        JMP repl         ; -> back to REPL                                    XXX need LOAD !!!
 
 
         ; OP_TONE
 tone    JSR exp2         ; stack: (Pitch,Duration) <-
-        ; XXX
-        JMP stmt   
+        ;                                                                     XXX need TONE !!!
+        JMP colon         ; -> colon
 
-
-        ; find frame -> X=SP
-popfr   TSX
-        RTS
 
 
         ; find matching line (CS), or following line (CC)
@@ -1295,15 +1251,13 @@ expr    LDA (CODE),Y      ; [5]
         ; push operator
 xphop   LDX OpTop         ; [3] stack ptr
         CPX #OprsE        ; [2] end of stack
-        BCS xmem          ; [2] -> "?MEM"
+        BCS xbig          ; [2] -> "?BIG"
         STA Oprs,X        ; [4] push operator index [zp,X]
         INC OpTop         ; [5] zp
-        BNE expr          ; [3] -> expect var/int/prefix // [19]
-
-xsyn    JMP esyn          ; -> syntax error
+        BNE expr          ; [3] -> always, var/int/prefix // [19]
 
         ; variable        (14b)
-xvar    JSR findv         ; [6][21] -> A=ofs (or syntax error)         XXX can we inline?
+xvar    JSR findv         ; [6][21] -> A=ofs (or syntax error)
         TAX               ; [2] as index
         LDA (CODE),Y      ; [5]
         CMP #40           ; [2] '('
@@ -1316,7 +1270,7 @@ xvar    JSR findv         ; [6][21] -> A=ofs (or syntax error)         XXX can w
         ; push XA to Arg stack
 xpush   LDX ArgTop        ; [3] stack (ascending empty)
         CPX #ArgsE        ; [2] end of stack
-        BCS xmem          ; [2] -> "?MEM"
+        BCS xbig          ; [2] -> "?BIG"
         STA $00,X         ; [4] low (A) [zp,X]
         LDA F             ; [3] high (F)
         STA $01,X         ; [4] high [zp,X]
@@ -1342,16 +1296,19 @@ xifpl   LDX OpTop         ; [3] stack top
         BEQ xinfp         ; [2] -> stack empy [+1]
         LDA Oprs,X        ; [4] get top [zp,X]
         ;; another level of indirection:
-        ;; get precedence for stack entry
+        ;; get precedence for stack entry                        XXX finish pop/apply !!!
         ;; pop/apply higher prec
 xinfp   PLA               ; [3] restore A=operator
-        JMP xphop         ; [3] -> push it // [32+19=51]
+        JMP xphop         ; [3] -> push it // [32+19=51]         XXX impl ABS, RND, PEEK, KEY !!!
 
-xend    ; pop/apply all remaining
+xend    ; pop/apply all remaining                                XXX impl + - * / = <> > < >= <= AND OR NOT !!!
         RTS
 
+xsyn    JMP esyn          ; -> syntax error
 
-xmem    JMP emem
+
+xbig    LDY #<msg_big
+        JMP erro
 
 xidx    INY               ;
         JSR expr          ; nested expr?!
@@ -1443,18 +1400,18 @@ prnum   LDA #0         ; [2] (uses A,X,B,C,F,Src,Dst)
         STA Acc0       ; [3] set Acc0 (Src)
         LDA $01        ; [3] Args[0] high
         STA Acc1       ; [3] set Acc1 (Src)
-prdvl   JSR div_u16    ; [733] Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Src,Dst)
+prndv   JSR div_u16    ; [733] Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Src,Dst)
         LDA B          ; [3] remainder
         ORA #48        ; [2] 0-9 -> '0'-'9'
         PHA            ; [3] pushes once or more
         LDA Acc0       ; [3]
         ORA Acc1       ; [3]
-        BNE prdvl      ; [2] -> until zero [+1]
+        BNE prndv      ; [2] -> until zero [+1]
         PLA            ; [4]
-prprl   JSR wrch       ; [6] print it (uses A,X,F,Src,Dst) preserves Y
+prnpl   JSR wrch       ; [6] print it (uses A,X,F,Src,Dst) preserves Y
         PLA            ; [4]
-        BNE prprl      ; [2] -> until sentinel [+1]
-prret   RTS            ; [6] -> prnum:EQ
+        BNE prnpl      ; [2] -> until sentinel [+1]
+prnrt   RTS            ; [6] -> prnum:EQ
 
 
 ; @@ num_u16
@@ -1469,7 +1426,7 @@ num_u16:         ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Src)
   LDA LineBuf,Y  ; [4] get next char
   EOR #48        ; [2] make '0' be 0
   CMP #10        ; [2]
-  BCS prret      ; [2] >= 10 -> done [+1]
+  BCS prnrt      ; [2] >= 10 -> done [+1]
   TAX            ; [2] save digit 0-9
 ; multiply Acc by 10
   ASL $00        ; [5] Acc = Acc*2 (=Val*2)
@@ -1583,23 +1540,7 @@ div_u16:         ; Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (use
 
 
 ; ------------------------------------------------------------------------------
-; Memory Copy (54b)
-
-; @@ mem_copy
-; copy memory from (Src) to (Dst) with XY=size                (17b)
-mcpy:                    ; (uses A,X,Y,F,Src,Dst)
-  LDA DstH               ; [3]
-  CMP SrcH               ; [3]
-  BCC mcpyf              ; [2] -> DstH < SrcH (copy forwards)
-  BNE mcpyb              ; [2] -> DstH > SrcH (copy backwards)
-; high bytes are equal
-  LDA Dst                ; [3]
-  CMP Src                ; [3]
-  BCC mcpyf              ; [2] -> Dst < Src (copy forwards)
-  BNE mcpyb              ; [2] -> Dst > Src (copy backwards)
-  RTS                    ; [6] no copy
-
-mcpyf   JMP cpyf         ; -> in monitor
+; Memory Copy
 
 ; @@ mcopyb
 ; copy memory backwards from (Src) to (Dst) with XY=size      (37b)
