@@ -16,6 +16,7 @@ enum vdp_const {
 // Memory
 extern uint8_t SysROM[8*1024]; // upper 512 bytes
 extern uint8_t MainRAM[8*1024];
+extern uint8_t ExtRAM[8*1024];
 extern uint8_t VRAM[8*1024]; // lower 1KB
 extern uint8_t CharROM[256*8]; // 2KB
 extern uint8_t* MemMap[8];
@@ -40,8 +41,6 @@ void dbg_decode_next_op(uint16_t pc);
 // ULA
 uint8_t read6502(uint16_t address);
 void write6502(uint16_t address, uint8_t value);
-extern uint8_t VidPal[4];
-extern uint8_t KbdCol;
 
 // render
 int init_render();

@@ -3,8 +3,8 @@
 
 // XXX: Reveal, TapeMotor
 enum io_reg {
-    IO_KEY   = 0xF8, // ASCII Keyboard read (7-bit)
-    IO_CAS   = 0xF9, // Cassette IO (3:Speaker 2:RTS 1:TXD 0:TapeTx) / Read (7:KeyLatch 2:CTS 1:RXD 0:TapeRx)
+    IO_KEY   = 0xF8, // ASCII Keyboard read (7:Strobe 6-0:ASCII)
+    IO_CAS   = 0xF9, // Cassette IO (7:TapeTx 6:TXD 1:RTS 0:Speaker) / Read (7:TapeRx 1:CTS 0:RXD)
     IO_XXA   = 0xFA, // Reserved
     IO_XXB   = 0xFB, // Reserved
     IO_XXC   = 0xFC, // Reserved
@@ -16,11 +16,10 @@ enum io_reg {
 uint8_t OpenBus[8*1024] = { 0xEE };
 uint8_t SysROM[8*1024];
 uint8_t MainRAM[8*1024];
+uint8_t ExtRAM[8*1024];
 uint8_t VRAM[8*1024];
 
 extern uint16_t vdp_vcount; // 9-bit vertical line count
-
-uint8_t  KbdCol    = 0x03;   // 4-bit register
 
 uint8_t* MemMap[8] = {
     MainRAM,               // Base 8K RAM
@@ -47,8 +46,8 @@ static uint8_t MemMapWR[8] = {
     wr_rom,                // System ROM (upper 8K)
 };
 
-static int key_latch = 0;
-static char last_key = 0;
+static uint8_t key_latch = 0;
+static uint8_t last_key = 0;
 
 static uint8_t ula_io_read(uint16_t address) {
     // catch up the VDP before reading IO
@@ -58,11 +57,12 @@ static uint8_t ula_io_read(uint16_t address) {
     switch (address) {
         // F-page
         case IO_KEY: {
+            uint8_t val = key_latch | last_key;
             key_latch = 0;
-            return last_key;
+            return val;
         }
         case IO_CAS: {
-            return (key_latch<<7); // KeyLatch:7
+            return 0;
         }
         default: {
             // Read back from RAM
@@ -78,7 +78,7 @@ static uint8_t ula_io_read(uint16_t address) {
 void ula_key_strobe(uint8_t key) {
     // new keypress
     last_key = key;
-    key_latch = 1;
+    key_latch = 0x80; // top bit
 }
 
 static void ula_io_write(uint16_t address, uint8_t value) {
@@ -86,9 +86,7 @@ static void ula_io_write(uint16_t address, uint8_t value) {
     advance_vdp();
     switch (address) {
         // F-page
-        case IO_KEY: {
-            // Write Keyboard/Serial (7:TXD 6:RTS 5:TapeOut 4-0:KBCol)
-            KbdCol = value & 0x0F;
+        case IO_CAS: {
             break;
         }
     }
