@@ -1,4 +1,4 @@
-MonBase = $FC00
+MonBase = $FE00
 ROMSize = 512
 
 VidBase  = $A0          ; first video page
@@ -6,8 +6,8 @@ VidLast  = $A3          ; last video page
 
 LineBuf  = $100         ; Input Buffer (128 bytes)
 
-IO_KEY   = $F8          ; ASCII keyboard read (7-bit)
-IO_CAS   = $F9          ; Cassette Write (3:Speaker 2:RTS 1:TXD 0:TapeTx) / Read (7:KeyLatch 2:CTS 1:RXD 0:TapeRx)
+IO_KEY   = $F8          ; ASCII keyboard read (7:Strobe 6-0:ASCII)
+IO_CAS   = $F9          ; Cassette Write (7:TapeTx 6:TXD 1:RTS 0:Speaker) / Read (7:KeyLatch 2:CTS 1:RXD 0:TapeRx)
 
 ; ------------------------------------------------------------------------------
 ; Registers
@@ -26,10 +26,10 @@ D        = $C8        ; extra register
 E        = $C9        ; extra register
 F        = $CA        ; extra register
 
-RemX     = $D3        ; remaining space on line
-TXTP     = $D4        ; text write address
-TXTPH    = $D5        ; text write address high
-CurTime  = $D6        ; cursor flash timer
+TXTP     = $CB        ; text write address
+TXTPH    = $CC        ; text write address high
+RemX     = $CD        ; remaining space on line
+CurTime  = $CE        ; cursor flash timer
 
 NmiVec   = $EA        ; NMI vector in RAM {JMP,Low,High} (for ROM override)
 IrqVec   = $ED        ; IRQ vector in RAM {JMP,Low,High} (for ROM override)
@@ -54,9 +54,9 @@ repe  JSR wrch      ; (uses A,X,F,Src,Dst) -> X=0
       STX D         ; clear mode
       ; parse hex addrs
       JSR rdhx      ; X=ofs -> B,C (End)
-      LDA End
+      LDA End       ; B
       STA Ptr
-      LDA EndH
+      LDA EndH      ; C
       STA PtrH
       LDA LineBuf,X
       CMP #45       ; `-`
@@ -80,11 +80,10 @@ repc  LDA LineBuf,X
       LDA #63       ; `?`
       BNE repe      ; -> to repl
 
-run   LDX #0
-      JMP (Src)
+run   JMP (Ptr)
 
 ; ------------------------------------------------------------------------------
-; PRINT and CLEAR (65 bytes)
+; PRINT, WRITE, CLEAR (65 bytes)
 
 prnl  JSR wrnl
 prnt  LDA PtrH
@@ -101,11 +100,11 @@ incp  INC Ptr
       INC PtrH
       ; check end address
 prnp  LDA PtrH
-      CMP EndH
+      CMP EndH     ; C
       BCC prco     ; -> less, continue
       BNE repl     ; -> greater, done (fixes -FF)
       LDA Ptr
-      CMP End
+      CMP End      ; B
       BEQ prco     ; -> equal, continue
       BCS repl     ; -> greater, done
       ; continue loop
@@ -157,8 +156,8 @@ save:
 
 ; read hex (48b)
 rdhx  LDA #0        ; (A,X) -> X
-      STA End       ; clear it
-      STA EndH
+      STA End       ; B clear it
+      STA EndH      ; C
 rdhl  LDA LineBuf,X
       SEC
       SBC #48       ; `0`
@@ -181,6 +180,48 @@ rdhl  LDA LineBuf,X
       INX
       BNE rdhl      ; -> always
 retn  RTS
+
+
+; ------------------------------------------------------------------------------
+; CASSETTE
+
+
+      ; receive byte
+      LDY #8        ; [2] 8 bits
+crst  LDX #0        ; [2] timer
+      ; wait for zero-crossing
+crzc  INX           ; [2]
+      LDA IO_CAS    ; [3]
+      BPL crzc      ; [3] -> wait [8] 8*1117 = 8.936 µs between samples
+      ; wait for end of pulse
+crzx  LDA IO_CAS    ; [3]
+      BMI crzx      ; [3] -> wait [6]
+      ; decode bit
+      CPX #15       ; [2] mid-point (12<->17) CS=greater/eq(1) CC=less(0)
+      ROL B         ; [5] byte << CF
+      DEY           ; [2]
+      BNE crst      ; [3]
+
+      ; 1117ns per cycle
+      ; 1 / 4800 Hz * 1000 = 208333 ns / 2 / 1117 = 93.25 cycles / 8 = 11.65625
+      ; 1 / 3200 Hz * 1000 = 312500 ns / 2 / 1117 = 139.88 cycles / 8 = 17.485
+
+      ; record byte (A=byte)
+cwb   LDY #8        ; [2] 8 bits
+cwlp  ROL B         ; [5] CF << byte
+      LDX #12       ; [2] 4800 Hz (1)
+      BCS cwhi      ; [2] -> write high [+1]
+      LDX #17       ; [2] 3200 Hz (0)
+cwhi  LDA #1        ; [2] d0=1 bit
+cwd1  STA IO_CAS    ; [3] output bit
+      DEX           ; [2] 
+      BNE cwd1      ; [3] -> delay loop
+      LDA #0        ; [2] d0=1 bit
+cwd2  STA IO_CAS    ; [3] output bit
+      DEX           ; [2] 
+      BNE cwd2      ; [3] -> delay loop
+
+
 
 
 ; ------------------------------------------------------------------------------
@@ -257,7 +298,7 @@ cpyf:                    ; (uses A,X,Y,F,Src,Dst) -> X=0
 
 ; @@ rdln
 ; read a line of input
-rdln:             ; (uses A,X,Y,F -> LineBuf, Y=len)
+rdln:             ; (uses A,X,Y,F,Src,Dst -> LineBuf, Y=len)
   LDY #0          ; line length
 @wait:
 ; show the cursor
@@ -269,9 +310,9 @@ rdln:             ; (uses A,X,Y,F -> LineBuf, Y=len)
 @nobl:
   STA (TXTP,X)    ; update cursor
 ; get a key
-  LDA IO_CAS      ; (7:KeyLatch)
-  BPL @wait       ; -> wait for key
-  LDA IO_KEY      ; read ASCII key (clears KeyLatch)
+  LDA IO_KEY      ; (7:Latch 6-0:ASCII)
+  BPL @wait       ; -> wait for keypress
+  AND #$7F        ; clear top bit
   CMP #8          ; is it BACKSPACE?
   BEQ @back       ; -> go back
   CMP #13         ; is it RETURN?
@@ -344,7 +385,7 @@ wreol:            ; (uses A,X,F,Src,Dst)
 ;
 ; scroll down, clear exposed line
   TYA             ; [2] save Y
-  PHA             ; [3]
+  PHA             ; [3] (can't use STY F, cpyf does)
   LDA #VidBase    ; [2]
   STA SrcH        ; [3]
   STA DstH        ; [3]
@@ -362,8 +403,8 @@ wreol:            ; (uses A,X,F,Src,Dst)
   LDA #152        ; [2] 192-40 start of last line
   STA TXTP        ; [3]
   JSR tclr        ; [6] (uses A,Y) -> (Y=0, EQ)
-  PLA             ; [3]
-  TAY             ; [2] restore Y
+  PLA             ; [4]
+  TAY             ; [2]
 wrret:            ; <- NE (wrch:X=0)
   RTS             ; [6] -> X=0 (except wrnl)
 
