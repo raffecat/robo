@@ -1216,3 +1216,154 @@ c_base:
   DB 0         ; F
 
 
+
+; removed from 2K BASIC (too big)
+
+        ; in `run`        (LDA #>ProgPg)
+        STA DataH         ; set DATA page
+
+        ; in dcmd
+        STY Data          ; clear data pointer  (should clear this only on code edits)
+        STY DataH         ; clear data pointer  (along with all arrays)
+
+        ; OP_RESTORE
+        ; Find specified line, set Data (READ does most of the work)
+resto   JSR expr          ; -> Args[0]
+        JSR fndln         ; find line, or next (Args[0] -> XA/Ptr, CS=found)
+        BCC enum1         ; -> not found
+        STX DataH         ; pointer to next data, high
+        STA Data          ; pointer to next data, low
+        JMP stmt   
+
+edata   LDY #<msg_data
+        JMP erro
+
+        ; OP_READ
+        ; Data always points into the program (start of program, last RESTORE, last READ)
+        ; @lp if (Data) >= $80 we're at eol; find next DATA line
+        ; read num at (Data), assign to var, advance Data -> @lp
+rdnxt   INY               ; comma (in Code)
+read    JSR findv         ; find [@-Z] var (uses A) reads code -> ofs (A)      XXX common A(N) -> Ptr
+        TAX               ; var ofs -> X
+        STY D             ; save Y
+        LDY DataY         ; data ofs
+rdfnd   LDA (Data),Y      ; 
+        INY               ; assume comma
+        CMP #44           ; `,`
+        BEQ rdfnd         ; -> skip comma
+        DEY               ; undo
+        CMP #OP_I0        ; number?
+        BCC rdnon         ; -> non-number
+        ; can't use expr (Data not CODE)                              XXX decode number!
+        STA IVar,X        ; low byte
+        INY               ;
+        LDA (Data),Y      ; 
+        STA IVar+1,X      ; high byte
+        INY               ;
+        STY DataY         ; save data ofs
+        ; next var
+        LDY D             ; restore Y = Code ofs
+        LDA (CODE),Y      ; read code
+        CMP #44           ; comma
+        BEQ rdnxt         ; -> next var
+        JMP stmt          ; -> next stmt
+        ; find next DATA
+rdnon   AND #$FE          ; clear low bit
+        CMP #OP_EOP       ; is it end of line? (OP_LN/OP_EOP)
+        BNE esyn          ; -> syntax error in DATA
+rdskp   LDY #3            ; find next DATA line
+        LDA (Data),Y      ; get Line length
+        BEQ edata         ; -> out of data (end of program)
+        CLC               ;
+        ADC Data          ; Data += Y
+        STA Data          ;
+        BCC rdnpg         ; -> no page cross
+        INC DataH         ;
+rdnpg   INY               ; first opcode
+        LDA (Data),Y      ; 
+        CMP #OP_DATA      ; is it data?
+        BNE rdskp         ; -> skip this line
+        INY               ; OP_DATA
+        BEQ rdfnd         ; -> match data
+
+
+        ; in `run`
+        LDA TopPtr        ; reset free space for DIM
+        STA FreePtr
+        LDA TopPtrH
+        STA FreePtrH
+
+        ; OP_DIM          (93b)
+dims    JSR findv         ; find var -> A=ofs
+        CMP #16           ; beyond [@-G]?
+        BCS esyn          ; -> not a valid array
+        PHA               ; save X=ofs
+        JSR expr          ; -> dimension Args[0]
+        PLA               ; restore X=ofs
+        TAX               ; as index
+        ASL $00           ; CF << dim << 0
+        ROL $01           ; OV << dim << CF
+        BCS emem          ; -> too big
+        LDA ArrPt+1,X     ; check ptr high
+        BNE emem          ; -> already DIM'd
+        ; check free space (CC)
+        LDA FreePtr
+        PHA               ; push FreePtr old
+        ADC $00           ; + size low
+        LDA FreePtrH
+        PHA               ; push FreePtrH old
+        ADC $01           ; + size high
+        CMP MemSize       ; gt/eq?
+        BCS emem          ; -> not enough space
+        ; commit
+        PLA               ; pop FreePtrH old
+        STA ArrPt+1,X     ; set ArrayPtr high
+        PLA               ; pop FreePtr old
+        STA ArrPt,X       ; set ArrayPtr low
+        ; set size
+        LDA $00           ; dim size
+        STA B             ; save byte count
+        STA ArrSz,X       ; set size low
+        LDA $01           ; page count
+        STA ArrSz+1,X     ; set size high
+        ; clear array
+        STY F             ; save Y=code ofs
+        TAX               ; page counter
+        LDA #0
+        TAY               ; offset
+        CPX #0
+        BEQ dimnp         ; -> no pages
+dimcp   STA (FreePtr),Y   ; clear one page
+        INY
+        BNE dimcp         ; until 256 bytes
+        INC FreePtrH      ; next page
+        DEX               ; page count
+        BNE dimcp         ; -> another page
+dimnp   LDX B
+        BEQ dimx          ; -> no byte count
+dimcb   STA (FreePtr),Y   ; clear partial page
+        INC FreePtr       ; and bump FreePtr (costs 5b no INY)
+        BCC dimcc
+        INC FreePtrH
+dimcc   DEX
+        BNE dimcb
+        ;;TYA               ; costs 10b (faster)
+        ;;CLC
+        ;;ADC FreePtr
+        ;;STA FreePtr
+        ;;BCC dimx
+        ;;INC FreePtrH
+dimx    LDY F             ; save Y=code ofs
+        JMP stmt          ; -> next stmt
+
+Assumes:
+
+        ; find [@-Z] var -> ofs (A)
+        ; used by OP_LET, OP_DIM*, OP_READ, OP_INPUT, OP_FOR, Expr (11b)
+findv   LDA (CODE),Y      ; [5] read code
+        EOR #64           ; [2] 64->0
+        CMP #27           ; [2] @-Z
+        BCS esyn          ; [2] -> syntax error
+        ASL               ; [2] ofs = [@-Z] x 2
+        INY               ; [2] for var
+        RTS               ; [6] -> NE // [21]
