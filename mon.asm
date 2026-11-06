@@ -24,7 +24,7 @@ End      = B
 EndH     = C
 D        = $C8        ; extra register
 E        = $C9        ; extra register
-F        = $CA        ; extra register
+F        = $CA        ; IO Temp register
 
 TXTP     = $CB        ; text write address
 TXTPH    = $CC        ; text write address high

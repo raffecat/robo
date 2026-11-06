@@ -1367,3 +1367,79 @@ findv   LDA (CODE),Y      ; [5] read code
         ASL               ; [2] ofs = [@-Z] x 2
         INY               ; [2] for var
         RTS               ; [6] -> NE // [21]
+
+
+        ; A+B   A->Acc +(Op->Stk;Acc->Stk) B->Acc => Stk + Acc -> Acc
+        ; -A    -(Op->Stk) A->Acc => Acc -> Acc
+        ; --A   -(Op->Stk) -(Op->Stk) A->Acc => Acc -> Acc => Acc -> Acc
+        ; A+B*C A->Acc +(Op->Stk;Acc->Stk) B->Acc *(Op->Stk;Acc->Stk) C->Acc => Stk * Acc -> Acc => Stk + Acc -> Acc
+        ; A*B+C A->Acc *(Op->Stk;Acc->Stk) B->Acc +(Stk * Acc -> Acc; Op->Stk;Acc->Stk) C->Acc => Stk + Acc -> Acc
+
+        ; OP_ADD2         (Stack on LHS)
+xadd2   CLC               ; [2]
+        PLA               ; [4]
+        ADC Acc0          ; [3]
+        STA Acc0          ; [3]
+        PLA               ; [4]
+        ADC Acc1          ; [3]
+        STA Acc1          ; [3]
+        BVS xnum          ; [2] overflow
+        JMP xoplp         ; [3] -> next oper // 16b [27]
+
+        ; OP_SUB2
+xsub2   SEC               ; [2]
+        PLA               ; [4]
+        SBC Acc0          ; [3]
+        STA Acc0          ; [3]
+        PLA               ; [4]
+        SBC Acc1          ; [3]
+        STA Acc1          ; [3]
+        BVS xnum          ; [2] overflow
+        JMP xoplp         ; [3] -> next oper // 16b [27]
+
+
+
+; @@ num_u16
+; parse an unsigned 16-bit number
+num_u16:         ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Src)
+  LDA #0         ; [2]
+  STA Args       ; [3] clear Args[0]
+  STA Args+1     ; [3]
+  DEY            ; [2] for pre-increment
+@loop:           ; -> 14+76+25 [115]
+  INY            ; [2] pre-increment
+  LDA LineBuf,Y  ; [4] get next char
+  EOR #48        ; [2] make '0' be 0
+  CMP #10        ; [2]
+  BCS prnrt      ; [2] >= 10 -> done [+1]
+  TAX            ; [2] save digit 0-9
+; multiply Acc by 10
+  ASL Args       ; [5] Acc = Acc*2 (=Val*2)
+  ROL Args+1     ; [5]
+  BCS err_ovf    ; [2] -> unsigned overflow
+  LDA Args       ; [3] Term = Acc (=Val*2)
+  STA Src        ; [3] 
+  LDA Args+1     ; [3]
+  STA SrcH       ; [3]
+  ASL Args       ; [5] Acc *= 2 (=Val*4)
+  ROL Args+1     ; [5]
+  BCS err_ovf    ; [2] -> unsigned overflow
+  ASL Args       ; [5] Acc *= 2 (=Val*8)
+  ROL Args+1     ; [5]
+  BCS err_ovf    ; [2] -> unsigned overflow
+  CLC            ; [2]
+  TXA            ; [2] Acc += digit 0-9
+  ADC Args       ; [3]
+  BCC @noc       ; [2] -> no carry [+1]
+  INC Args+1     ; [5]
+  BEQ err_ovf    ; [2] -> unsigned overflow [+1]
+@noc:
+  ADC Src        ; [3] Acc += Term (=Val*2)
+  STA Args       ; [3] Args[0]
+  LDA Args+1     ; [3]
+  ADC SrcH       ; [3]
+  STA Args+1     ; [3]
+  BCC @loop      ; [2] -> no overflow, continue [+1]
+err_ovf:
+  JMP enumb      ; [3] -> report overflow
+
