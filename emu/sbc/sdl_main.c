@@ -26,13 +26,14 @@ int main(int argc, char *argv[]) {
     }
 
     // load the ROM image.
+    memset(OpenBus, 0xEE, sizeof(OpenBus));
     memset(SysROM, 0xEE, sizeof(SysROM));
     size_t mon_size = read_binary_file("mon.bin", (char*)(SysROM), 512);
     printf("loaded monitor %zu\n", mon_size);
     for (size_t to = 512; to <= sizeof(SysROM)-512; to += 512) {
         memcpy((char*)&SysROM[to], (char*)(SysROM), 512);
     }
-    size_t bas_size = read_binary_file("rom2K.bin", (char*)(MainRAM+0x200), 2048);
+    size_t bas_size = read_binary_file("rom2K.bin", (char*)(MainRAM+0x200), 4096);
     printf("loaded BASIC %zu\n", bas_size);
 
     // create window.
@@ -108,13 +109,13 @@ int main(int argc, char *argv[]) {
         // run the CPU.
         if (!dbg_enable) {
             exec6502(cpu_clk_per_line);
-            // clockticks6502++;
-            // advance_vdp();
+            advance_vdp();
         } else {
             // debugger
             if (pc != dbg_break) {
                 // run until we hit the breakpoint.
                 exec6502(cpu_clk_per_line);
+                advance_vdp();
             } else {
                 // stopped on the breakpoint.
                 if (keys[SDL_SCANCODE_RSHIFT]) {
@@ -142,9 +143,6 @@ int main(int argc, char *argv[]) {
                 render();
             }
         }
-
-        // make render progress.
-        advance_vdp();
     }
 
     final_render();

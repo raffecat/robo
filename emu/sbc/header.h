@@ -10,10 +10,11 @@ enum vdp_const {
     frames_per_sec = 60,
     lines_per_frame = 262,
     lines_per_sec = frames_per_sec * lines_per_frame,  // 15720 Hz
-    cpu_clk_per_line = 456/8,   // exactly 57 CPU cycles per line
+    cpu_clk_per_line = 57,   // 456/8 CPU cycles per line
 };
 
 // Memory
+extern uint8_t OpenBus[8*1024];
 extern uint8_t SysROM[8*1024]; // upper 512 bytes
 extern uint8_t MainRAM[8*1024];
 extern uint8_t ExtRAM[8*1024];

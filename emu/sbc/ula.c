@@ -13,7 +13,7 @@ enum io_reg {
     IO_XXF   = 0xFF  // Reserved
 };
 
-uint8_t OpenBus[8*1024] = { 0xEE };
+uint8_t OpenBus[8*1024];
 uint8_t SysROM[8*1024];
 uint8_t MainRAM[8*1024];
 uint8_t ExtRAM[8*1024];
