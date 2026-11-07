@@ -1277,6 +1277,7 @@ expr    LDA (CODE),Y      ; [5]
         EOR #$80          ; [2] map to 0
         CMP #OP_NPRE      ; [2] is prefix?
         BCC xpsho         ; [2] -> yes, push [+1]
+        EOR #$80          ; [2] undo
         CMP #OP_SUB       ; [2] unary minus?
         BNE xnumb         ; [2] -> no, number [+1]
         LDA #OP_NEG       ; [2] map to OP_NEG
@@ -1360,7 +1361,7 @@ xclos   ; XXX pop/apply up to OP_LPAR
         ; a number
 xnumb   CMP #OP_I0        ; [2] a number? (>=$F0)
         BCC xsyn          ; [2] -> syntax error [+1]
-        INY               ; [2]
+        INY               ; [2] OP/digit
         LDX #0            ; [2] 
         STX F             ; [3] set high (F)
         CMP #OP_INT1      ; [2]
@@ -1375,9 +1376,9 @@ xint2   CMP #OP_INT2      ; [2] guard
         BNE xsyn          ; [2] -> bad code (CS)
         LDA (CODE),Y      ; [5] high (big-endian)
         STA F             ; [3] set high (F)
-        INY               ; [2]
+        INY               ; [2] high
 xint1   LDA (CODE),Y      ; [5] low (CS)
-        INY               ; [2] (NE)
+        INY               ; [2] low (NE)
         BNE xpush         ; [3] -> push XA // [INT1:19+12+28=59 INT2:34+12+28=74]
 
         ; OP_IDX
@@ -1701,27 +1702,27 @@ err_ovf:
   JMP enumb      ; [3] -> report overflow
 
         ; print number in Args[0]
-prnum   LDA #0         ; [2] (uses A,X,B,C,F,Src,Dst)
-        PHA            ; [3] sentinel
-        STA Term1      ; [3] divisor high byte (Dst)
-        LDA #10        ; [2] divisor = 10
-        STA Term0      ; [3] divisor low byte (Dst)
-        LDA Args       ; [3] Args[0] low (copy Args[0] for LIST)
-        STA Acc0       ; [3] set Acc0 (Src)
-        LDA Args+1     ; [3] Args[0] high
-        STA Acc1       ; [3] set Acc1 (Src)
-prndv   JSR div_u16    ; [733] Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Src,Dst)
-        LDA B          ; [3] remainder
-        ORA #48        ; [2] 0-9 -> '0'-'9'
-        PHA            ; [3] pushes once or more
-        LDA Acc0       ; [3]
-        ORA Acc1       ; [3]
-        BNE prndv      ; [2] -> until zero [+1]
-        PLA            ; [4]
-prnpl   JSR wrch       ; [6] print it (uses A,X,F,Src,Dst) preserves Y
-        PLA            ; [4]
-        BNE prnpl      ; [2] -> until sentinel [+1]
-prnrt   RTS            ; [6] -> prnum:EQ
+prnum   LDA #0            ; [2] (uses A,X,B,C,F,Src,Dst)
+        PHA               ; [3] sentinel
+        STA Term1         ; [3] divisor high byte (Dst)
+        LDA #10           ; [2] divisor = 10
+        STA Term0         ; [3] divisor low byte (Dst)
+        LDA Args          ; [3] Args[0] low (copy Args[0] for LIST)
+        STA Acc0          ; [3] set Acc0 (Src)
+        LDA Args+1        ; [3] Args[0] high
+        STA Acc1          ; [3] set Acc1 (Src)
+prndv   JSR div_u16       ; [733] Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Src,Dst)
+        LDA B             ; [3] remainder
+        ORA #48           ; [2] 0-9 -> '0'-'9'
+        PHA               ; [3] pushes once or more
+        LDA Acc0          ; [3]
+        ORA Acc1          ; [3]
+        BNE prndv         ; [2] -> until zero [+1]
+        PLA               ; [4]
+prnpl   JSR wrch          ; [6] print it (uses A,X,F,Src,Dst) preserves Y
+        PLA               ; [4]
+        BNE prnpl         ; [2] -> until sentinel [+1]
+prnrt   RTS               ; [6] -> prnum:EQ
 
 
 ; ----------------------------------------------------------------------
@@ -1734,12 +1735,6 @@ div_u16:         ; Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (use
   STA B          ; remainder = 0
   STA C          ; remainder = 0
   LDX #16        ; 16 bits
-  ;;STY F          ; save code ofs
-  ;;LDY ArgTop     ; argument stack (empty)
-  ;;LDA $FC,Y      ; SP-4 (dividend low)
-  ;;STA Acc0       ; copy to Acc0
-  ;;LDA $FD,Y      ; SP-3 (dividend high)
-  ;;STA Acc1       ; copy to Acc1
 @loop:
 ; shift dividend bits left into remainder
   ASL Acc0       ; [5] CF << dividend << 0  (shift 0 into quotient by default)
@@ -1768,7 +1763,6 @@ div_u16:         ; Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (use
 @next:
   DEX            ; [2]
   BNE @loop      ; [3] -> continue division
-  ;;LDY F          ; restore code ofs
   RTS            ; return
 
 
@@ -1779,30 +1773,30 @@ div_u16:         ; Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (use
         ; copy memory backwards from (Src) to (Dst) with XY=size
         ; assume (Dst > Src) but Src/Dst may overlap 
         ; uses (A,X,Y,B,Src,Dst)
-cpyb    STX F          ; [3] page count
+cpyb    STX F             ; [3] page count
         ; advance to last page (13b, 19s)
-        CLC                    ; [2]
-        LDA SrcH               ; [3] Src += A * 256
-        ADC F                  ; [3]
-        STA SrcH               ; [3]
-        LDA DstH               ; [3] Dst += A * 256
-        ADC F                  ; [2] no CLC (assume no 64K wrap)
-        STA DstH               ; [3]
+        CLC               ; [2]
+        LDA SrcH          ; [3] Src += A * 256
+        ADC F             ; [3]
+        STA SrcH          ; [3]
+        LDA DstH          ; [3] Dst += A * 256
+        ADC F             ; [2] no CLC (assume no 64K wrap)
+        STA DstH          ; [3]
         ; begin copy
-        TYA                    ; [2] is Y=0?
-        BEQ cpyblp             ; [2] -> Y=0, no partial page [+1]
-        INC F                  ; [5] pages++ for partial page
-cpyblp  DEY                    ; [2] count--
-        LDA (Src),Y            ; [5] read byte (sets NE/EQ)
-        STA (Dst),Y            ; [6] write byte
-        TYA                    ; [2] is count==0?
-        BNE cpyblp             ; [3] -> until count=0 // [18]
+        TYA               ; [2] is Y=0?
+        BEQ cpyblp        ; [2] -> Y=0, no partial page [+1]
+        INC F             ; [5] pages++ for partial page
+cpyblp  DEY               ; [2] count--
+        LDA (Src),Y       ; [5] read byte (sets NE/EQ)
+        STA (Dst),Y       ; [6] write byte
+        TYA               ; [2] is count==0?
+        BNE cpyblp        ; [3] -> until count=0 // [18]
         ; back one page
-        DEC SrcH               ; [5] Src -= 256
-        DEC DstH               ; [5] Dst -= 256
-        DEC F                  ; [5] pages-- (Y=0)
-        BNE cpyblp             ; [2] -> until pages=0 [+1] // [+18]
-        RTS                    ; [6] 
+        DEC SrcH          ; [5] Src -= 256
+        DEC DstH          ; [5] Dst -= 256
+        DEC F             ; [5] pages-- (Y=0)
+        BNE cpyblp        ; [2] -> until pages=0 [+1] // [+18]
+        RTS               ; [6] 
 
 ALIGN 256
 ProgPg = $   ; start of program memory
