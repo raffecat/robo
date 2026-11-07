@@ -361,7 +361,7 @@ OP_NEG     = $85     ; 6 unary Minus (OP_SUB)
 ; infix binary (from highest to lowest, left-associative)
 OP_IFXB    = 6       ; * infix base in prec table
 OP_INFX    = $86     ; * first infix
-OP_NIFX    = 12      ; * num infix
+OP_NIFX    = 13      ; * num infix
 OP_MUL     = $86     ; 5 binary op  LSR for prec
 OP_DIV     = $87     ; 5 binary op
 OP_ADD     = $88     ; 4 binary op
@@ -374,9 +374,9 @@ OP_NE      = $8E     ; 3 binary
 OP_EQ      = $8F     ; 3 binary `=`
 OP_AND     = $90     ; 2 binary op
 OP_OR      = $91     ; 1 binary op
+OP_RPAR    = $92     ; 0 infix close parenthesis (forces all ops to eval up to OP_LPAR)
 ; special (not prefix or infix)
-OP_IDX     = $92     ; 0 unary array
-OP_RPAR    = $93     ; close parenthesis (forces all ops to eval up to OP_LPAR)
+OP_IDX     = $93     ; 0 unary array
 OP_SIZE    = $94     ; push size of @-array
 ; numbers (non-operator)
 OP_I0      = $F0     ; 1-byte (OP_I0 + [0-9])
@@ -387,6 +387,7 @@ OP_INT2    = $FB     ; 2-byte (opc|int16)
 kws_at:
 kws_a:
 ex_and    DB "AND",      OP_AND
+ex_abs    DB "ABS",      OP_ABS
 kws_b:
 kws_c:
 kw_call   DB "CALL",     OP_CALL
@@ -524,9 +525,11 @@ kwrev:                   ; indices MUST match OPCODEs
   DB (ex_then - kwpg)    ; OP_THEN
   ; unary operators
   DB (ex_lp - kwpg)      ; OP_LPAR
+  DB (ex_abs - kwpg)     ; OP_ABS
   DB (ex_not - kwpg)     ; OP_NOT
   DB (ex_peek - kwpg)    ; OP_PEEK
   DB (ex_rnd - kwpg)     ; OP_RND
+  DB (ex_sub - kwpg)     ; OP_NEG
   ; infix binary
   DB (ex_mul - kwpg)     ; OP_MUL
   DB (ex_div - kwpg)     ; OP_DIV
@@ -540,7 +543,6 @@ kwrev:                   ; indices MUST match OPCODEs
   DB (ex_ge - kwpg)      ; OP_GE
   DB (ex_and - kwpg)     ; OP_AND
   DB (ex_or - kwpg)      ; OP_OR
-  ; close paren
   DB (ex_rp - kwpg)      ; OP_RPAR
 
 
@@ -1209,29 +1211,30 @@ fndnx   LDY #3            ; (OP_LN LnLo LnHi >Len<) <- BCC
         ; --- EXPRESSIONS ---
 
         ; prefix
-prec    DB 0       ; OP_LPAR open parenthesis (lowest [never forced to eval])
-        DB 6       ; OP_NEG unary negate `-` (replaces OP_SUB)
-        DB 6       ; OP_NOT unary NOT
-        DB 6       ; OP_ABS absolute (tail OP_NEG)
-        DB 6       ; OP_PEEK peek address (arg)
-        DB 6       ; OP_RND random number (arg: mod N)
+prec    DB 1       ; OP_LPAR open parenthesis (OP_RPAR forces eval)
+        DB 7       ; OP_NEG unary negate `-` (replaces OP_SUB)
+        DB 7       ; OP_NOT unary NOT
+        DB 7       ; OP_ABS absolute (tail OP_NEG)
+        DB 7       ; OP_PEEK peek address (arg)
+        DB 7       ; OP_RND random number (arg: mod N)
         ; infix
-        DB 5       ; OP_MUL
-        DB 5       ; OP_DIV
-        DB 4       ; OP_ADD
-        DB 4       ; OP_SUB
-        DB 3       ; OP_EQ
-        DB 3       ; OP_NE
-        DB 3       ; OP_LT
-        DB 3       ; OP_LE
-        DB 3       ; OP_GT
-        DB 3       ; OP_GE
-        DB 2       ; OP_AND
-        DB 1       ; OP_OR
+        DB 6       ; OP_MUL
+        DB 6       ; OP_DIV
+        DB 5       ; OP_ADD
+        DB 5       ; OP_SUB
+        DB 4       ; OP_EQ
+        DB 4       ; OP_NE
+        DB 4       ; OP_LT
+        DB 4       ; OP_LE
+        DB 4       ; OP_GT
+        DB 4       ; OP_GE
+        DB 3       ; OP_AND
+        DB 2       ; OP_OR
+        DB 0       ; OP_RPAR
 precb   = prec - $80
 
         ; operator JMP offsets
-OpJp    DB <xend   ; OP_LPAR open parenthesis (never used!)
+OpJp    DB <xlpr   ; OP_LPAR open parenthesis (back to xinf)
         DB <xneg   ; OP_NEG unary negate `-`
         DB <xnot   ; OP_NOT unary NOT
         DB <xabs   ; OP_ABS absolute (tail OP_NEG)
@@ -1276,8 +1279,8 @@ expr    LDA (CODE),Y      ; [5]
         BPL xvar          ; [2] -> var name [+1]
         EOR #$80          ; [2] map to 0
         CMP #OP_NPRE      ; [2] is prefix?
-        BCC xpsho         ; [2] -> yes, push [+1]
         EOR #$80          ; [2] undo
+        BCC xpsho         ; [2] -> yes, push [+1]
         CMP #OP_SUB       ; [2] unary minus?
         BNE xnumb         ; [2] -> no, number [+1]
         LDA #OP_NEG       ; [2] map to OP_NEG
@@ -1325,7 +1328,7 @@ xinf    LDA (CODE),Y      ; [5] read operator
         CMP #OP_NIFX      ; [2] is it infix?
         BCS xend          ; [2] -> no, end expr
         LDA precb,X       ; [4] infix precendence
-        STA B             ; [3] save precedence
+xopsp   STA B             ; [3] save precedence
         ; pop/apply higher prec
 xoplp   LDX OpTop         ; [3] stack top
         BEQ xinfp         ; [2] -> stack empy [+1]               XXX use BMI (full asc)
@@ -1345,14 +1348,17 @@ xbig    LDY #<msg_big
 
         ; push infix operator
 xinfp   LDA (CODE),Y      ; [5] re-read operator
+        CMP #OP_INFX      ; [2] is it infix?
+        BCS xret          ; [2] -> no, return
         INY               ; [2] advance input
+        CMP #OP_RPAR      ; [2] close parenthesis?
+        BEQ xsyn          ; [2] -> missing `(`
         JMP xpsho         ; [3] -> push it // [32+19=51]
+xret    RTS
 
         ; end of expression (or OP_RPAR)
-xend    CPX #OP_RPAR      ; [2] close parenthesis? ($C1)
-        BEQ xclos         ; [2] -> yes, pop/apply [+1]
-        ; XXX pop/apply all
-        RTS
+xend    LDA #0            ; [2] prec = 0
+        BEQ xopsp         ; [2] -> set precendence (pop/apply all)
 
 xclos   ; XXX pop/apply up to OP_LPAR
         INY               ; [2] OP_RPAR
@@ -1411,6 +1417,12 @@ xidx    LDX ArgTop        ; empty asc                    XXX use full asc
 xnum    LDY #<msg_num
         JMP erro
 
+        ; OP_LPAR
+xlpr    LDA (CODE),Y      ; [5] re-read operator
+        CMP #OP_RPAR      ; [2] is it `)`?
+        BNE xsyn          ; [2] -> no, missing `)`
+        INY               ; [2] skip `)`
+        JMP xinf          ; [3] -> expect infix
 
         ; OP_ABS
 xabs    LDA Args-1,X      ; [4] right high
