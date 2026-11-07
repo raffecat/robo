@@ -2,22 +2,21 @@
 ; Use `asm6` to compile: https://github.com/parasyte/asm6
 
 BasROM   = $0200   ; 2K BASIC
-ProgPg   = $0A00   ; start of program memory (constant)
 End4K    = $10     ; end of 4KB memory (minimum RAM fitted)
 
 ; ------------------------------------------------------------------------------
 ; Monitor Routines
 
 montr = $FE00
-cls   = $FF06     ; (uses A,X,Y) -> Y=0,EQ
-home  = $FF18     ; (uses A,Y) -> Y=0,EQ
-tclr  = $FF25     ; (uses A,Y) -> Y=0,EQ
-cpyf  = $FF2F     ; (uses A,X,Y,F,Src,Dst) -> X=0
-rdln  = $FF51     ; (uses A,X,Y,F,Src,Dst) -> Y=len
-wrnl  = $FF91     ; (uses A,X,F,Src,Dst) preserves Y
-wrsp  = $FF9E     ; (uses A,X,F,Src,Dst) preserves Y
-wrch  = $FFA0     ; (uses A,X,F,Src,Dst) preserves Y
-prhx  = $FFE3     ; (uses A,X,F,Src,Dst) preserves Y
+cls   = $FF07     ; (uses A,X,Y) -> Y=0,EQ
+home  = $FF19     ; (uses A,Y) -> Y=0,EQ
+tclr  = $FF26     ; (uses A,Y) -> Y=0,EQ
+rdln  = $FF30     ; (uses A,X,Y,F,Src,Dst) -> Y=len
+wrnl  = $FF70     ; (uses A,X,F,Src,Dst) preserves Y
+wrsp  = $FF7D     ; (uses A,X,F,Src,Dst) preserves Y
+prhx  = $FF81     ; (uses A,X,F,Src,Dst) preserves Y
+wrch  = $FF95     ; (uses A,X,F,Src,Dst) preserves Y
+cpyf  = $FFD8     ; (uses A,X,Y,F,Src,Dst) -> X=0
 
 ; ------------------------------------------------------------------------------
 ; Zero Page $00-BF - BASIC WORKSPACE
@@ -170,9 +169,7 @@ repl    LDX #$FF          ; X = $FF
         DEY               ; for INY
         ; tokenize the line
 tkskp   INY               ; skip space
-tokn    LDA #46           ; DEBUG (dot)
-        JSR wrch          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
-        LDA LineBuf,Y     ; next input char
+tokn    LDA LineBuf,Y     ; next input char
         CMP #32           ; space?
         BEQ tkskp         ; -> skip it
         TAX               ; save X=next-char (EQ)
@@ -348,7 +345,7 @@ OP_REM     = $D3
 OP_RUN     = $D4
 OP_SAVE    = $D5
 OP_TONE    = $D6
-OP_NSTMT   = $D7     ; * first non-stmt
+OP_XSTMT   = $D7     ; * first non-stmt
 ; context keywords
 OP_STEP    = $D7
 OP_TO      = $D8
@@ -797,8 +794,7 @@ stmtj   LDA (CODE),Y      ; [5] read code
         BPL let           ; [2] -> implied LET [+1]
         INY               ; [2] advance code
         ; guard [+4 cycles]
-        EOR #$C0          ; [2] first stmt
-        CMP #OP_NSTMT     ; [2] non-statement?
+        CMP #OP_XSTMT     ; [2] non-statement?
         BCS esyn          ; [2] -> bad code
         ; token dispatch
         TAX               ; [2]
@@ -1349,7 +1345,7 @@ xbig    LDY #<msg_big
         ; push infix operator
 xinfp   LDA (CODE),Y      ; [5] re-read operator
         INY               ; [2] advance input
-        JMP xpsho         ; [3] -> push it // [32+19=51]         XXX impl ABS, RND, PEEK, KEY !!!
+        JMP xpsho         ; [3] -> push it // [32+19=51]
 
         ; end of expression (or OP_RPAR)
 xend    CPX #OP_RPAR      ; [2] close parenthesis? ($C1)
@@ -1808,6 +1804,8 @@ cpyblp  DEY                    ; [2] count--
         BNE cpyblp             ; [2] -> until pages=0 [+1] // [+18]
         RTS                    ; [6] 
 
+ALIGN 256
+ProgPg = $   ; start of program memory
 
 ; ORG BasROM+$7FF
 ;   DB 0
