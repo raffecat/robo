@@ -206,7 +206,7 @@ tkmsk   INX               ; find end of this keyword
         BEQ tkmnx         ; -> yes, next word               +2 -3 -5 -2 = +4
         ; no match found
 tkmno   LDA C             ; reload A=first-char
-        INY               ; advance input
+tkemy   INY               ; advance input
 tkemt   JSR tkemi         ; output token with top-bit set (uses X=0; preserves A,Y; sets PL)
         BPL tokn          ; -> ALWAYS
 tkeol   LDA D             ; line-no found?
@@ -258,8 +258,9 @@ tkstr   JSR tkemi         ; emit char (uses X=0; preserves A,Y; sets PL)
         BNE tkstr         ; -> no, loop (not a quote)
         ; found a quote
         CMP LineBuf+1,Y   ; is next char `"` ?
-        BNE tkemt         ; -> end of string, emit closing quote
+        BNE tkemy         ; -> end of string, emit closing quote
         ; double-quote
+        INY               ; first `"`
         JSR tkemi         ; emit `"` (uses X=0; preserves A,Y; sets PL)
         BPL tkstr         ; -> loop, second `"`
 
@@ -1007,8 +1008,11 @@ setv    TAX               ; as index (10b)
         RTS
 
 
-        ; OP_PRINT        (89b)
-prnl    JSR wrnl          ; crlf (uses A,X,F,Src,Dst) preserves Y
+        ; OP_PRINT        (b)
+prcml   JSR wrsp          ; write space (uses A,X,F,Src,Dst) preserves Y
+prcom   LDA RemX          ; remaining space                            ; XXX field-width control?
+        AND #7            ; 8 spaces
+        BNE prcml         ; -> more spaces
 print   LDA (CODE),Y      ; [5] read code
         BPL prsym         ; [2] -> var name
         CMP #OP_EOS       ; [2] end of stmt?
@@ -1029,8 +1033,6 @@ prsym   CMP #64           ; letter?
         BEQ prcom         ; -> comma
         CMP #59           ; `;`?
         BEQ print         ; -> semi
-        CMP #39           ; `'`?
-        BEQ prnl          ; -> new line
         DEY               ; undo advance
         ; assume colon
 prend   DEY               ; go back one
@@ -1043,20 +1045,14 @@ prret   JMP colon         ; -> colon
         ; print string
 prdqt   INY               ; skip second `"`
 prstl   JSR wrch          ; print it (uses A,X,F,Src,Dst) preserves Y
-prstr   LDA (Ptr),Y       ; read code
+prstr   LDA (CODE),Y      ; read code
         BMI esyn1         ; -> bad code (guard)
         INY               ; advance
         CMP #34           ; `"`
         BNE prstl         ; -> loop
-        CMP (Ptr),Y       ; is next char `"`?
+        CMP (CODE),Y      ; is next char `"`?
         BEQ prdqt         ; -> skip quote, loop
         BNE print         ; -> always
-        ; comma
-prcml   JSR wrsp          ; write space (uses A,X,F,Src,Dst) preserves Y
-prcom   LDA RemX          ; remaining space                            ; XXX field-width control
-        AND #7            ; 8 spaces
-        BNE prcml         ; -> more spaces
-        BEQ print         ; -> always
 
 
         ; OP_NEXT (pop frame) (20b)
@@ -1348,9 +1344,13 @@ xbig    LDY #<msg_big
 
         ; push infix operator
 xinfp   LDA (CODE),Y      ; [5] re-read operator
-        CMP #OP_INFX      ; [2] is it infix?
+        TAX               ; [2] save X=operator (for xend)
+        SEC               ; [2]
+        SBC #OP_INFX      ; [2] map infix to 0
+        CMP #OP_NIFX      ; [2] is it infix?
         BCS xret          ; [2] -> no, return
         INY               ; [2] advance input
+        TXA               ; [2] A=operator
         CMP #OP_RPAR      ; [2] close parenthesis?
         BEQ xsyn          ; [2] -> missing `(`
         JMP xpsho         ; [3] -> push it // [32+19=51]
