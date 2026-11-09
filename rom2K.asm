@@ -14,7 +14,7 @@ tclr  = $FF26     ; (uses A,Y) -> Y=0,EQ
 rdln  = $FF30     ; (uses A,X,Y,F,Src,Dst) -> Y=len
 wrnl  = $FF70     ; (uses A,X,F,Src,Dst) preserves Y
 wrsp  = $FF7D     ; (uses A,X,F,Src,Dst) preserves Y
-prhx  = $FF81     ; (uses A,X,F,Src,Dst) preserves Y
+wrhx  = $FF81     ; (uses A,X,F,Src,Dst) preserves Y
 wrch  = $FF95     ; (uses A,X,F,Src,Dst) preserves Y
 cpyf  = $FFD8     ; (uses A,X,Y,F,Src,Dst) -> X=0
 
@@ -158,6 +158,8 @@ repl    LDX #$FF          ; X = $FF
         PHA               ; push 0 (TAG_EMPTY at $FF)
         STX ArgTop        ; reset Args stack                             XXX use $FE (full asc)
         STX OpTop         ; reset Oprs stack                             XXX use $FE (full asc)
+        LDA #>xoppg       ; operator page
+        STA JmpOpH        ; set ptr high
         LDA #62           ; `>`
         JSR wrch          ; (uses A,X,F,Src,Dst) preserves Y
         JSR rdln          ; (uses A,X,Y,F,Src,Dst) -> Y=len
@@ -234,7 +236,7 @@ dcmd    LDA #OP_EOP       ; end of program
         ;
 debug   LDY #0            ; DEBUG
 dbglp   LDA EmitBuf,Y     ; 
-        JSR prhx          ; saves Y
+        JSR wrhx          ; saves Y
         JSR wrsp          ; saves Y
         INY
         CPY EmitOfs       ; emit length
@@ -359,6 +361,7 @@ OP_NOT     = $82     ; 6 unary NOT
 OP_PEEK    = $83     ; 6 unary fn (arg)
 OP_RND     = $84     ; 6 unary fn (arg)
 OP_NEG     = $85     ; 6 unary Minus (OP_SUB)
+OP_XPRE    = $86     ; * first non-prefix
 ; infix binary (from highest to lowest, left-associative)
 OP_IFXB    = 6       ; * infix base in prec table
 OP_INFX    = $86     ; * first infix
@@ -463,7 +466,7 @@ ex_co     DB ":",    OP_COLN
           ; messages
 msg_syn   DB "SYN",$80
 msg_num   DB "NUM",$80
-msg_big   DB "BIG",$80
+msg_big   DB "STK",$80
 msg_brk   DB "BRK",$80
 
 ; Keyword Index
@@ -791,7 +794,7 @@ line    TYA               ; [2] get accumulated Y
 stmtc   INY               ; [2] skip `:`
 stmtj   LDA (CODE),Y      ; [5] read code
         PHA               ; DEBUG
-        JSR prhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
+        JSR wrhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
         JSR wrnl          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
         PLA               ; DEBUG
         BPL let           ; [2] -> implied LET [+1]
@@ -1038,7 +1041,7 @@ prsym   CMP #64           ; letter?
 prend   DEY               ; go back one
         LDA (CODE),Y      ; test semi (+8b)
         INY               ; go fwd one
-        CMP #59           ; `;`?
+        CMP #59           ; `;`?                                      XXX trailing `,` also elides CRLF
         BEQ prret         ; -> no CRLF
         JSR wrnl          ; crlf (uses A,X,F,Src,Dst) preserves Y
 prret   JMP colon         ; -> colon
@@ -1160,95 +1163,7 @@ tone    JSR exp2         ; stack: (Pitch,Duration) <-
         JMP colon         ; -> colon
 
 
-        ; find matching line (CS), or following line (CC)
-        ; find Args[0] -> XA/Ptr (uses A,X,F)       (56b)
-fndln   DEC ArgTop        ; pop Args[0]
-        DEC ArgTop        ; pop
-        STY B             ; save Y
-        LDA #>ProgPg      ; start of BASIC program
-        STA PtrH          ; set Ptr page
-        LDY #0            ; Y=0
-        STY Ptr           ; set Ptr ofs
-fndlp   LDY #2            ; Y=2
-        LDA (Ptr),Y       ; (OP_LN LnLo >LnHi< Len)
-        DEY               ; Y=1 moved!
-        PHA               ; DEBUG 
-        JSR prhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
-        LDA (Ptr),Y       ; DEBUG (OP_LN >LnLo< LnHi Len)
-        JSR prhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
-        PLA               ; DEBUG 
-        BMI fndgt         ; -> end of program (negative line)
-        CMP Args+1        ; equals high byte?
-        BCC fndnx         ; -> line < target, next line
-        BNE fndgt         ; -> line is > target, stop
-        LDA (Ptr),Y       ; (OP_LN >LnLo< LnHi Len)
-        CMP Args          ; equals low byte?
-        BCC fndnx         ; -> line < target, next line
-        BNE fndgt         ; -> line is > target, stop
-        ; found the line
-        SEC               ; CS=found
-fndrt   LDX PtrH          ; X = addr high byte
-        LDA Ptr           ; A = addr low byte
-        LDY B             ; restore Y
-        RTS               ; -> XA=ptr, CS
-        ; found greater line number
-fndgt   CLC               ; CC=not-found
-        BCC fndrt         ; -> ALWAYS
-        ; advance to the next line
-fndnx   LDY #3            ; (OP_LN LnLo LnHi >Len<) <- BCC
-        LDA (Ptr),Y       ; line length
-        ADC Ptr           ; add length to Ptr (CC)
-        STA Ptr           ; update Ptr
-        BCC fndlp         ; -> no overflow [+1]
-        INC PtrH          ;
-        BNE fndlp         ; -> ALWAYS [+1] // 56b
-
-
         ; --- EXPRESSIONS ---
-
-        ; prefix
-prec    DB 1       ; OP_LPAR open parenthesis (OP_RPAR forces eval)
-        DB 7       ; OP_NEG unary negate `-` (replaces OP_SUB)
-        DB 7       ; OP_NOT unary NOT
-        DB 7       ; OP_ABS absolute (tail OP_NEG)
-        DB 7       ; OP_PEEK peek address (arg)
-        DB 7       ; OP_RND random number (arg: mod N)
-        ; infix
-        DB 6       ; OP_MUL
-        DB 6       ; OP_DIV
-        DB 5       ; OP_ADD
-        DB 5       ; OP_SUB
-        DB 4       ; OP_EQ
-        DB 4       ; OP_NE
-        DB 4       ; OP_LT
-        DB 4       ; OP_LE
-        DB 4       ; OP_GT
-        DB 4       ; OP_GE
-        DB 3       ; OP_AND
-        DB 2       ; OP_OR
-        DB 0       ; OP_RPAR
-precb   = prec - $80
-
-        ; operator JMP offsets
-OpJp    DB <xlpr   ; OP_LPAR open parenthesis (back to xinf)
-        DB <xneg   ; OP_NEG unary negate `-`
-        DB <xnot   ; OP_NOT unary NOT
-        DB <xabs   ; OP_ABS absolute (tail OP_NEG)
-        DB <xpeek  ; OP_PEEK peek address (arg)
-        DB <xrnd   ; OP_RND random number (arg: mod N)
-        ; infix
-        DB <xmul   ; OP_MUL
-        DB <xdiv   ; OP_DIV
-        DB <xadd   ; OP_ADD
-        DB <xsub   ; OP_SUB
-        DB <xeq    ; OP_EQ
-        DB <xne    ; OP_NE
-        DB <xlt    ; OP_LT
-        DB <xle    ; OP_LE
-        DB <xgt    ; OP_GT
-        DB <xge    ; OP_GE
-        DB <xand   ; OP_AND
-        DB <xor    ; OP_OR
 
         ; prefix -> push it -> expect another expr
         ; var/int -> require infix or eol
@@ -1258,9 +1173,12 @@ OpJp    DB <xlpr   ; OP_LPAR open parenthesis (back to xinf)
         ; `=` expr
 eqexp   LDA (CODE),Y
         CMP #OP_EQ
-        BNE xsyn
+        BNE xsyn1
         INY
         BNE expr          ; always (Y>0)
+
+xsyn1   JMP xsyn
+xnumb1  JMP xnumb
 
         ; expr `,` expr
 exp2    JSR expr          ; [6] -> Args
@@ -1273,12 +1191,10 @@ exp2    JSR expr          ; [6] -> Args
         ; evaluate an expression [pre:36 ifx:51 var:82 num:55/59/74]
 expr    LDA (CODE),Y      ; [5]
         BPL xvar          ; [2] -> var name [+1]
-        EOR #$80          ; [2] map to 0
-        CMP #OP_NPRE      ; [2] is prefix?
-        EOR #$80          ; [2] undo
+        CMP #OP_XPRE      ; [2] is prefix?
         BCC xpsho         ; [2] -> yes, push [+1]
         CMP #OP_SUB       ; [2] unary minus?
-        BNE xnumb         ; [2] -> no, number [+1]
+        BNE xnumb1        ; [2] -> no, number [+1]
         LDA #OP_NEG       ; [2] map to OP_NEG
         ; +++ fall through: xpsho +++
 
@@ -1317,52 +1233,51 @@ xpush   LDX ArgTop        ; [3] stack (ascending empty)         XXX use full asc
 
         ; infix operator or eol
         ; pop/apply higher prec -> xpsho (push it)
-xinf    LDA (CODE),Y      ; [5] read operator
-        TAX               ; [2] save X=operator (for xend)
+xinf    LDA (CODE),Y      ; [5] read operator                    88 >C0<
         SEC               ; [2]
-        SBC #OP_INFX      ; [2] map infix to 0
-        CMP #OP_NIFX      ; [2] is it infix?
+        SBC #OP_INFX      ; [2] map infix to 0                   -86=3A
+        CMP #OP_NIFX      ; [2] is it infix?                     CS
         BCS xend          ; [2] -> no, end expr
-        LDA precb,X       ; [4] infix precendence
-xopsp   STA B             ; [3] save precedence
-        ; pop/apply higher prec
-xoplp   LDX OpTop         ; [3] stack top
-        BEQ xinfp         ; [2] -> stack empy [+1]               XXX use BMI (full asc)
-        LDA Oprs,X        ; [4] get top [zp,X]
         TAX               ; [2] as index
-        LDA precb,X       ; [4] top precendence
-        CMP B             ; [3] top-prec >= infix-prec?
-        BCC xinfp         ; [2] -> top-prec < infix-prec, end pop/apply [+1]
-        LDA OpJp,X        ; [4] routine offset
-        STX JmpOp         ; [3] set jump
-        JMP (JmpOp)       ; [3] -> do operator
+        LDA preci,X       ; [4] infix precendence (X=0-12)
+xopsp   STA B             ; [3] save precedence                  05  00
+        JSR wrhx          ; DEBUG saves Y                        05  00
+        JSR wrsp
+        ; +++ fall through: xoplp +++
 
-xsyn    JMP esyn          ; -> syntax error
-        DB $2C            ; BIT abs
-xbig    LDY #<msg_big
-        JMP erro
-
+        ; pop/apply higher prec
+xoplp   LDX OpTop         ; [3] empty ascending
+        BEQ xinfp         ; [2] -> stack empy [+1]               XXX use BMI (full asc)
+        DEX               ; [2] down to top
+        LDA Oprs,X        ; [4] get top OP [zp,X]
+        TAX               ; [2] X=OP
+        LDA prec-$80,X    ; [4] top precendence (X=$80-$92)      prec,8
+        PHA
+        STX C
+        JSR wrhx          ; DEBUG saves Y                        05
+        JSR wrsp
+        LDX C
+        PLA
+        CMP B             ; [3] top-prec >= infix-prec?          A=5 CMP B=0 -> CS=A>=B top>=new
+        BCS xopdo         ; [2] -> top-prec >= infix-prec
         ; push infix operator
-xinfp   LDA (CODE),Y      ; [5] re-read operator
-        TAX               ; [2] save X=operator (for xend)
+xinfp   LDA (CODE),Y      ; [5] re-read operator               88
+        TAX               ; [2] save X=operator
         SEC               ; [2]
         SBC #OP_INFX      ; [2] map infix to 0
         CMP #OP_NIFX      ; [2] is it infix?
         BCS xret          ; [2] -> no, return
-        INY               ; [2] advance input
-        TXA               ; [2] A=operator
+        INY               ; [2] advance CODE
+        TXA               ; [2] restore A=operator
         CMP #OP_RPAR      ; [2] close parenthesis?
         BEQ xsyn          ; [2] -> missing `(`
         JMP xpsho         ; [3] -> push it // [32+19=51]
 xret    RTS
 
-        ; end of expression (or OP_RPAR)
-xend    LDA #0            ; [2] prec = 0
-        BEQ xopsp         ; [2] -> set precendence (pop/apply all)
-
-xclos   ; XXX pop/apply up to OP_LPAR
-        INY               ; [2] OP_RPAR
-        JMP xinf          ; [3] -> expect infix
+xsyn    JMP esyn          ; -> syntax error
+        DB $2C            ; BIT abs
+xbig    LDY #<msg_big
+        JMP erro
 
         ; a number
 xnumb   CMP #OP_I0        ; [2] a number? (>=$F0)
@@ -1387,6 +1302,22 @@ xint1   LDA (CODE),Y      ; [5] low (CS)
         INY               ; [2] low (NE)
         BNE xpush         ; [3] -> push XA // [INT1:19+12+28=59 INT2:34+12+28=74]
 
+        ; apply operator  (X=OP)
+xopdo   TXA
+        PHA
+        JSR wrhx          ;                   88
+        PLA
+        TAX
+        DEC OpTop         ; [5] pop
+        LDA OpJp-$80,X    ; [4] routine offset (X=$80-$92)
+        STA JmpOp         ; [3] set jump
+        LDX ArgTop        ; [3] X=ArgTop (for operators)
+        JMP (JmpOp)       ; [3] -> do operator
+
+        ; end of expr
+xend    LDA #0            ; [2] prec = 0
+        BEQ xopsp         ; [2] -> set precendence (pop/apply all)
+
         ; OP_IDX
         ; prefix `@(`     (41b)
 xidx    LDX ArgTop        ; empty asc                    XXX use full asc
@@ -1394,7 +1325,7 @@ xidx    LDX ArgTop        ; empty asc                    XXX use full asc
         DEX
         ASL Args,X        ; index * 2
         ROL Args+1,X
-        BCS xnum          ; was negative
+        BCS xnumj         ; was negative
         LDA Args,X
         ADC TopL          ; CC
         STA Src
@@ -1402,7 +1333,7 @@ xidx    LDX ArgTop        ; empty asc                    XXX use full asc
         ADC TopH
         STA SrcH
         CMP MemSz
-        BCS xnum          ; out of bounds
+        BCS xnumj         ; out of bounds
         STY F
         LDY #0
         LDA (Src),Y       ; read array
@@ -1413,6 +1344,11 @@ xidx    LDX ArgTop        ; empty asc                    XXX use full asc
         LDY F
         ; -> next op
 
+xnumj   BCS xnum
+
+
+;; ALIGN 256
+xoppg   = BasROM+$600
 
 xnum    LDY #<msg_num
         JMP erro
@@ -1665,10 +1601,6 @@ xmulz   ASL Term0         ; [2] CF << multiplicand << 0
         JMP xpop          ; [3] always // 
 
 
-
-; ----------------------------------------------------------------------
-; Integer Parse / Print
-
 ; @@ num_u16
 ; parse an unsigned 16-bit number
 num_u16:         ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Src)
@@ -1681,7 +1613,7 @@ num_u16:         ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Src)
   LDA LineBuf,Y  ; [4] get next char
   EOR #48        ; [2] make '0' be 0
   CMP #10        ; [2]
-  BCS prnrt      ; [2] >= 10 -> done [+1]
+  BCS dvrt       ; [2] >= 10 -> done [+1]
   TAX            ; [2] save digit 0-9
 ; multiply Acc by 10
   ASL Args       ; [5] Acc = Acc*2 (=Val*2)
@@ -1712,33 +1644,6 @@ num_u16:         ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Src)
   BCC @loop      ; [2] -> no overflow, continue [+1]
 err_ovf:
   JMP enumb      ; [3] -> report overflow
-
-        ; print number in Args[0]
-prnum   LDA #0            ; [2] (uses A,X,B,C,F,Src,Dst)
-        PHA               ; [3] sentinel
-        STA Term1         ; [3] divisor high byte (Dst)
-        LDA #10           ; [2] divisor = 10
-        STA Term0         ; [3] divisor low byte (Dst)
-        LDA Args          ; [3] Args[0] low (copy Args[0] for LIST)
-        STA Acc0          ; [3] set Acc0 (Src)
-        LDA Args+1        ; [3] Args[0] high
-        STA Acc1          ; [3] set Acc1 (Src)
-prndv   JSR div_u16       ; [733] Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Src,Dst)
-        LDA B             ; [3] remainder
-        ORA #48           ; [2] 0-9 -> '0'-'9'
-        PHA               ; [3] pushes once or more
-        LDA Acc0          ; [3]
-        ORA Acc1          ; [3]
-        BNE prndv         ; [2] -> until zero [+1]
-        PLA               ; [4]
-prnpl   JSR wrch          ; [6] print it (uses A,X,F,Src,Dst) preserves Y
-        PLA               ; [4]
-        BNE prnpl         ; [2] -> until sentinel [+1]
-prnrt   RTS               ; [6] -> prnum:EQ
-
-
-; ----------------------------------------------------------------------
-; Integer Multiply / Divide
 
 ; @@ div_u16
 ; divide Acc = Acc / Term remainder BCD (long-division method)
@@ -1775,7 +1680,123 @@ div_u16:         ; Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (use
 @next:
   DEX            ; [2]
   BNE @loop      ; [3] -> continue division
+dvrt:
   RTS            ; return
+
+
+        ; prefix
+prec    DB 1       ; OP_LPAR open parenthesis (OP_RPAR forces eval)
+        DB 7       ; OP_NEG unary negate `-` (replaces OP_SUB)
+        DB 7       ; OP_NOT unary NOT
+        DB 7       ; OP_ABS absolute (tail OP_NEG)
+        DB 7       ; OP_PEEK peek address (arg)
+        DB 7       ; OP_RND random number (arg: mod N)
+        ; infix
+preci   DB 6       ; OP_MUL
+        DB 6       ; OP_DIV
+        DB 5       ; OP_ADD
+        DB 5       ; OP_SUB
+        DB 4       ; OP_EQ
+        DB 4       ; OP_NE
+        DB 4       ; OP_LT
+        DB 4       ; OP_LE
+        DB 4       ; OP_GT
+        DB 4       ; OP_GE
+        DB 3       ; OP_AND
+        DB 2       ; OP_OR
+        DB 0       ; OP_RPAR
+
+        ; operator JMP offsets
+OpJp    DB <xlpr   ; OP_LPAR open parenthesis (back to xinf)
+        DB <xneg   ; OP_NEG unary negate `-`
+        DB <xnot   ; OP_NOT unary NOT
+        DB <xabs   ; OP_ABS absolute (tail OP_NEG)
+        DB <xpeek  ; OP_PEEK peek address (arg)
+        DB <xrnd   ; OP_RND random number (arg: mod N)
+        ; infix
+        DB <xmul   ; OP_MUL
+        DB <xdiv   ; OP_DIV
+        DB <xadd   ; OP_ADD
+        DB <xsub   ; OP_SUB
+        DB <xeq    ; OP_EQ
+        DB <xne    ; OP_NE
+        DB <xlt    ; OP_LT
+        DB <xle    ; OP_LE
+        DB <xgt    ; OP_GT
+        DB <xge    ; OP_GE
+        DB <xand   ; OP_AND
+        DB <xor    ; OP_OR
+
+; ----------------------------------------------------------------------
+; Helpers
+
+
+        ; find matching line (CS), or following line (CC)
+        ; find Args[0] -> XA/Ptr (uses A,X,F)       (56b)
+fndln   DEC ArgTop        ; pop Args[0]
+        DEC ArgTop        ; pop
+        STY B             ; save Y
+        LDA #>ProgPg      ; start of BASIC program
+        STA PtrH          ; set Ptr page
+        LDY #0            ; Y=0
+        STY Ptr           ; set Ptr ofs
+fndlp   LDY #2            ; Y=2
+        LDA (Ptr),Y       ; (OP_LN LnLo >LnHi< Len)
+        DEY               ; Y=1 moved!
+        PHA               ; DEBUG 
+        JSR wrhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
+        LDA (Ptr),Y       ; DEBUG (OP_LN >LnLo< LnHi Len)
+        JSR wrhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
+        PLA               ; DEBUG 
+        BMI fndgt         ; -> end of program (negative line)
+        CMP Args+1        ; equals high byte?
+        BCC fndnx         ; -> line < target, next line
+        BNE fndgt         ; -> line is > target, stop
+        LDA (Ptr),Y       ; (OP_LN >LnLo< LnHi Len)
+        CMP Args          ; equals low byte?
+        BCC fndnx         ; -> line < target, next line
+        BNE fndgt         ; -> line is > target, stop
+        ; found the line
+        SEC               ; CS=found
+fndrt   LDX PtrH          ; X = addr high byte
+        LDA Ptr           ; A = addr low byte
+        LDY B             ; restore Y
+        RTS               ; -> XA=ptr, CS
+        ; found greater line number
+fndgt   CLC               ; CC=not-found
+        BCC fndrt         ; -> ALWAYS
+        ; advance to the next line
+fndnx   LDY #3            ; (OP_LN LnLo LnHi >Len<) <- BCC
+        LDA (Ptr),Y       ; line length
+        ADC Ptr           ; add length to Ptr (CC)
+        STA Ptr           ; update Ptr
+        BCC fndlp         ; -> no overflow [+1]
+        INC PtrH          ;
+        BNE fndlp         ; -> ALWAYS [+1] // 56b
+
+        ; print number in Args[0]
+prnum   LDA #0            ; [2] (uses A,X,B,C,F,Src,Dst)
+        PHA               ; [3] sentinel
+        STA Term1         ; [3] divisor high byte (Dst)
+        LDA #10           ; [2] divisor = 10
+        STA Term0         ; [3] divisor low byte (Dst)
+        LDA Args          ; [3] Args[0] low (copy Args[0] for LIST)
+        STA Acc0          ; [3] set Acc0 (Src)
+        LDA Args+1        ; [3] Args[0] high
+        STA Acc1          ; [3] set Acc1 (Src)
+prndv   JSR div_u16       ; [733] Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Src,Dst)
+        LDA B             ; [3] remainder
+        ORA #48           ; [2] 0-9 -> '0'-'9'
+        PHA               ; [3] pushes once or more
+        LDA Acc0          ; [3]
+        ORA Acc1          ; [3]
+        BNE prndv         ; [2] -> until zero [+1]
+        PLA               ; [4]
+prnpl   JSR wrch          ; [6] print it (uses A,X,F,Src,Dst) preserves Y
+        PLA               ; [4]
+        BNE prnpl         ; [2] -> until sentinel [+1]
+prnrt   RTS               ; [6] -> prnum:EQ
+
 
 
 ; ------------------------------------------------------------------------------
