@@ -234,14 +234,14 @@ tksym   TXA               ; A=next-char
 dcmd    LDA #OP_EOP       ; end of program
         JSR tkemi         ; terminate the line
         ;
-debug   LDY #0            ; DEBUG
-dbglp   LDA EmitBuf,Y     ; 
-        JSR wrhx          ; saves Y
-        JSR wrsp          ; saves Y
-        INY
-        CPY EmitOfs       ; emit length
-        BCC dbglp         ; -> less, loop
-        JSR wrnl          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
+;;debug   LDY #0            ; DEBUG
+;;dbglp   LDA EmitBuf,Y     ; 
+;;        JSR wrhx          ; saves Y
+;;        JSR wrsp          ; saves Y
+;;        INY
+;;        CPY EmitOfs       ; emit length
+;;        BCC dbglp         ; -> less, loop
+;;        JSR wrnl          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
         ; 
         LDA #>EmitBuf     ; page ($01)
         STA CODEH         ; set CODE page
@@ -793,10 +793,10 @@ line    TYA               ; [2] get accumulated Y
         ; STMT dispatch
 stmtc   INY               ; [2] skip `:`
 stmtj   LDA (CODE),Y      ; [5] read code
-        PHA               ; DEBUG
-        JSR wrhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
-        JSR wrnl          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
-        PLA               ; DEBUG
+;;        PHA               ; DEBUG
+;;        JSR wrhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
+;;        JSR wrnl          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
+;;        PLA               ; DEBUG
         BPL let           ; [2] -> implied LET [+1]
         INY               ; [2] advance code
         ; guard [+4 cycles]
@@ -1210,8 +1210,8 @@ exp2    JSR expr          ; [6] -> Args
 
         ; evaluate an expression [pre:36 ifx:51 var:82 num:55/59/74]
 expr    LDA (CODE),Y      ; [5]
-        JSR dbgx          ; DEBUG
-        TAX               ; DEBUG test
+        ;;JSR dbgx          ; DEBUG
+        ;;TAX               ; DEBUG test
         BPL xvar          ; [2] -> var name [+1]
         CMP #OP_INFX      ; [2] prefix? (before infix)
         BCC xpshy         ; [2] -> prefix, push [+1]
@@ -1261,7 +1261,7 @@ xpush   LDX ArgTop        ; [3] stack (ascending empty)         XXX use full asc
 
         ; infix operator or eol
 xinf    LDA (CODE),Y      ; [5] read operator         C0
-        JSR dbgx          ; DEBUG
+        ;;JSR dbgx          ; DEBUG
         SEC               ; [2]
         SBC #OP_INFX      ; [2] map infix to 0
         CMP #OP_NIFX      ; [2] is it infix?
@@ -1476,21 +1476,21 @@ xge     LDA Args-3,X      ; left high
         BCC xfalse        ; -> less // 14b
 
         ; OP_AND
-xand    LDA Args-4,X      ; [4] left high
-        AND Args-2,X      ; [4] right high
-        STA Args-4,X      ; [4] result high
-        LDA Args-3,X      ; [4] left low
-        AND Args-1,X      ; [4] right low
-        STA Args-3,X      ; [4] result low
+xand    LDA Args-3,X      ; [4] left high
+        AND Args-1,X      ; [4] right high
+        STA Args-3,X      ; [4] result high
+        LDA Args-4,X      ; [4] left low
+        AND Args-2,X      ; [4] right low
+        STA Args-4,X      ; [4] result low
         JMP xpop          ; [3] always // 15b
 
         ; OP_OR
-xor     LDA Args-4,X      ; [4] left high
-        ORA Args-2,X      ; [4] right high
-        STA Args-4,X      ; [4] result high
-        LDA Args-3,X      ; [4] left low
-        ORA Args-1,X      ; [4] right low
-        STA Args-3,X      ; [4] result low
+xor     LDA Args-3,X      ; [4] left high
+        ORA Args-1,X      ; [4] right high
+        STA Args-3,X      ; [4] result high
+        LDA Args-4,X      ; [4] left low
+        ORA Args-2,X      ; [4] right low
+        STA Args-4,X      ; [4] result low
         JMP xpop          ; [3] always // 15b
 
         ; OP_RND
@@ -1518,45 +1518,50 @@ xrnd    LDA LFSH          ; [3]
         STA Acc0          ; [3] dividend low
         LDA LFSH          ; [5]
         STA Acc1          ; [3] dividend high
-        LDA Args-1,X      ; [4] low byte
+        LDX ArgTop        ; [3] X=ArgTop (empty ascending)
+        LDA Args-2,X      ; [4] low byte
         STA Term0         ; [3] divisor low
-        LDA Args-2,X      ; [4] high byte
+        LDA Args-1,X      ; [4] high byte
         STA Term1         ; [3] divisor high
         JSR div_u16       ; [6] Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Acc,Term)
+        LDX ArgTop        ; [3] X=ArgTop (empty ascending)
+        CLC               ; [2]
         LDA B             ; [3] remainder low
-        STA Args-1,X      ; [4] result low
+        ADC #1            ; [2]
+        STA Args-2,X      ; [4] result low
         LDA C             ; [3] remainder high
-        STA Args-2,X      ; [4] result high
+        ADC #0            ; [2]
+        STA Args-1,X      ; [4] result high
         JMP xnxop         ; [3] -> next oper // 30b -> 58b
 
         ; OP_DIV
 xdiv    STX D             ; [2] save X=stack-ofs                            ; XXX signed division
-        LDA Args-4,X      ; [4] left high
-        STA Acc1          ; [3] dividend high
-        LDA Args-3,X      ; [4] left low
+        LDA Args-4,X      ; [4] left low
         STA Acc0          ; [3] dividend low
-        LDA Args-2,X      ; [4] right high
-        STA Term1         ; [3] divisor high
-        LDA Args-1,X      ; [4] right low
+        LDA Args-3,X      ; [4] left high
+        STA Acc1          ; [3] dividend high
+        LDA Args-2,X      ; [4] right low
         STA Term0         ; [3] divisor low
+        LDA Args-1,X      ; [4] right high
+        STA Term1         ; [3] divisor high
         JSR div_u16       ; [6] Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Acc,Term)
         LDX D             ; [2] restore X=stack-ofs
         LDA Acc0          ; [3] quotient low
-        STA Args-3,X      ; [4] result low
+        STA Args-4,X      ; [4] result low
         LDA Acc1          ; [3] quotient high
-        STA Args-4,X      ; [4] result high
+        STA Args-3,X      ; [4] result high
         JMP xpop          ; [3] always // 34b
 
         ; OP_MUL
 xmul    STX D             ; [2] save X=ArgTop                           ; XXX signed multiply
-        LDA Args-4,X      ; [4] left high
-        STA Acc1          ; [3] multiplier high
-        LDA Args-3,X      ; [4] left low
+        LDA Args-4,X      ; [4] left low
         STA Acc0          ; [3] multiplier low
-        LDA Args-2,X      ; [4] right high
-        STA Term1         ; [3] multiplicand high
-        LDA Args-1,X      ; [4] right low
+        LDA Args-3,X      ; [4] left high
+        STA Acc1          ; [3] multiplier high
+        LDA Args-2,X      ; [4] right low
         STA Term0         ; [3] multiplicand low
+        LDA Args-1,X      ; [4] right high
+        STA Term1         ; [3] multiplicand high
         ; BC = Acc * Term
         LDA #0            ; [2]
         STA B             ; [3] B partial product low
@@ -1583,9 +1588,9 @@ xmulz   ASL Term0         ; [2] CF << multiplicand << 0
         BNE xmull         ; [3] -> continue
         LDX D             ; [2] restore X=stack-ofs
         LDA B             ; [3] product low
-        STA Args-3,X      ; [4] result low
+        STA Args-4,X      ; [4] result low
         LDA C             ; [3] product high
-        STA Args-4,X      ; [4] result high
+        STA Args-3,X      ; [4] result high
         JMP xpop          ; [3] always
 
 
@@ -1732,11 +1737,11 @@ fndln   DEC ArgTop        ; pop Args[0]
 fndlp   LDY #2            ; Y=2
         LDA (Ptr),Y       ; (OP_LN LnLo >LnHi< Len)
         DEY               ; Y=1 moved!
-        PHA               ; DEBUG 
-        JSR wrhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
-        LDA (Ptr),Y       ; DEBUG (OP_LN >LnLo< LnHi Len)
-        JSR wrhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
-        PLA               ; DEBUG 
+;;        PHA               ; DEBUG 
+;;        JSR wrhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
+;;        LDA (Ptr),Y       ; DEBUG (OP_LN >LnLo< LnHi Len)
+;;        JSR wrhx          ; DEBUG (uses A,X,F,Src,Dst) preserves Y
+;;        PLA               ; DEBUG 
         BMI fndgt         ; -> end of program (negative line)
         CMP Args+1        ; equals high byte?
         BCC fndnx         ; -> line < target, next line
@@ -1821,11 +1826,11 @@ cpyblp  DEY               ; [2] count--
         RTS               ; [6] 
 
 
-dbgx    PHA
-        JSR wrhx          ; DEBUG
-        JSR wrsp
-        PLA
-        RTS
+;;dbgx    PHA
+;;        JSR wrhx          ; DEBUG
+;;        JSR wrsp
+;;        PLA
+;;        RTS
 
 
 ALIGN 256
