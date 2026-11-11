@@ -1,96 +1,93 @@
 ; Frontier 2K BASIC
 ; Use `asm6` to compile: https://github.com/parasyte/asm6
 
-BasROM   = $0200   ; 2K BASIC
-End4K    = $10     ; end of 4KB memory (minimum RAM fitted)
+BasZP    = $0000   ; loads 128 bytes at $0000
+BasROM   = $0180   ; stack is $0100-017F
 
 ; ------------------------------------------------------------------------------
 ; Monitor Routines
 
-montr = $FE00
-cls   = $FF07     ; (uses A,X,Y) -> Y=0,EQ
-home  = $FF19     ; (uses A,Y) -> Y=0,EQ
-tclr  = $FF26     ; (uses A,Y) -> Y=0,EQ
-rdln  = $FF30     ; (uses A,X,Y,F,Src,Dst) -> Y=len
-wrnl  = $FF70     ; (uses A,X,F,Src,Dst) preserves Y
-wrsp  = $FF7D     ; (uses A,X,F,Src,Dst) preserves Y
-wrhx  = $FF81     ; (uses A,X,F,Src,Dst) preserves Y
-wrch  = $FF95     ; (uses A,X,F,Src,Dst) preserves Y
-cpyf  = $FFD8     ; (uses A,X,Y,F,Src,Dst) -> X=0
+num16 = $FE1E     ; from LineBuf,Y -> Acc,Y,CS=found (uses A,X,Y,Acc/Src)
+wrnum = $FE66     ; print Acc (uses A,X,B,C,F,Src,Dst)
+mul16 = $FE85     ; Acc=multiplicand, Term=multiplier -> BC=product (uses A,X,B,C,Acc,Term)
+div16 = $FEAD     ; Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Acc,Term)
+cpyf  = $FEDE     ; (uses A,X,Y,F,Src,Dst) -> X=0
+cpyb  = $FF00     ; (uses A,X,Y,F,Src,Dst) -> X=0
+cls   = $FF25     ; (uses A,X,Y) -> Y=0,EQ
+home  = $FF37     ; (uses A,Y) -> Y=0,EQ
+tclr  = $FF44     ; (uses A,Y) -> Y=0,EQ
+rdln  = $FF4E     ; (uses A,X,Y,F,Src,Dst) -> Y=len
+wrnl  = $FF92     ; (uses A,X,F,Src,Dst) preserves Y
+wrsp  = $FF9F     ; (uses A,X,F,Src,Dst) preserves Y
+wrhx  = $FFA3     ; (uses A,X,F,Src,Dst) preserves Y
+wrch  = $FFB7     ; (uses A,X,F,Src,Dst) preserves Y
 
 ; ------------------------------------------------------------------------------
-; Zero Page $00-BF - BASIC WORKSPACE
+; Zero Page
 
-; -- $00-3F Expression Stacks (96)
 
-Args     = $00    ; Ascending Empty Stack, 32 words (ArgTop)
-ArgsE    = $40    ; End of Stack
+Args     = $90        ; FIXME: Ascending Empty Stack, 16 words (ArgTop)
+ArgsE    = $A0        ; FIXME: End of Stack
 
-Oprs     = $40    ; Ascending Empty Stack, 32 bytes (OpTop)
-OprsE    = $60    ; End of Stack
 
-; -- $60-6F Arrays (32)
+; -- $80-CF BASIC WORKSPACE (80 bytes)
 
-ArrPt    = $60    ; [@-G] 8 x 16-bit pointers
-ArrSz    = $70    ; [@-G] 8 x 16-bit pointers
+EmitOfs  = $80        ; emit offset for tokenize (ALIAS)              (used in EDIT)
+LnNoL    = $81        ; line number low for tokenize (ALIAS)
+LnNoH    = $82        ; line number high for tokenize (ALIAS)
 
-; -- $80-B5 Integer Vars (54)
+Oprs     = $80        ; Ascending Empty Stack, OpTop (16)
+OprsE    = $90        ; End of Stack
 
-IVar     = $80    ; [@-Z] 27 x 16-bit variables                   (used in RT / Direct)
+IVar     = $90        ; [@-Z] 27 x 16-bit variables ($36)             (used in RT / Direct)
 
-; -- $B6-BF BASIC Pointers (12 bytes)
+OpTop    = $C6        ; Top of Oprs (stack pointer)                   (used in RT / Direct)
+ArgTop   = $C7        ; Top of Args (stack pointer)                   (used in RT / Direct)
+CODE     = $C8        ; BASIC code pointer (next instruction)         (used in RT / Direct)
+CODEH    = $C9        ;
+TopL     = $CA        ; TOP of BASIC program
+TopH     = $CB        ;
+;xx      = $CC
+;xx      = $CD
+JmpOp    = $CE        ; JMP indirect ptr for operators
+JmpOpH   = $CF
 
-OpTop    = $B6    ; Top of Oprs (stack pointer)                   (used in RT / Direct)
-ArgTop   = $B7    ; Top of Args (stack pointer)                   (used in RT / Direct)
-Data     = $B8    ; BASIC data pointer (next DATA statement)      (used in RT / Direct)
-DataH    = $B9    ; 
-DataY    = $BA    ;
-CODE     = $BB    ; BASIC code pointer (next instruction)         (used in RT / Direct)
-CODEH    = $BC    ;
-FreePtr  = $BD    ; FREE space at end of variables                (used in RT / Direct / EDIT)
-FreePtrH = $BE    ;
-EmitOfs  = $BF    ; emit offset for tokenized code                (used in EDIT)
+; -- $D0-DF Temporaries (16)
 
-; ------------------------------------------------------------------------------
-; Zero Page $C0-FF - SYSTEM WORKSPACE
-
-; -- $C0-CF System Temporaries (16)
-
-Src      = $C0        ; source pointer \ WRCH, CLS  [Term0]
-SrcH     = $C1        ; source pointer |            [Term1]
+Src      = $D0        ; source pointer \ WRCH, CLS  [Term0]
+SrcH     = $D1        ; source pointer |            [Term1]
 Acc0     = Src        ; ALIAS: accumulator byte 0
 Acc1     = SrcH       ; ALIAS: accumulator byte 1
-Dst      = $C2        ; destn pointer  | WRCH, CLS  [Term0]
-DstH     = $C3        ; destn pointer  /            [Term1]
+Dst      = $D2        ; destn pointer  | WRCH, CLS  [Term0]
+DstH     = $D3        ; destn pointer  /            [Term1]
 Term0    = Dst        ; ALIAS: term byte 0
 Term1    = DstH       ; ALIAS: term byte 1
-Ptr      = $C4        ; third pointer  \ findln, ins/del line
-PtrH     = $C5        ; third pointer  /
-B        = $C6        ; extra register | Subroutines are annotated with usage;
-C        = $C7        ; extra register | held across calls only when unused
-D        = $C8        ; extra register | by callees (manually tracked)
-E        = $C9        ; extra register |
-F        = $CA        ; IO Temp register (all IO, cpyf/cpyb)
+Ptr      = $D4        ; third pointer  \ findln, ins/del line
+PtrH     = $D5        ; third pointer  /
+B        = $D6        ; extra register | Subroutines are annotated with usage;
+C        = $D7        ; extra register | held across calls only when unused
+D        = $D8        ; extra register | by callees (manually tracked)
+E        = $D9        ; extra register |
+F        = $DA        ; IO Temp register (all IO, cpyf/cpyb)
+;xx      = $DB
+;xx      = $DC
+;xx      = $DD
+;xx      = $DE
+;xx      = $DF
 
-TXTP     = $CB        ; text write address
-TXTPH    = $CC        ; text write address high
-RemX     = $CD        ; remaining space on line
-CurTime  = $CE        ; cursor flash timer
-MemSz    = $CF        ; detected memory size in pages
+; -- $E0-EF System Vars (16)
 
-; -- $D0-D3 Extra BASIC Vars (4)
+TXTP     = $E0        ; text write address
+TXTPH    = $E1        ; text write address high
+RemX     = $E2        ; remaining space on line
+CurTime  = $E3        ; cursor flash timer
+RNGL     = $E4        ; RNG state (LFSR)
+RNGH     = $E5        ; 
+;xx      = $E6
+MemSz    = $E7        ; detected memory size in pages
 
-TopL     = $D0        ; TOP of BASIC program, start of variables
-TopH     = $D1
-JmpOp    = $D2        ; JMP indirect ptr for operators
-JmpOpH   = $D3
-LFSL     = $D4        ; Linear-feedback RNG
-LFSH     = $D5
-
-; -- $D4-E7 free (20)
-
-IRQTmp   = $E8        ; Temp for IRQ handler #1
-IRQTmp2  = $E9        ; Temp for IRQ handler #2
+IRQTmp   = $E8        ; Temp for IRQ handler
+IRQTm2   = $E9        ; Temp for IRQ handler
 NmiVec   = $EA        ; NMI vector in RAM {JMP,Low,High} (for ROM override)
 IrqVec   = $ED        ; IRQ vector in RAM {JMP,Low,High} (for ROM override)
 
@@ -117,47 +114,26 @@ IO_RES6  = $FF        ; Reserved
 ; ------------------------------------------------------------------------------
 ; PAGE ONE $100-1FF - STACK
 
-LineBuf  = $100    ; Input Buffer (128 bytes)
-EmitBuf  = $100    ; Emit Buffer (128 bytes)
-
-CtlBot = $180      ; Bottom of BASIC control-stack (cannot go below $180)
+LineBuf  = $100    ; Input Buffer (79 bytes $100-14F, leaves 48 bytes stack)
+EmitBuf  = $100    ; Emit Buffer (79 bytes $100-14F)
 
 
 ; ------------------------------------------------------------------------------
 ; PAGE 0 - REPL
 
-ORG BasROM
+ORG BasZP
 
-reset   SEI               ; disable interrupts
+basic   SEI               ; disable interrupts
         CLD               ; disable BCD mode
-        ; detect memory   (25b)
-        LDY #0            ; const
-        TYA               ; A=0 (store non-match at $A0)
-        LDX #$A0          ; highest RAM page +1
-msetl   STX PtrH          ; update Ptr
-        STA (Ptr),Y       ; write page number
-        DEX               ; decr Page
-        TXA               ; A = Page (write Page)
-        CPX #>ProgPg      ; stop above BASIC! ($0A)
-        BNE msetl         ; -> until $00
-mchkl   INX               ; incr Page
-        STX PtrH          ; update Ptr
-        TXA               ; A = Page (write Page)
-        CMP (Ptr),Y       ; compare page number
-        BEQ mchkl         ; -> until differs
-        STX MemSz         ; set size of memory (in pages)
         ; initialise BASIC
         JSR cls           ; clear screen
         JMP new           ; init program -> jumps to repl
         ; return to repl
         ; reset the stack, errors jump out of subroutines
-repl    LDX #$FF          ; X = $FF
-        TXS               ; reset SP = $FF
-        INX               ; X = 0
-        TXA               ; A = 0
+repl    LDX #$7F          ; 128-byte stack
+        TXS               ; set SP
+        LDA #0            ; A = 0
         PHA               ; push 0 (TAG_EMPTY at $FF)
-        STX ArgTop        ; reset Args stack                             XXX use $FE (full asc)
-        STX OpTop         ; reset Oprs stack                             XXX use $FE (full asc)
         LDA #>xoppg       ; operator page
         STA JmpOpH        ; set ptr high
         LDA #62           ; `>`
@@ -167,6 +143,10 @@ repl    LDX #$FF          ; X = $FF
         LDY #0            ; offset = 0
         STY EmitOfs       ; reset
         JSR num16         ; from LineBuf,Y -> Args[0],Y (uses A,X,Src)    XXX BUG tknum also uses Args[0]
+        LDA Acc0          ; set LineNo
+        STA LnNoL         ; 
+        LDA Acc1          ; set LineNo
+        STA LnNoH         ; 
         STY D             ; line-no flag (NE=found)
         DEY               ; for INY
         ; tokenize the line
@@ -194,25 +174,19 @@ tkmsk   INX               ; find end of this keyword
         BPL tkmsk         ; -> top bit clear, keep going
         BMI tkmnx         ; -> next keyword (always)
         ; not a keyword
-tkmno   LDA LineBuf,Y     ; reload input char
-        CMP #34           ; "
-        BEQ tkstr         ; -> String
-        EOR #48           ; make '0' be 0
-        CMP #10           ; 10 digits
-        BCC tknum         ; -> emit number
-        EOR #48           ; undo
+tkmno   JMP tknkw
+
 tkemy   INY               ; advance input
 tkemt   JSR tkemi         ; output token with top-bit set (uses X=0; preserves A,Y; sets PL)
         BPL tokn          ; -> ALWAYS
+
         ; end of line
 tkeol   LDA D             ; line-no found?
         BEQ dcmd          ; -> no, direct command
         LDX EmitOfs       ; did we emit?
-        BEQ delln         ; -> no, delete line
-        ; insert the line
-        JMP repl          ; -> return to repl
-        ; delete the line
-delln   JMP repl          ; -> return to repl
+        BEQ tkdel         ; -> no, delete line
+        JMP insln         ; -> insert/replace line
+tkdel   JMP delln         ; -> delete line
 
         ; direct command
 dcmd    LDA #OP_EOP       ; end of program
@@ -235,12 +209,29 @@ dcmd    LDA #OP_EOP       ; end of program
         STY ArgTop        ; clear args stack                        XXX use $FE (full asc)
         JMP stmtj         ; -> execute statement (at Y=0)
 
+
+ORG BasZP+$80             ; ensure < $80
+
+; ------------------------------------------------------------------------------
+; PAGE 1 - DCMD
+
+ORG BasROM                ; starts at $180
+
+tknkw   LDA LineBuf,Y     ; reload input char
+        CMP #34           ; "
+        BEQ tkstr         ; -> String
+        EOR #48           ; make '0' be 0
+        CMP #10           ; 10 digits
+        BCC tknum         ; -> emit number
+        EOR #48           ; undo
+tkstrx  JMP tkemy
+
         ; copy a string (23b)
 tkstrl  CMP #34           ; is it `"`?
         BNE tkstr         ; -> no, loop (not a quote)
         ; found a quote
         CMP LineBuf+1,Y   ; is next char `"` ?
-        BNE tkemy         ; -> end of string, emit closing quote
+        BNE tkstrx        ; -> end of string, emit closing quote
         ; double-quote
         INY               ; first `"`
         JSR tkemi         ; emit `"` (uses X=0; preserves A,Y; sets PL)
@@ -255,11 +246,11 @@ tknum   JSR num16         ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Src)
         STY B             ; save Y
         LDX #OP_INT2      ; OP_INT2
         LDY #2            ; 2 bytes
-        LDA Args+1        ; high byte
+        LDA Acc1          ; high byte
         BNE tknmo         ; -> OP_INT2 + 2 bytes
         DEX               ; OP_INT1
         DEY               ; 1 byte
-        LDA Args          ; low byte
+        LDA Acc0          ; low byte
         CMP #10           ; CS if >= 10
         BCS tknmo         ; -> OP_INT1 + 1 byte (CS)
         DEY               ; 0 bytes
@@ -267,7 +258,7 @@ tknum   JSR num16         ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Src)
         TAX               ;
 tknmo   TXA               ; X=OP
 tknlp   JSR tkemi         ; (uses X=0; preserves A,Y; PL)
-        LDX Args-1,Y      ; 2=$01, 1=$00, 0=$FF (relies on zp,Y wrap-around)
+        LDX Acc0-1,Y      ; 2=Acc1, 1=Acc0, 0=XX
         TXA               ; can't LDA zp,Y
         DEY               ; 2>1 1>0 0>FF
         BPL tknlp         ; -> until Y<0
@@ -549,9 +540,10 @@ stmh    DB >repl         ; OP_EOP
 ; COPY EmitOfs from EmitBuf -> InsPtr
 
 
-; @@ ins_line
+; @@ insln
 ; insert EmitBuf into the program at LineNo
-ins_line:           ; LineNo
+insln:              ; LineNo
+  JMP repl
   ; NewLen = EmitOfs + 4 ; add line header
   JSR fndln         ; [6] find matching line (Args[0] -> Ptr, CS=found)
   BCS @replace      ; [2] -> replace line at Ptr
@@ -585,6 +577,9 @@ ins_line:           ; LineNo
   LDA PtrH
   STA DstH
 ; JSR mcpy          ; from (Src) to (Dst) with XY=size (uses A,X,Y,F,Src,Dst)
+
+
+delln   JMP repl
 
 
 
@@ -651,7 +646,7 @@ TAG_GOSUB  = $F1
         ; drops into RUN to reset all BASIC state
 new     LDA #>ProgPg      ; set top of program
         STA TopH
-        LDA #4            ; (OP_EOP LnLo LhHi Len)
+        LDA #<ProgPg+4    ; (OP_EOP LnLo LhHi Len)
         STA TopL
         LDA #OP_EOP       ; end of program ($C0)
         STA ProgPg        ; OP_EOP
@@ -665,14 +660,15 @@ new     LDA #>ProgPg      ; set top of program
         ; start running the BASIC program
         ; clear all variables, reset BASIC stacks, set CODE
 run     LDA #0            ; clear vars (9b)
-        LDX #92           ; ArrPt(16),ArrSz(16),IVar(54),OpTop(1),ArgTop(1),Data(3),CODE(2)
-runcl   STA ArrPt,X       ; clear zp,X
+        LDX #CODEH-IVar   ; IVar(54),OpTop(1),ArgTop(1),Arr(3),CODE(1)
+runcl   STA IVar,X        ; clear zp,X
         DEX
         BNE runcl         ; -> loop
         TAY               ; CODE offset = 0
         LDA #>ProgPg      ; start of BASIC program (NE)
         STA CODEH         ; set CODE page
-        STY CODE          ; ensure 0
+        LDA #<ProgPg      ; (OP_EOP LnLo LhHi Len)
+        STA CODE          ; set CODE ofs
         JMP colon         ; -> expect OP_LN/OP_EOP (Y=0)
 
 
@@ -826,6 +822,7 @@ inprt   LDA #63           ; '?'
         JSR rdln          ; (uses A,X,Y,F,Src,Dst) -> Y=len
         LDY #0            ; Y = input ofs
         JSR num16         ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Src)
+        ; XXX Acc -> Args
         CPY #0            ; consumed input?
         BEQ inprt         ; -> no, retry
         PLA               ; POP var index
@@ -1323,7 +1320,7 @@ OpJp    DB <xlpr   ; OP_LPAR open parenthesis (back to xinf)
 
         ; XXX OR, RND, MUL, DIV don't fit..
 
-xoppg   = BasROM+$600
+xoppg   = BasROM+$700
 
         ; OP_IDX
         ; prefix `@(`     (41b)
@@ -1506,7 +1503,7 @@ xor     LDA Args-3,X      ; [4] left high
         JMP xpop          ; [3] always // 15b
 
         ; OP_RND          (67)
-xrnd    LDA LFSH          ; [3]
+xrnd    LDA RNGH          ; [3]
         STA B             ; [3] 16
         ASL               ; [2]
         ASL               ; [2]
@@ -1523,12 +1520,12 @@ xrnd    LDA LFSH          ; [3]
         ASL               ; [2]
         EOR B             ; [3] 11
         ASL               ; [2] -> CF
-        ROL LFSL          ; [5] <- CF
-        ROL LFSH          ; [5] // 28b
+        ROL RNGL          ; [5] <- CF
+        ROL RNGH          ; [5] // 28b
         ; modulo
-        LDA LFSL          ; [5]
+        LDA RNGL          ; [5]
         STA Acc0          ; [3] dividend low
-        LDA LFSH          ; [5]
+        LDA RNGH          ; [5]
         STA Acc1          ; [3] dividend high
         LDX ArgTop        ; [3] X=ArgTop (empty ascending)
         LDA Args-2,X      ; [4] low byte
@@ -1574,182 +1571,21 @@ xmul    STX D             ; [2] save X=ArgTop                           ; XXX si
         STA Term0         ; [3] multiplicand low
         LDA Args-1,X      ; [4] right high
         STA Term1         ; [3] multiplicand high
-        ; BC = Acc * Term
-        LDA #0            ; [2]
-        STA B             ; [3] B partial product low
-        STA C             ; [3] C partial product high
-        LDX #16           ; [2] 16 bit multiplier
-        ; shift multiplier right, test low-bit
-xmull   LSR Acc1          ; [5] 0 >> multiplier >> CF
-        ROR Acc0          ; [5] CF >> multiplier >> CF
-        BCC xmulz         ; [2] -> zero bit, no add [+1]
-        ; partial += shifted multiplicand x low-bit of multiplier
-        CLC               ; [2] sadly CF=1
-        LDA B             ; [3] partial product
-        ADC Term0         ; [3] partial += multiplicand
-        STA B             ; [3]
-        LDA C             ; [3] partial product
-        ADC Term1         ; [3] partial += multiplicand
-        STA C             ; [3]
-        BCS err_ovf       ; [2] -> overflow
-        ; shift multiplicand left (×2) into next higher place
-xmulz   ASL Term0         ; [2] CF << multiplicand << 0
-        ROL Term1         ; [5] XX << multiplicand << CF
-        BCS err_ovf       ; [2] -> overflow (multiplicand)
-        DEX               ; [2]
-        BNE xmull         ; [3] -> continue
+        JSR mul16         ; [6] Acc=multiplicand, Term=multiplier -> BC=product (uses A,X,B,C,Acc,Term)
+        BCS eovf          ; [2] -> overflow
         LDX D             ; [2] restore X=stack-ofs
         LDA B             ; [3] product low
         STA Args-4,X      ; [4] result low
         LDA C             ; [3] product high
         STA Args-3,X      ; [4] result high
         JMP xpop          ; [3] always
+eovf    JMP xnum          ; [3] overflow
 
-
-; ----------------------------------------------------------------------
-; Helpers
-
-; @@ num16
-; parse an unsigned 16-bit number (0-32767)
-num16:           ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Src)
-  LDA #0         ; [2]
-  STA Args       ; [3] clear Args[0]
-  STA Args+1     ; [3]
-  DEY            ; [2] for pre-increment
-@loop:           ; -> 14+76+25 [115]
-  INY            ; [2] pre-increment
-  LDA LineBuf,Y  ; [4] get next char
-  EOR #48        ; [2] make '0' be 0
-  CMP #10        ; [2]
-  BCS dvrt       ; [2] >= 10 -> done [+1]
-  TAX            ; [2] save digit 0-9
-; multiply Acc by 10
-  ASL Args       ; [5] Acc = Acc*2 (=Val*2)
-  ROL Args+1     ; [5]
-  BCS err_ovf    ; [2] -> unsigned overflow
-  LDA Args       ; [3] Term = Acc (=Val*2)
-  STA Src        ; [3] 
-  LDA Args+1     ; [3]
-  STA SrcH       ; [3]
-  ASL Args       ; [5] Acc *= 2 (=Val*4)
-  ROL Args+1     ; [5]
-  BCS err_ovf    ; [2] -> unsigned overflow
-  ASL Args       ; [5] Acc *= 2 (=Val*8)
-  ROL Args+1     ; [5]
-  BCS err_ovf    ; [2] -> unsigned overflow
-  CLC            ; [2]
-  TXA            ; [2] Acc += digit 0-9
-  ADC Args       ; [3]
-  BCC @noc       ; [2] -> no carry [+1]
-  INC Args+1     ; [5]
-  BEQ err_ovf    ; [2] -> unsigned overflow [+1]
-@noc:
-  ADC Src        ; [3] Acc += Term (=Val*2)
-  STA Args       ; [3] Args[0]
-  LDA Args+1     ; [3]
-  ADC SrcH       ; [3]
-  STA Args+1     ; [3]
-  BCS err_ovf    ; [2] -> unsigned overflow
-  BPL @loop      ; [2] -> no signed overflow, continue [+1]
-err_ovf:
-  JMP enumb      ; [3] -> report overflow
-
-; @@ div16
-; divide Acc = Acc / Term remainder BCD (long-division method)
-div16:           ; Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Acc,Term)
-  LDA #0         ; 
-  STA B          ; remainder = 0
-  STA C          ; remainder = 0
-  LDX #16        ; 16 bits
-@loop:
-; shift dividend bits left into remainder
-  ASL Acc0       ; [5] CF << dividend << 0  (shift 0 into quotient by default)
-  ROL Acc1       ; [5] CF << dividend << CF
-  ROL B          ; [2] CF << remainder << CF
-  ROL C          ; [2] XX << remainder << CF
-; until remainder >= divisor
-  LDA C          ; [3] high byte
-  CMP Term1      ; [3] is remainder >= divisor?
-  BCC @next      ; [2] -> less, continue loop [+1]
-  BNE @ge10      ; [2] -> greater, do subtraction [+1] (otherwise equal)
-  LDA B          ; [3] low byte
-  CMP Term0      ; [3] is remainder >= divisor?
-  BCC @next      ; [2] -> less, continue loop [+1]
-@ge10:           ;
-; subtract divisor from remainder
-  SEC            ; [2]
-  LDA B          ; [3] low byte
-  SBC Term0      ; [3] subtract divisor
-  STA B          ; [3] new remainder
-  LDA C          ; [3] mid byte
-  SBC Term1      ; [3] subtract divisor
-  STA C          ; [3] new remainder
-; shift 1 into quotient (one times divisor found)
-  INC Acc0       ; [5] quotient bit0 = 1 (shift quotient into Acc)
-@next:
-  DEX            ; [2]
-  BNE @loop      ; [3] -> continue division
-dvrt:
-  RTS            ; return
-
-
-
-        ; print number in Args[0]
-prnum   LDA #0            ; [2] (uses A,X,B,C,F,Src,Dst)
-        PHA               ; [3] sentinel
-        STA Term1         ; [3] divisor high byte (Dst)
-        LDA #10           ; [2] divisor = 10
-        STA Term0         ; [3] divisor low byte (Dst)
-        LDA Args          ; [3] Args[0] low (copy Args[0] for LIST)
+prnum   LDA Args          ; [3] Args[0] low (copy Args[0] for LIST)
         STA Acc0          ; [3] set Acc0 (Src)
         LDA Args+1        ; [3] Args[0] high
         STA Acc1          ; [3] set Acc1 (Src)
-prndv   JSR div16         ; [733] Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Src,Dst)
-        LDA B             ; [3] remainder
-        ORA #48           ; [2] 0-9 -> '0'-'9'
-        PHA               ; [3] pushes once or more
-        LDA Acc0          ; [3]
-        ORA Acc1          ; [3]
-        BNE prndv         ; [2] -> until zero [+1]
-        PLA               ; [4]
-prnpl   JSR wrch          ; [6] print it (uses A,X,F,Src,Dst) preserves Y
-        PLA               ; [4]
-        BNE prnpl         ; [2] -> until sentinel [+1]
-prnrt   RTS               ; [6] -> prnum:EQ
-
-
-
-; ------------------------------------------------------------------------------
-; Memory Copy (37b)
-
-        ; @@ mcopyb
-        ; copy memory backwards from (Src) to (Dst) with XY=size
-        ; assume (Dst > Src) but Src/Dst may overlap 
-        ; uses (A,X,Y,B,Src,Dst)
-cpyb    STX F             ; [3] page count
-        ; advance to last page (13b, 19s)
-        CLC               ; [2]
-        LDA SrcH          ; [3] Src += A * 256
-        ADC F             ; [3]
-        STA SrcH          ; [3]
-        LDA DstH          ; [3] Dst += A * 256
-        ADC F             ; [2] no CLC (assume no 64K wrap)
-        STA DstH          ; [3]
-        ; begin copy
-        TYA               ; [2] is Y=0?
-        BEQ cpyblp        ; [2] -> Y=0, no partial page [+1]
-        INC F             ; [5] pages++ for partial page
-cpyblp  DEY               ; [2] count--
-        LDA (Src),Y       ; [5] read byte (sets NE/EQ)
-        STA (Dst),Y       ; [6] write byte
-        TYA               ; [2] is count==0?
-        BNE cpyblp        ; [3] -> until count=0 // [18]
-        ; back one page
-        DEC SrcH          ; [5] Src -= 256
-        DEC DstH          ; [5] Dst -= 256
-        DEC F             ; [5] pages-- (Y=0)
-        BNE cpyblp        ; [2] -> until pages=0 [+1] // [+18]
-        RTS               ; [6] 
+        JMP wrnum         ; [3] -> EQ
 
 
 ;;dbgx    PHA
@@ -1759,7 +1595,7 @@ cpyblp  DEY               ; [2] count--
 ;;        RTS
 
 
-ALIGN 256
+; ALIGN 256
 ProgPg = $   ; start of program memory
 
 ; ORG BasROM+$7FF
