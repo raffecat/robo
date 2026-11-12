@@ -4,7 +4,7 @@ ROMSize = 1024
 VidBase  = $A0          ; first video page
 VidLast  = $A3          ; last video page
 
-LineBuf  = $100         ; Input Buffer (128 bytes)
+LineBuf  = $101         ; Input Buffer (128 bytes)
 
 IO_KEY   = $F8          ; ASCII keyboard read (7:Strobe 6-0:ASCII)
 IO_CAS   = $F9          ; Cassette Write (7:TapeTx 6:TXD 1:RTS 0:Speaker) / Read (7:KeyLatch 2:CTS 1:RXD 0:TapeRx)
@@ -23,14 +23,14 @@ Dst      = $D2        ; destn pointer  | WRCH, CLS  [Term0]
 DstH     = $D3        ; destn pointer  /            [Term1]
 Term0    = Dst        ; ALIAS: term byte 0
 Term1    = DstH       ; ALIAS: term byte 1
-Ptr      = $D4        ; third pointer  \ findln, ins/del line
-PtrH     = $D5        ; third pointer  /
-B        = $D6        ; extra register | Subroutines are annotated with usage;
-End      = B          ; monitor address
-C        = $D7        ; extra register | held across calls only when unused
-EndH     = C          ; monitor address
-D        = $D8        ; extra register | by callees (manually tracked)
-E        = $D9        ; extra register |
+Ptr      = $D4        ; command pointer \ (safe to hold across expr/IO)
+PtrH     = $D5        ; command pointer /
+B        = $D6        ; extra register | Subroutines annotated with usage;
+C        = $D7        ; extra register | Safe to hold across calls only when
+End      = B          ; monitor address (ALIAS)
+EndH     = C          ; monitor address (ALIAS)
+D        = $D8        ; extra register | unused by callee (manually tracked)
+E        = $D9        ; command register (safe to hold across expr/IO)
 F        = $DA        ; IO Temp register (all IO, cpyf/cpyb)
 ;xx      = $DB
 ;xx      = $DC
@@ -87,8 +87,7 @@ reset   SEI
         ; write page number to 1st byte of each page
         LDA #0
         TAY               ; Y=0
-        ;;TAX             ; page number = 0
-        LDX #9            ; page number = 9 (above BASIC)   XXX pre-loaded BASIC!!!
+        TAX               ; page number = 0
         STA Ptr           ; clear low byte
 msetl   STX PtrH          ; update ptr
         TXA               ; A = page number
@@ -96,7 +95,6 @@ msetl   STX PtrH          ; update ptr
         INX               ; next page
         BNE msetl         ; -> until X=0
         ; test 1st byte of each page for page number
-        LDX #9            ; page number = 9 (above BASIC)   XXX pre-loaded BASIC!!!
 mchkl   INX               ; incr Page
         STX PtrH          ; update Ptr
         TXA               ; A = page number
@@ -110,6 +108,7 @@ mchkl   INX               ; incr Page
 goto    JSR run           ; fall through on RTS
 repl    LDX #$7F          ; 128-byte stack (for BASIC at $180)
         TXS               ; set SP
+        STX RNGL          ; random seed (non-zero)
         JSR wrnl          ; new line
         LDA #93           ; `]`
 repe    JSR wrch          ; (uses A,X,F,Src,Dst) -> X=0
@@ -294,9 +293,51 @@ cwd2    STA IO_CAS    ; [3] output bit
 
 
 ; ------------------------------------------------------------------------------
+; Random Number Generator (53b)
+
+ORG MonBase+ROMSize-221-71-89-103-53
+
+        ; @@ rand
+        ; random number in [1..Term] -> Acc (uses A,X,B,C,Acc,Term)
+rand    LDA RNGH          ; [3]
+        STA B             ; [3] 16
+        ASL               ; [2]
+        ASL               ; [2]
+        TAX               ; [2]
+        EOR B             ; [3] 14
+        STA B             ; [3]
+        TXA               ; [2]
+        ASL               ; [2]
+        TAX               ; [2]
+        EOR B             ; [3] 13
+        STA B             ; [3]
+        TXA               ; [2]
+        ASL               ; [2]
+        ASL               ; [2]
+        EOR B             ; [3] 11
+        ASL               ; [2] -> CF
+        ROL RNGL          ; [5] <- CF
+        ROL RNGH          ; [5]
+        ; modulo
+        LDA RNGL          ; [5]
+        STA Acc0          ; [3] dividend low
+        LDA RNGH          ; [5]
+        STA Acc1          ; [3] dividend high
+        JSR div16         ; [6] Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Acc,Term)
+        CLC               ; [2]
+        LDA B             ; [3] remainder low
+        ADC #1            ; [2]
+        STA Acc0          ; [3] result low
+        LDA C             ; [3] remainder high
+        ADC #0            ; [2]
+        STA Acc1          ; [3] result high
+        RTS
+
+
+; ------------------------------------------------------------------------------
 ; num16, wrnum (103b)
 
-ORG MonBase+ROMSize-219-71-89-103
+ORG MonBase+ROMSize-221-71-89-103
 
         ; @@ num16
         ; parse an unsigned 16-bit number (0-32767)
@@ -370,7 +411,7 @@ wrnup   JSR wrch          ; [6] print it (uses A,X,F,Src,Dst) preserves Y
 ; ------------------------------------------------------------------------------
 ; mul16, div16 (89b)
 
-ORG MonBase+ROMSize-219-71-89
+ORG MonBase+ROMSize-221-71-89
 
         ; @@ mul16
         ; Acc=multiplicand, Term=multiplier -> BC=product (uses A,X,B,C,Acc,Term)
@@ -438,7 +479,7 @@ divnx   DEX            ; [2]
 ; ------------------------------------------------------------------------------
 ; Memory Copy: CPYF, CPYB (71b)
 
-ORG MonBase+ROMSize-219-71
+ORG MonBase+ROMSize-221-71
 
         ; @@ cpyf
         ; copy memory forwards from (Src) to (Dst) with XY=size  (34b)
@@ -500,7 +541,7 @@ cpyblp  DEY               ; [2] count--
 ; ------------------------------------------------------------------------------
 ; IO: CLS, HOME, TCLR, RDLN, WRNL, WRSP, WRHX, WRCH, Vectors (215b)
 
-ORG MonBase+ROMSize-219
+ORG MonBase+ROMSize-221
 
         ; @@ cls
         ; clear the screen
@@ -543,9 +584,10 @@ rdln    LDY #0            ; line length
         ; show cursor
 rdlnw   LDX #0
         LDA (TXTP,X)      ; read cursor
-        DEC CurTime       ; cursor blink
+        DEC RNGH          ; cursor blink
         BNE rdlnnb        ; -> not yet [+1]
         EOR #$3F          ; $20/$1F
+        DEC RNGH          ; non-zero
 rdlnnb  STA (TXTP,X)      ; update cursor
         ; get a key
         LDA IO_KEY        ; (7:Latch 6-0:ASCII)
