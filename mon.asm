@@ -89,18 +89,19 @@ reset   SEI
         TAY               ; Y=0
         TAX               ; page number = 0
         STA Ptr           ; clear low byte
-msetl   STX PtrH          ; update ptr
+mdetn   STX PtrH          ; update ptr
         TXA               ; A = page number
         STA (Ptr),Y       ; write page number
         INX               ; next page
-        BNE msetl         ; -> until X=0
+        BNE mdetn         ; -> until X=0
         ; test 1st byte of each page for page number
-mchkl   INX               ; incr Page
+mdetc   INX               ; incr Page
         STX PtrH          ; update Ptr
         TXA               ; A = page number
         CMP (Ptr),Y       ; compare page number
-        BEQ mchkl         ; -> until not equal
+        BEQ mdetc         ; -> until not equal
         STX MemSz         ; set size of memory (in pages)
+        STX RNGL          ; random seed (non-zero)
 
         ; monitor         (74b)
         JSR cls           ; -> Y=0,EQ
@@ -108,26 +109,40 @@ mchkl   INX               ; incr Page
 goto    JSR run           ; fall through on RTS
 repl    LDX #$7F          ; 128-byte stack (for BASIC at $180)
         TXS               ; set SP
-        STX RNGL          ; random seed (non-zero)
         JSR wrnl          ; new line
         LDA #93           ; `]`
 repe    JSR wrch          ; (uses A,X,F,Src,Dst) -> X=0
         JSR rdln
-        LDX #0            ; input ofs
-        STX D             ; clear mode
+        BCS repl          ; -> ESCAPE
         ; parse hex addrs
-        JSR rdhx          ; X=ofs -> B,C (End)
-        LDA End           ; B
+        LDX #0            ; input ofs
+        JSR rdhx          ; X=ofs -> BC
+        CPX #0            ; no match?
+        BEQ rep80         ; -> print another 80
+        LDA B
         STA Ptr
-        LDA EndH          ; C
+        LDA C
         STA PtrH
         LDA LineBuf,X
         CMP #45           ; `-`
-        BNE repc          ; -> no range
+        BNE repn          ; -> no range
         INX
-        JSR rdhx          ; (X=ofs, Y=count) -> End
+        STX D             ; save X
+        JSR rdhx          ; (X=ofs, Y=count) -> BC
+        CPX D             ; no match?
+        BEQ rep80         ; -> assume 0x80
+repn    SEC
+        LDA B
+        SBC Ptr
+        STA B
+        LDA C
+        SBC PtrH
+repc    STA C
+        BCC erro          ; -> to < from
+        INC B             ; inclusive (0 bytes -> 1 byte)
+        INC C             ; inclusive (0 pages -> 1 page [B])
         ; parse command
-repc    LDA LineBuf,X
+        LDA LineBuf,X
         BEQ prnt          ; -> print range
         CMP #58           ; `:`
         BEQ wrt           ; -> write to memory
@@ -140,9 +155,12 @@ repc    LDA LineBuf,X
         CMP #83           ; S
         BEQ save          ; -> save to cassette
         ; error
-        LDA #63           ; `?`
+erro    LDA #63           ; `?`
         BNE repe          ; -> to repl
-
+rep80   LDA #127          ; half a page
+        STA B
+        LDA #0
+        BEQ repc
 
 ; ------------------------------------------------------------------------------
 ; PRINT, CLEAR, WRITE, RUN (91 bytes)
@@ -152,42 +170,41 @@ prnt    LDA PtrH
         JSR wrhx          ; A=byte; (uses A,X,F,Src,Dst) preserves Y
         LDA Ptr
         JSR wrhx          ; A=byte; (uses A,X,F,Src,Dst) preserves Y
-        LDY #8
-prlp    JSR wrsp          ; A=char; (uses A,X,F,Src,Dst) preserves Y -> X=0
+        LDA IO_KEY        ; check ESC
+        CMP #$9B          ; $80+ESC
+        BEQ prx           ; -> ESC pressed
+        LDY #9            ; 8 columns (+1 for pre-DEY)
+prlp    DEY
+        BEQ prnl          ; -> new line
+        JSR wrsp          ; A=char; (uses A,X,F,Src,Dst) preserves Y -> X=0
         LDA (Ptr,X)
         JSR wrhx          ; A=byte; (uses A,X,F,Src,Dst) preserves Y
-        ; increment address
-incp    INC Ptr
-        BNE prnp
+        INC Ptr
+        BNE prnpg
         INC PtrH
-        ; check end address
-prnp    LDA PtrH
-        CMP EndH     ; C
-        BCC prco     ; -> less, continue
-        BNE repl     ; -> greater, done (fixes -FF, but not FFFF)
-        LDA Ptr
-        CMP End      ; B
-        BEQ prco     ; -> equal, continue
-        BCS repl     ; -> greater, done
-        ; continue loop
-prco    BIT D        ; check mode
-        BMI clco     ; -> continue clear (+4)
-        ; continue print
-        DEY          ; 
-        BNE prlp     ; -> write 8 bytes
-        LDA IO_KEY   ; check ESC
-        CMP #$9B     ; $80+ESC
-        BNE prnl     ; -> next line (always)
-        JMP repl     ; -> STOP
+prnpg   DEC B             ; count low
+        BNE prlp          ; until B=0 (0=256, inclusive)
+        DEC C             ; count high
+        BNE prlp          ; until C=0 (0=256, inclusive)
+prx     JMP repl          ; -> STOP
 
-        ; start clear (17b with STX D and BIT D)
-clr     LDX #0
-        LDA #$80
-        STA D        ; mode = clear (+6)
-        ; continue clear
-clco    TXA          ; X=0 (EQ)
-        STA (Ptr,X)
-        BEQ incp     ; -> continue (+5)
+        ; clear XY=size A=fill ()
+clr     LDA #0
+fill    LDX C             ; page count
+        DEX               ; for partial page (inclusive, >0)
+        BEQ clrd          ; -> do partial
+        TAY               ; Y=0
+clrp    DEY
+        STA (Ptr),Y
+        BNE clrp          ; -> until Y=0 (256 times)
+        INC PtrH
+        DEX
+        BNE clrp          ; -> until X=0 (X pages)
+clrd    LDY B             ; byte count (inclusive)
+clrq    DEY
+        STA (Ptr),Y
+        BNE clrq          ; -> until Y=0 (256 times)
+        BEQ prx           ; -> done
 
         ; write to memory (17b)
 wrt     LDY #0       ; write offset
@@ -202,6 +219,9 @@ wrtl    STX E        ; save pos
 
       ; run subroutine
 run   JMP (Ptr)
+
+
+; 0FCEE
 
 
 load:
@@ -225,30 +245,30 @@ save:
 
 ; read hex (48b)
 rdhx    LDA #0        ; (A,X) -> X
-        STA End       ; B clear it
-        STA EndH      ; C
+        STA B
+        STA C
 rdhl    LDA LineBuf,X
         SEC
         SBC #48       ; `0`
         CMP #10       ; is it `0`-`9`
-        BCC @ok       ; -> 0-9
+        BCC rdhd      ; -> 0-9
         SBC #17       ; 48+17=`A`
         CMP #6        ; is it `A`-`F`
-        BCS retn      ; -> not hex
+        BCS rdhn      ; -> not hex
         ADC #10       ; -> 10-15
-@ok     ASL End
-        ROL EndH
-        ASL End
-        ROL EndH
-        ASL End
-        ROL EndH
-        ASL End
-        ROL EndH
-        ORA End
-        STA End
+rdhd    ASL B
+        ROL C
+        ASL B
+        ROL C
+        ASL B
+        ROL C
+        ASL B
+        ROL C
+        ORA B
+        STA B
         INX
         BNE rdhl      ; -> always
-retn    RTS
+rdhn    RTS
 
 
 ; ------------------------------------------------------------------------------
@@ -295,7 +315,7 @@ cwd2    STA IO_CAS    ; [3] output bit
 ; ------------------------------------------------------------------------------
 ; Random Number Generator (53b)
 
-ORG MonBase+ROMSize-221-71-89-103-53
+ORG MonBase+ROMSize-229-88-89-103-53
 
         ; @@ rand
         ; random number in [1..Term] -> Acc (uses A,X,B,C,Acc,Term)
@@ -337,11 +357,11 @@ rand    LDA RNGH          ; [3]
 ; ------------------------------------------------------------------------------
 ; num16, wrnum (103b)
 
-ORG MonBase+ROMSize-221-71-89-103
+ORG MonBase+ROMSize-229-88-89-103
 
         ; @@ num16
         ; parse an unsigned 16-bit number (0-32767)
-        ; from LineBuf,Y -> Args[0],Y,CS=found (uses A,X,Src)
+        ; from LineBuf,Y -> Acc,Y,CS=found (uses A,X,Src)
 num16   LDA #0         ; [2]
         STA Acc0       ; [3] clear Acc
         STA Acc1       ; [3]
@@ -411,7 +431,7 @@ wrnup   JSR wrch          ; [6] print it (uses A,X,F,Src,Dst) preserves Y
 ; ------------------------------------------------------------------------------
 ; mul16, div16 (89b)
 
-ORG MonBase+ROMSize-221-71-89
+ORG MonBase+ROMSize-229-88-89
 
         ; @@ mul16
         ; Acc=multiplicand, Term=multiplier -> BC=product (uses A,X,B,C,Acc,Term)
@@ -477,9 +497,23 @@ divnx   DEX            ; [2]
 
 
 ; ------------------------------------------------------------------------------
-; Memory Copy: CPYF, CPYB (71b)
+; Memory Copy: CPYF, CPYB (88b)
 
-ORG MonBase+ROMSize-221-71
+ORG MonBase+ROMSize-229-88
+
+        ; @@ mcpy
+        ; copy memory from (Src) to (Dst) with XY=size  (17b)
+        ; (uses A,X,Y,F,Src,Dst)
+mcpy    LDA DstH          ; [3]
+        CMP SrcH          ; [3]
+        BCC cpyf          ; [2] -> DstH < SrcH (copy forwards)
+        BNE cpyb          ; [2] -> DstH > SrcH (copy backwards)
+        ; high bytes are equal
+        LDA Dst           ; [3]
+        CMP Src           ; [3]
+        BCC cpyf          ; [2] -> Dst < Src (copy forwards)
+        BNE cpyb          ; [2] -> Dst > Src (copy backwards)
+        RTS               ; [6] no copy
 
         ; @@ cpyf
         ; copy memory forwards from (Src) to (Dst) with XY=size  (34b)
@@ -506,10 +540,10 @@ cpyfp   LDA (Src),Y       ; [5] read byte
         INY               ; [2] advance
         DEX               ; [2] decrement length
         BNE cpyfp         ; [3] -> until X=0 [+1]
-cpyfx   RTS               ; [6] X=0
+cpyfx   RTS               ; [6] -> X=0
 
         ; @@ cpyb
-        ; copy memory backwards from (Src) to (Dst) with XY=size
+        ; copy memory backwards from (Src) to (Dst) with XY=size  (37b)
         ; assume (Dst > Src) but Src/Dst may overlap 
         ; uses (A,X,Y,B,Src,Dst)
 cpyb    STX F             ; [3] page count
@@ -535,16 +569,16 @@ cpyblp  DEY               ; [2] count--
         DEC DstH          ; [5] Dst -= 256
         DEC F             ; [5] pages-- (Y=0)
         BNE cpyblp        ; [2] -> until pages=0 [+1] // [+18]
-        RTS               ; [6] 
+        RTS               ; [6] -> Y=0
 
 
 ; ------------------------------------------------------------------------------
-; IO: CLS, HOME, TCLR, RDLN, WRNL, WRSP, WRHX, WRCH, Vectors (215b)
+; CLS, HOME, TCLR, RDLN, WRNL, WRSP, WRHX, WRCH, Vectors (229b)
 
-ORG MonBase+ROMSize-221
+ORG MonBase+ROMSize-229
 
         ; @@ cls
-        ; clear the screen
+        ; clear the screen  (18b)
         ; (uses A,X,Y) -> Y=0,EQ
 cls     JSR home          ; -> Y=0
         LDX #3            ; number of whole pages
@@ -557,7 +591,7 @@ clslp   JSR tcln          ; Y=count (uses A,Y) -> Y=0,EQ
         ; +++ fall through: home +++
 
         ; @@ home
-        ; move cursor to top-left
+        ; move cursor to top-left  (13b)
         ; (uses A,Y) -> Y=0,EQ
 home    LDA #40           ; [2] reset RemX
         STA RemX          ; [3]
@@ -568,7 +602,7 @@ home    LDA #40           ; [2] reset RemX
         RTS               ; [6] Y=0,EQ
 
         ; @@ tclr
-        ; fill a text row at TXTP (does not change TXTP)
+        ; fill a text row at TXTP (does not change TXTP)  (10b)
         ; Y=count (uses A,Y)
 tclr    LDY #40           ; [2] count = 40
 tcln    LDA #32           ; [2] fill with spaces
@@ -579,45 +613,50 @@ tclrlp  DEY               ; [2] decrement column
 
         ; @@ rdln
         ; read a line of input
-        ; (uses A,X,Y,F,Src,Dst -> LineBuf, Y=len)
+        ; (uses A,X,Y,F,Src,Dst -> LineBuf, Y=len)  (77b)
+rdesc   SEC               ; CS=ESC
+        RTS
+rdlnbk  DEY               ; reduce length
+        INC RemX          ; give back one remaining cell
+        DEC TXTP          ; back up one cell
+        BNE rdlnc         ; -> ok
+        DEC TXTPH         ; crossed page
+        DB $2C            ; skip LDY
 rdln    LDY #0            ; line length
+rdlnc   LDA #$1F          ; `_`
+        BNE rdlnnb        ; -> set cursor
         ; show cursor
-rdlnw   LDX #0
-        LDA (TXTP,X)      ; read cursor
+rdlnw   LDA (TXTP,X)      ; read cursor
         DEC RNGH          ; cursor blink
         BNE rdlnnb        ; -> not yet [+1]
         EOR #$3F          ; $20/$1F
         DEC RNGH          ; non-zero
-rdlnnb  STA (TXTP,X)      ; update cursor
+rdlnnb  LDX #0            ; const X=0
+        STA (TXTP,X)      ; update cursor
         ; get a key
         LDA IO_KEY        ; (7:Latch 6-0:ASCII)
         BPL rdlnw         ; -> wait for keypress
         AND #$7F          ; clear top bit
-        CMP #8            ; is it BACKSPACE?
-        BEQ rdlnbs        ; -> go back
-        CMP #13           ; is it RETURN?
+        CMP #$7F          ; is it DELETE?
+        BEQ rdlnbs        ; -> backspace
+        CMP #$0D          ; is it RETURN? (SEC;SBC#13->CS)
         BEQ rdlnx         ; -> return (CS)
-        CPY #78           ; is buffer full? (2 lines)
-        BEQ rdlnw         ; buffer full -> do nothing
+        CMP #$1B          ; ESC
+        BEQ rdesc         ; -> escape
         ; write char
+rdlnwc  CPY #78           ; is buffer full? (2 lines)
+        BEQ rdlnc         ; buffer full -> do nothing
         STA LineBuf,Y     ; write char (insert at cursor)
         INY               ; increase length (NE)
         JSR wrch          ; A=char (uses A,X,F,Src,Dst) preserves Y -> NE / NE from Y
-        BNE rdlnw         ; -> ALWAYS wait for key
+        BNE rdlnc         ; -> ALWAYS wait for key
         ; backspace       (X=0)
 rdlnbs  TYA               ; test length
-        BEQ rdlnw         ; -> cannot backspace
-        LDA #32           ; space <- (CS)
-        STA (TXTP,X)      ; clear the cursor
-        DEY               ; reduce length
-        INC RemX          ; give back one remaining cell
-        DEC TXTP          ; back up one cell
-        BNE rdlnpg        ; -> ok
-        DEC TXTPH         ; crossed page
-rdlnpg  CLC               ; take BCC
+        BEQ rdlnc         ; -> cannot backspace
+        CLC               ; take BCC
 rdlnx   LDA #32           ; space <- (X=0,CS)
         STA (TXTP,X)      ; clear the cursor
-        BCC rdlnw         ; -> came from backspace
+        BCC rdlnbk        ; -> do backspace
         TXA               ; A=0
         STA LineBuf,Y     ; terminator  -> Y=length
         ; +++ fall through: wrnl +++
@@ -640,7 +679,7 @@ wrsp    LDA #32
 
         ; @@ wrhx
         ; write byte in hex
-        ; A=byte; (uses A,X,F,Src,Dst) preserves Y  (23b)
+        ; A=byte; (uses A,X,F,Src,Dst) preserves Y  (20b)
 wrhx    PHA               ; save A
         LSR               ; shift top 4 bits down
         LSR               ; 
@@ -657,7 +696,7 @@ wrhxp   ADC #54           ; 'A'65 - 10 - 1(CF)
         ; +++ fall through: wrch +++
 
         ; @@ wrch
-        ; write character   (16b)
+        ; write character   (14b)
         ; (uses A,X,F,Src,Dst) -> X=0
 wrch    LDX #0            ; [2]
         STA (TXTP,X)      ; [6]
@@ -668,16 +707,16 @@ wrchpg  DEC RemX          ; [5] remaining space on line
         BNE wrret         ; [2] -> not end of line, X=0, NE [+1]
         ; +++ fall through: wreol +++
 
-        ; check and scroll at bottom of screen (18b)
+        ; new line, scroll at bottom of screen (54b)
         ; (uses A,X,F,Src,Dst)
 wreol   LDA #40           ; [2] reset RemX
         STA RemX          ; [3]
         LDA TXTP          ; [3] check bottom of screen (could use RemY)
         CMP #192          ; [2] end of screen: ofs = 192
-        BNE wrret         ; [2] -> no, NE (wrch:X=0) [+1]
+        BNE wrret1        ; [2] -> no, NE (wrch:X=0) [+1]
         LDA TXTPH         ; [3]
         CMP #VidLast      ; [2] end of screen: page = 0 1 2 >3<
-        BNE wrret         ; [2] -> no, NE (wrch:X=0) [+1]
+        BNE wrret1        ; [2] -> no, NE (wrch:X=0) [+1]
         ; scroll down, clear exposed line
         TYA               ; [2] save Y
         PHA               ; [3] (can't use STY F, cpyf does)
@@ -700,6 +739,7 @@ wreol   LDA #40           ; [2] reset RemX
         JSR tclr          ; [6] (uses A,Y) -> (Y=0, EQ)
         PLA               ; [4]
         TAY               ; [2]
+wrret1  CLC               ; [2] CC=no-ESC (rdln)
 wrret   RTS               ; [6] <- NE (wrch:X=0)
                           ; -> X=0 (except wrnl)
 
