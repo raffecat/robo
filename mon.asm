@@ -27,8 +27,6 @@ Ptr      = $D4        ; command pointer \ (safe to hold across expr/IO)
 PtrH     = $D5        ; command pointer /
 B        = $D6        ; extra register | Subroutines annotated with usage;
 C        = $D7        ; extra register | Safe to hold across calls only when
-End      = B          ; monitor address (ALIAS)
-EndH     = C          ; monitor address (ALIAS)
 D        = $D8        ; extra register | unused by callee (manually tracked)
 E        = $D9        ; command register (safe to hold across expr/IO)
 F        = $DA        ; IO Temp register (all IO, cpyf/cpyb)
@@ -102,10 +100,24 @@ mdetc   INX               ; incr Page
         BEQ mdetc         ; -> until not equal
         STX MemSz         ; set size of memory (in pages)
         STX RNGL          ; random seed (non-zero)
-
-        ; monitor         (74b)
+        ; enter monitor   (5b)
         JSR cls           ; -> Y=0,EQ
         BEQ repl
+
+        ; write to memory (17b)
+write   LDY #0            ; write offset
+wrsk    INY               ; skip space or `W`
+wrtl    LDA LineBuf,X     ; A=next-char
+        BEQ repl          ; -> done
+        CMP #32           ; space?
+        BEQ wrsk          ; -> skip
+        JSR rdhx          ; X=ofs -> CB=hex(A=B), NE=found
+        BNE erro          ; -> expected hex
+        STA (Ptr),Y       ; write to memory
+        INY               ; 78 chars, max 39 bytes
+        BNE wrtl          ; -> always
+
+        ; monitor         ()
 goto    JSR run           ; fall through on RTS
 repl    LDX #$7F          ; 128-byte stack (for BASIC at $180)
         TXS               ; set SP
@@ -116,40 +128,40 @@ repe    JSR wrch          ; (uses A,X,F,Src,Dst) -> X=0
         BCS repl          ; -> ESCAPE
         ; parse hex addrs
         LDX #0            ; input ofs
-        JSR rdhx          ; X=ofs -> BC
-        CPX #0            ; no match?
+        JSR rdhx          ; X=ofs -> CB=hex(A=B), NE=found
         BEQ rep80         ; -> print another 80
-        LDA B
-        STA Ptr
-        LDA C
+        STA Ptr           ; B=low
+        LDA C             ; C=high
         STA PtrH
-        LDA LineBuf,X
+        LDA LineBuf,X     ; A=next-char
         CMP #45           ; `-`
         BNE repn          ; -> no range
         INX
-        STX D             ; save X
-        JSR rdhx          ; (X=ofs, Y=count) -> BC
-        CPX D             ; no match?
+        JSR rdhx          ; X=ofs -> CB=hex(A=B), NE=found
         BEQ rep80         ; -> assume 0x80
 repn    SEC
-        LDA B
+        LDA B             ; B=low
         SBC Ptr
-        STA B
-        LDA C
+        STA E             ; E= byte count
+        LDA C             ; C=high
         SBC PtrH
-repc    STA C
+repc    STA D             ; D= page count
         BCC erro          ; -> to < from
-        INC B             ; inclusive (0 bytes -> 1 byte)
-        INC C             ; inclusive (0 pages -> 1 page [B])
+        INC D             ; inclusive (0 bytes -> 1 byte)
+        BNE repsk         ; -> no carry
+        INC E             ; bump page count (0=256)
         ; parse command
-        LDA LineBuf,X
+repsk   LDA LineBuf,X     ; A=next-char
         BEQ prnt          ; -> print range
-        CMP #58           ; `:`
-        BEQ wrt           ; -> write to memory
+        CMP #87           ; W
+        BEQ write         ; -> write to memory
         CMP #71           ; G
         BEQ goto          ; -> go to code
         CMP #90           ; Z
-        BEQ clr           ; -> clear
+        BEQ clear         ; -> clear
+        INX
+        CMP #77           ; M
+        BEQ move          ; -> move
         CMP #76           ; L
         BEQ load          ; -> load from cassette
         CMP #83           ; S
@@ -158,13 +170,18 @@ repc    STA C
 erro    LDA #63           ; `?`
         BNE repe          ; -> to repl
 rep80   LDA #127          ; half a page
-        STA B
+        STA E
         LDA #0
         BEQ repc
+
+load:
+save:
+  JMP repl
 
 ; ------------------------------------------------------------------------------
 ; PRINT, CLEAR, WRITE, RUN (91 bytes)
 
+        ; print DE=count  (49b)
 prnl    JSR wrnl
 prnt    LDA PtrH
         JSR wrhx          ; A=byte; (uses A,X,F,Src,Dst) preserves Y
@@ -182,15 +199,16 @@ prlp    DEY
         INC Ptr
         BNE prnpg
         INC PtrH
-prnpg   DEC B             ; count low
+prnpg   DEC E             ; byte count
         BNE prlp          ; until B=0 (0=256, inclusive)
-        DEC C             ; count high
+        DEC D             ; page count
         BNE prlp          ; until C=0 (0=256, inclusive)
 prx     JMP repl          ; -> STOP
 
-        ; clear XY=size A=fill ()
-clr     LDA #0
-fill    LDX C             ; page count
+
+        ; clear DE=count (27b)
+clear   LDA #0
+        LDX D             ; page count
         DEX               ; for partial page (inclusive, >0)
         BEQ clrd          ; -> do partial
         TAY               ; Y=0
@@ -200,62 +218,54 @@ clrp    DEY
         INC PtrH
         DEX
         BNE clrp          ; -> until X=0 (X pages)
-clrd    LDY B             ; byte count (inclusive)
+clrd    LDY E             ; byte count
 clrq    DEY
         STA (Ptr),Y
         BNE clrq          ; -> until Y=0 (256 times)
         BEQ prx           ; -> done
 
-        ; write to memory (17b)
-wrt     LDY #0       ; write offset
-wrtc    INX          ; `:` or separator
-wrtl    STX E        ; save pos
-        JSR rdhx     ; read byte (X=pos, uses A)
-        CPX E        ; no change?
-        BEQ wrtc     ; skip a char                    (XXX need to detect end of line)
-        STA (Ptr),Y  ; write to memory
-        INY          ; 119 chars, max 59 bytes
-        BNE wrtl     ; -> always
 
-      ; run subroutine
-run   JMP (Ptr)
+        ; move DE=count   (28b)
+move    JSR rdhx          ; X=ofs -> CB=hex(A=B), NE=found
+        BEQ erro          ; -> missing
+        STA Dst           ; B=low
+        LDA C             ; C=high
+        STA DstH          ; set destination
+        LDA Ptr
+        STA Src
+        LDA PtrH
+        STA SrcH
+        LDX D             ; D=page count (X>0)
+        DEX               ; exclude part-page
+        LDY E             ; E=byte count
+        JSR mcpy          ; XY=size (Src -> Dst) -> EQ
+        BEQ prx           ; -> done
 
 
-; 0FCEE
+        ; run subroutine
+run     JMP (Ptr)
 
 
-load:
-save:
-  JMP repl
+; FCEE -> FD0F (+33)
+
 
 
 ; ------------------------------------------------------------------------------
-; HEX (52 bytes)
+; HEX (57 bytes)
 
-; set $00 prefix (for single byte)
-; @lp read nibble -> @nan
-; even -> OR it, write it
-; odd -> write it, shift it, stash it -> @lp
-; @nan:
-; even -> LOAD it, write it
-; odd -> 
-;   A -> 00 0A
-;  AB -> 00 AB
-; ABC -> 00 AB 0C (0A BC)
-
-; read hex (48b)
-rdhx    LDA #0        ; (A,X) -> X
+rdhx    STX F             ; save X on entry
+        LDA #0            ; (A,X) -> X
         STA B
         STA C
 rdhl    LDA LineBuf,X
         SEC
-        SBC #48       ; `0`
-        CMP #10       ; is it `0`-`9`
-        BCC rdhd      ; -> 0-9
-        SBC #17       ; 48+17=`A`
-        CMP #6        ; is it `A`-`F`
-        BCS rdhn      ; -> not hex
-        ADC #10       ; -> 10-15
+        SBC #48           ; `0`
+        CMP #10           ; is it `0`-`9`
+        BCC rdhd          ; -> 0-9
+        SBC #17           ; 48+17=`A`
+        CMP #6            ; is it `A`-`F`
+        BCS rdhn          ; -> not hex
+        ADC #10           ; -> 10-15
 rdhd    ASL B
         ROL C
         ASL B
@@ -267,8 +277,10 @@ rdhd    ASL B
         ORA B
         STA B
         INX
-        BNE rdhl      ; -> always
-rdhn    RTS
+        BNE rdhl          ; -> always
+rdhn    LDA B             ; low
+        CPX F             ; made progress? (NE/EQ)
+        RTS               ; -> CB=hex(A=B), NE=found
 
 
 ; ------------------------------------------------------------------------------
@@ -513,7 +525,7 @@ mcpy    LDA DstH          ; [3]
         CMP Src           ; [3]
         BCC cpyf          ; [2] -> Dst < Src (copy forwards)
         BNE cpyb          ; [2] -> Dst > Src (copy backwards)
-        RTS               ; [6] no copy
+        RTS               ; [6] -> no copy, EQ
 
         ; @@ cpyf
         ; copy memory forwards from (Src) to (Dst) with XY=size  (34b)
@@ -534,13 +546,13 @@ cpyfw   LDA (Src),Y       ; [5] read byte
         BNE cpyfw         ; [2] -> another page (Y=0) [+1]
         ; part page
 cpyfnw  LDX F             ; [3] restore part-len (Y=0)
-        BEQ cpyfx         ; [2] -> no part [+1]
+        BEQ cpyfx         ; [2] -> no part [+1] (0 != 256)
 cpyfp   LDA (Src),Y       ; [5] read byte
         STA (Dst),Y       ; [6] write byte
         INY               ; [2] advance
         DEX               ; [2] decrement length
         BNE cpyfp         ; [3] -> until X=0 [+1]
-cpyfx   RTS               ; [6] -> X=0
+cpyfx   RTS               ; [6] -> X=0,EQ
 
         ; @@ cpyb
         ; copy memory backwards from (Src) to (Dst) with XY=size  (37b)
@@ -549,27 +561,26 @@ cpyfx   RTS               ; [6] -> X=0
 cpyb    STX F             ; [3] page count
         ; advance to last page (13b, 19s)
         CLC               ; [2]
-        LDA SrcH          ; [3] Src += A * 256
+        LDA SrcH          ; [3] Src += X * 256
         ADC F             ; [3]
         STA SrcH          ; [3]
-        LDA DstH          ; [3] Dst += A * 256
+        LDA DstH          ; [3] Dst += X * 256
         ADC F             ; [2] no CLC (assume no 64K wrap)
         STA DstH          ; [3]
         ; begin copy
         TYA               ; [2] is Y=0?
-        BEQ cpyblp        ; [2] -> Y=0, no partial page [+1]
-        INC F             ; [5] pages++ for partial page
+        BEQ cpybny        ; [2] -> Y=0, no partial page [+1]  (0 != 256)
 cpyblp  DEY               ; [2] count--
-        LDA (Src),Y       ; [5] read byte (sets NE/EQ)
-        STA (Dst),Y       ; [6] write byte
+        LDA (Src),Y       ; [5] read byte (sets NE/EQ)     Y bytes at Src (backwards)
+        STA (Dst),Y       ; [6] write byte                 (Src=$280 Y=16)
         TYA               ; [2] is count==0?
-        BNE cpyblp        ; [3] -> until count=0 // [18]
+        BNE cpyblp        ; [3] -> until Y=0 // [18]
         ; back one page
-        DEC SrcH          ; [5] Src -= 256
+        DEC SrcH          ; [5] Src -= 256                 (Src=$180 Y=0)
         DEC DstH          ; [5] Dst -= 256
-        DEC F             ; [5] pages-- (Y=0)
+cpybny  DEC F             ; [5] pages-- (Y=0)              (F=1 for 1 full page)
         BNE cpyblp        ; [2] -> until pages=0 [+1] // [+18]
-        RTS               ; [6] -> Y=0
+        RTS               ; [6] -> Y=0,EQ
 
 
 ; ------------------------------------------------------------------------------
@@ -582,12 +593,12 @@ ORG MonBase+ROMSize-229
         ; (uses A,X,Y) -> Y=0,EQ
 cls     JSR home          ; -> Y=0
         LDX #3            ; number of whole pages
-clslp   JSR tcln          ; Y=count (uses A,Y) -> Y=0,EQ
+clslp   JSR tclr          ; Y=count (uses A,Y) -> Y=0,EQ
         INC TXTPH         ; next page
         DEX               ; 
         BNE clslp         ; -> loop
         LDY #192          ; count = 192
-        JSR tcln          ; Y=count (uses A,Y) -> Y=0,EQ
+        JSR tclr          ; Y=count (uses A,Y) -> Y=0,EQ
         ; +++ fall through: home +++
 
         ; @@ home
@@ -602,10 +613,9 @@ home    LDA #40           ; [2] reset RemX
         RTS               ; [6] Y=0,EQ
 
         ; @@ tclr
-        ; fill a text row at TXTP (does not change TXTP)  (10b)
+        ; clear row(s) at TXTP (does not change TXTP)  (8b)
         ; Y=count (uses A,Y)
-tclr    LDY #40           ; [2] count = 40
-tcln    LDA #32           ; [2] fill with spaces
+tclr    LDA #32           ; [2] fill with spaces
 tclrlp  DEY               ; [2] decrement column
         STA (TXTP),Y      ; [6] write a space
         BNE tclrlp        ; [3] -> until Y=0
@@ -736,6 +746,7 @@ wreol   LDA #40           ; [2] reset RemX
         STA TXTPH         ; [3]
         LDA #152          ; [2] 192-40 start of last line
         STA TXTP          ; [3]
+        LDY #40           ; [2] count = 40
         JSR tclr          ; [6] (uses A,Y) -> (Y=0, EQ)
         PLA               ; [4]
         TAY               ; [2]
