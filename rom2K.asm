@@ -6,13 +6,14 @@ BasROM   = $0000
 ; ------------------------------------------------------------------------------
 ; Monitor Routines
 
-rand  = $FDE7     ; random number in [1..Term] -> Acc (uses A,X,B,C,Acc,Term)
-num16 = $FE1C     ; from LineBuf,Y -> Acc,Y,CS=found (uses A,X,Y,Acc/Src)
-wrnum = $FE64     ; print Acc (uses A,X,B,C,F,Src,Dst)
-mul16 = $FE83     ; Acc=multiplicand, Term=multiplier -> BC=product (uses A,X,B,C,Acc,Term)
-div16 = $FEAB     ; Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Acc,Term)
+rand  = $FDD6     ; random number in [1..Term] -> Acc (uses A,X,B,C,Acc,Term)
+num16 = $FE0B     ; from LineBuf,Y -> Acc,Y,CS=found (uses A,X,Y,Acc/Src)
+wrnum = $FE53     ; print Acc (uses A,X,B,C,F,Src,Dst)
+mul16 = $FE72     ; Acc=multiplicand, Term=multiplier -> BC=product (uses A,X,B,C,Acc,Term)
+div16 = $FE9A     ; Acc=dividend, Term=divisor -> Acc=quotient, BC=remainder (uses A,X,B,C,Acc,Term)
+mcpy  = $FECB     ; (uses A,X,Y,F,Src,Dst)
 cpyf  = $FEDC     ; (uses A,X,Y,F,Src,Dst) -> X=0
-cpyb  = $FEFE     ; (uses A,X,Y,F,Src,Dst) -> X=0
+cpyb  = $FEFE     ; (uses A,X,Y,F,Src,Dst) -> Y=0
 cls   = $FF23     ; (uses A,X,Y) -> Y=0,EQ
 home  = $FF35     ; (uses A,Y) -> Y=0,EQ
 tclr  = $FF42     ; (uses A,Y) -> Y=0,EQ
@@ -178,10 +179,7 @@ tkemt   JSR tkemi         ; output token with top-bit set (uses X=0; preserves A
         ; end of line
 tkeol   LDA D             ; line-no found?
         BEQ dcmd          ; -> no, direct command
-        LDX EmitOfs       ; did we emit?
-        BEQ tkdel         ; -> no, delete line
-        JMP insln         ; -> insert/replace line
-tkdel   JMP delln         ; -> delete line
+        JMP insert        ; -> insert/replace line
 
         ; direct command
 dcmd    LDA #OP_EOP       ; end of program
@@ -200,7 +198,7 @@ dcmd    LDA #OP_EOP       ; end of program
         STA CODEH         ; set CODE page
         LDY #0            ; 
         STY CODE          ; set CODE ofs
-        STY OpTop         ; clear operator stack                    XXX use $FE (full asc)
+        STY OpTop         ; clear operator stack
         STA (CODE),Y      ; direct-mode marker ($01 vs OP_LN/OP_EOP)
         INY               ; first opcode (EmitBuf=$101)
         JMP stmtj         ; -> execute statement (at Y=0)
@@ -277,29 +275,28 @@ rdnum   JSR num16         ; from LineBuf,Y -> Acc,Y,CS=overflow (uses A,X,Src)
         ; report an error (Y=msg)
 enumb   LDY #<msg_num-1   ; "?NUM"
         DB $2C            ; BIT abs
-eesc    LDY #<msg_esc-1   ; "?ESC"                                          XXX press ESCAPE !!
+eesc    LDY #<msg_esc-1   ; "?ESC"                                          XXX detect ESCAPE !!
 erro    LDA #63           ; `?`
-        ;JSR errl          ; print `?XXX`
-        ;LDY #0
-        ;LDA (CODE),Y
-        ;BPL errx          ; direct-mode marker ($01)
-        ;INY
-        ;LDA (CODE),Y
-        ;STA Acc0
-        ;INY
-        ;LDA (CODE),Y
-        ;STA Acc1
-        ;LDY #<msg_at
-        ;JSR errw
-        ;JSR wrnum
-errx    ;JSR wrnl          ; crlf (uses A,X,F,Src,Dst) preserves Y
-        ;JMP repl          ; -> always
-
 errl    JSR wrch          ; write char (uses A,X,F,Src,Dst) preserves Y
         INY
 errw    LDA msgs,Y        ; next char
-        BPL errl
-        ;RTS
+        BPL errl          ; -> until $80/$C0
+        ; report line no
+        ASL               ; test bit 6
+        BMI errno         ; -> $C0, print line number
+        LDY #0            ; 
+        LDA (CODE),Y      ; OP_LN / direct-mode marker
+        BPL errx          ; -> direct mode, done
+        INY
+        LDA (CODE),Y      ; LnLo
+        STA Acc0
+        INY
+        LDA (CODE),Y      ; LnHi
+        STA Acc1
+        LDY #<msg_at      ; " AT ",$C0
+        BNE errw          ; -> always
+errno   JSR wrnum         ; print line number
+errx    JSR wrnl          ; crlf (uses A,X,F,Src,Dst) preserves Y
         JMP repl          ; -> always
 
 
@@ -527,77 +524,101 @@ stmh    DB >repl         ; OP_EOP
         DB >tone         ; OP_TONE
 
 
-; fndln -> Ptr (start of line, or start of first greater line, or end marker)
-; InsPtr = Ptr (save it)
-; NewLen = EmitOfs + 4 (add header)
-; IF replacing:
-;   OldLen = existing Line Length
-;   Ptr += OldLen (advance to end of line)
-; ELSE
-;   OldLen = 0 (always do insert)
-; IF NewLen > OldLen:
-;   Ins = NewLen - OldLen (insert length)
-;   IF Top + Ins >= EndPage -> No Room
-;   Src = Ptr       (move up data above Ptr)
-;   Dst = Ptr + Ins (move up by Ins)
-;   Len = Top - Src (length moved)
-;   Top += Ins      (update Top)
-;   COPY Len from Src -> Dst
-; IF NewLen < OldLen:
-;   Del = OldLen - NewLen (delete length)
-;   Src = Ptr       (move down data above Ptr)
-;   Dst = Ptr - Del (move down by Del)
-;   Len = Top - Src (length moved)
-;   Top -= Del      (update Top)
-;   COPY Len from Src -> Dst
-; COPY EmitOfs from EmitBuf -> InsPtr
+; <<<<<
+; insert line / replace line / delete line (NewLen=0)
+; <<<<<
+; NewLen += 4 if > 0               (add space for header)
+; fndln LineNo -> Ptr/XA           (find start of LineNo/NextLn [insert point])
+; save XA -> Src                   (code-above to move up/down)
+; if found (CS), OldLen = (Src),3 else 0
+; Src += OldLen                    (code-above src: end of LineNo or start of NextLn)
+; Dst = Src + (NewLen - OldLen)    (code-above dest: move code by delta)
+; Size = Top - Src                 (Size to move up/down)
+; if Dst + Size > MemSz -> ?MEM    (Out of memory)
+; Top = Dst + Size                 (update Top)
+; JSR mcpy                         (from Src to Dst of Size, no-op if Src=Dst)
+; if NewLen:
+; copy from EmitBuf,Y to (Ptr),Y   (copy in new line)
+; <<<<<
+; store LineNo and EmitOfs at LineBuf,1-3 (and write OP_LN at 0)
 
 
-; @@ insln
-; insert EmitBuf into the program at LineNo
-insln:              ; LineNo
-  JMP repl
-  ; NewLen = EmitOfs + 4 ; add line header
-  JSR fndln         ; [6] find matching line (Acc -> XA/Ptr, CS=found)
-  BCS @replace      ; [2] -> replace line at Ptr
-  ; insert line:
-  ; cpy(To=Ptr+Ins,From=Ptr,Len=Top-From) to make room
-  ; Top += Ins
-@copyin:
-  ; copy EmitBuf -> Ptr                                         XXX need ins line !!!
-  ; done
+insert  LDA EmitOfs       ; did we emit?  (9b)
+        BEQ insnn         ; -> empty line
+        CLC
+        ADC #4            ; 4-byte line header
+insnn   STA C             ; C = NewLen
+        JSR fndln         ; find start of LineNo/NextLn [insert point] (Acc -> XA/Ptr)  (115b!)
+        STA Src           ; Src = code-above to move up/down            (17b)
+        STX SrcH
+        ; if line found, get OldLen
+        LDA #0            ; OldLen = 0
+        LDY #3            ; 3rd byte
+        BCC insno         ; -> line not found
+        LDA (Src),Y       ; load length byte
+insno   STA B             ; B = OldLen
+        ; adjust Src: end of LineNo or start of NextLn                  (11b)
+        CLC
+        ADC Src           ; Src = Src + OldLen
+        STA Src
+        LDA #0
+        ADC SrcH
+        STA SrcH
+        ; calculate Dst = Src + (NewLen - OldLen)                       (26b)
+        SEC
+        LDA C             ; C = NewLen [0..4e]
+        SBC B             ; B = OldLen [0..4e]
+        STA D             ; D = Signed Delta low [-4e..4e]
+        LDA #0
+        SBC #1            ; subtract 1 unless CC -> CS=FF CC=0  (CS=neutral CC=borrow)
+        STA E             ; E = Signed Delta high
+        CLC
+        LDA Src           ; Dst = Src + Delta
+        ADC D             ; D = Delta low
+        STA Dst
+        LDA SrcH
+        ADC E             ; E = Delta high
+        STA DstH
+        ; calculate size to move: Size = Top - Src                      (13b)
+        SEC
+        LDA TopL
+        SBC Src
+        STA D             ; D = Size low
+        LDA TopH
+        SBC SrcH
+        STA E             ; E = Size high
+        ; check if Dst + Size > MemSz                                   (14b)
+        CLC
+        LDA Dst
+        ADC D             ; D = Size low
+        TAX
+        LDA DstH
+        ADC E             ; E = Size high
+        CMP MemSz
+        BCS emem          ; -> out of memory
+        ; update Top = Dst + Size
+        STA TopH
+        STX TopL
+        ; copy memory from Src to Dst of Size (no-op if Src=Dst)        (7b)
+        LDX E             ; E = Size high
+        LDY D             ; D = Size low
+        JSR mcpy          ; XY=size (uses A,X,Y,F,Src,Dst)
+        ; insert the new line, unless empty                             (16b)
+        LDY C             ; C = NewLen [0..4e]
+        BEQ insx          ; -> empty, done
+        DEY
+inscp   LDA EmitBuf,Y     ; copy from EmitBuf,Y to (Ptr),Y
+        STA (Ptr),Y       ; Ptr = insert point
+        DEY
+        BPL inscp         ; until Y<0
+insx    JMP repl          ; -> done
 
-@replace:
-  LDY #3            ; OP_LN, LnL, LnH, Len
-  LDA (Ptr),Y       ; get line length (including header)
-  STA B             ; save old line length
-
-  ; get new line length, add header
-  LDA EmitOfs       ; new line length
-  SEC
-  ADC #4            ; minus header
-  CMP B             ; is new > old?
-  BEQ @copyin       ; -> same length, copy it
-  BCS @longer       ; -> new is longer
-  ; shorter:
-  ; cpyb(Ptr+NewLen,Ptr+
-  @longer:
-
-  LDA Ptr
-  STA Src           ; Dst = Ptr
-  CLC
-  ADC B             ; add 
-  LDA PtrH
-  STA DstH
-; JSR mcpy          ; from (Src) to (Dst) with XY=size (uses A,X,Y,F,Src,Dst)
-
-
-delln   JMP repl
-
+emem    LDY #<msg_big-1   ;                                             (5b)
+        JMP erro
 
 
         ; OP_LIST         (80b)
-list    JSR expr          ; line number -> Acc
+list    JSR expr          ; line number -> Acc/XA
         JSR fndln         ; find matching line, or next (Acc -> XA/Ptr)
         ; line number
 lstln   LDY #2            ; Y=2
@@ -741,7 +762,7 @@ stmtj   LDA (CODE),Y      ; [5] read code
 let     JSR findv         ; find [@-Z] var -> ofs (A)
         BEQ leta          ; -> array
         PHA               ; push var ofs
-        JSR eqexp         ; `=` expr -> Acc
+        JSR eqexp         ; `=` expr -> Acc/XA
         PLA               ; pop var ofs
         JSR setv          ; assign Acc to var (ofs=A)
         JMP colon         ; -> colon
@@ -750,9 +771,8 @@ let     JSR findv         ; find [@-Z] var -> ofs (A)
         ; OP_IF
         ; evaluate condition, skip rest of line if false
         ; if true, check for implied GOTO (line number)
-ifs     JSR expr          ; condition -> Acc
-        LDA Acc0          ; test Acc
-        ORA Acc1          ;
+ifs     JSR expr          ; condition -> Acc/XA
+        ORA Acc1          ; test Acc
         BEQ skip          ; -> cond is false, skip rest of line
         ; cond is true
         LDA (CODE),Y      ; read code
@@ -766,51 +786,20 @@ ifs     JSR expr          ; condition -> Acc
 
 
         ; OP_GOTO
-goto    JSR expr          ; -> Acc
+goto    JSR expr          ; -> Acc/XA
 goln    JSR fndln         ; find line (Acc -> XA/Ptr, CS=found)
         BCC enum1         ; -> not found
         STX CODEH
         STA CODE
+        LDA IO_KEY        ; check ESCAPE
+        CMP #$9B          ; $80+ESC
+        BEQ eesc1
         LDY #4            ; skip (OP_LN,LnL,LnH,Len,><)
         BNE stmtj         ; expect stmt (Y=4)
 
 
-enum1   LDY #<msg_num-1
-        DB $2C            ; BIT abs
-esyn    LDY #<msg_syn-1
-        JMP erro
-
-
-        ; LET @(N) = Expr (52b)
-leta    LDA (CODE),Y
-        CMP #OP_LPAR      ; `(`
-        BNE esyn          ; -> syntax
-        JSR expr          ; -> Acc
-        ASL Acc0
-        ROL Acc1
-        BCS enum1         ; was negative
-        LDA Acc0
-        ADC TopL          ; TOP + (Index * 2)
-        STA Ptr
-        LDA Acc1
-        ADC TopH
-        STA PtrH
-        BCS enum1         ; overflow
-        CMP MemSz
-        BCS enum1         ; out of bounds
-        JSR eqexp         ; `=` expr -> Acc
-        STY F             ; save Y=code-ofs
-        LDY #0
-        LDA Acc0
-        STA (Ptr),Y       ; write Sum1 to array
-        INY
-        LDA Acc1
-        STA (Ptr),Y       ; write Sum0 to array
-        LDY F             ; restore Y=code-ofs
-        JMP colon
-
         ; OP_GOSUB
-gosub   JSR expr          ; -> Acc
+gosub   JSR expr          ; -> Acc/XA
         LDA CODE          ; 
         PHA               ; push CODE                        XXX stack full check !!!
         LDA CODEH         ; 
@@ -822,13 +811,49 @@ gosub   JSR expr          ; -> Acc
         BNE goln          ; -> ALWAYS
 
 
+eesc1   LDY #<msg_esc     ; "?ESC"
+        DB $2C            ; BIT abs
+enum1   LDY #<msg_num-1
+        DB $2C            ; BIT abs
+esyn    LDY #<msg_syn-1
+        JMP erro
+
+
+        ; LET @(N) = Expr (52b)
+leta    LDA (CODE),Y
+        CMP #OP_LPAR      ; `(`
+        BNE esyn          ; -> syntax
+        JSR expr          ; -> Acc/XA
+        ASL               ; Acc0
+        ROL Acc1
+        BCS enum1         ; was negative
+        ADC TopL          ; TOP + (Index * 2)
+        STA Ptr
+        TXA               ; Acc1
+        ADC TopH
+        STA PtrH
+        BCS enum1         ; overflow
+        CMP MemSz
+        BCS enum1         ; out of bounds
+        JSR eqexp         ; `=` expr -> Acc/XA
+        STY F             ; save Y=code-ofs
+        LDY #0
+        STA (Ptr),Y       ; write Acc0 to array
+        INY
+        TXA               ; Acc1
+        STA (Ptr),Y       ; write Acc1 to array
+        LDY F             ; restore Y=code-ofs
+        JMP colon
+
+
         ; OP_INPUT
+        ; disallowed in direct mode (overwrites EmitBuf)
 inpnx   INY               ; comma
 input   JSR findv         ; find [@-Z] var -> A=ofs
         BEQ esyn          ; -> `@` syntax
         STY D             ; save CODE ofs
         PHA               ; PUSH var index
-        ; print var/str
+        ; read number
 inprt   LDA #63           ; '?'
         JSR wrch          ; (uses A,X,F,Src,Dst) preserves Y
         JSR rdln          ; (uses A,X,Y,F,Src,Dst) -> Y=len
@@ -842,15 +867,14 @@ inprt   LDA #63           ; '?'
         LDY D             ; restore CODE ofs
         LDA (CODE),Y      ; read code
         CMP #$2C          ; comma
-        BEQ inpnx         ; -> again                    XXX string prompt; suppress '?' with semi
+        BEQ inpnx         ; -> again
         JMP colon         ; -> colon
 
 
         ; OP_POKE
-poke    JSR exp2          ; -> Ptr, Acc
-        LDA Acc0
+poke    JSR exp2          ; -> Ptr, Acc/XA
         LDX #0
-        STA (Ptr,X)       ; write to memory at Ptr
+        STA (Ptr,X)       ; write Acc0 at Ptr
         JMP colon         ; -> colon
 
 
@@ -861,23 +885,21 @@ clss    STY E             ; save CODE offset
         JMP colon         ; -> colon
 
 
-        ; OP_FOR          (75b)
+        ; OP_FOR          (78b)
         ; TAG_FOR Vofs StL StH ToH ToL CoH CoL CoY (9 bytes)
 for     JSR findv         ; find var -> A=ofs
         BEQ esyn1         ; -> `@` syntax
         STA E             ; save var ofs
-        JSR eqexp         ; `=` expr -> Acc
+        JSR eqexp         ; `=` expr -> Acc/XA
         LDA E             ; get var ofs
         JSR setv          ; assign Acc to var (ofs=A)
         ; expect "TO"
         LDA (CODE),Y
         CMP #OP_TO        ; "TO"
         BNE esyn1         ; -> syntax error
-        JSR expr          ; "TO" expression -> Acc
-        LDA Acc0          ; Acc -> Ptr
-        STA Ptr
-        LDA Acc1
-        STA PtrH
+        JSR expr          ; "TO" expression -> Acc/XA
+        STA Ptr           ; Acc -> Ptr
+        STX PtrH
         ; optional "STEP"
         LDX #1            ; set STEP = 1
         STX Acc0          ; low byte
@@ -887,7 +909,7 @@ for     JSR findv         ; find var -> A=ofs
         CMP #OP_STEP      ; "STEP"
         BNE forco         ; -> no, continue
         INY               ; OP_STEP
-        JSR expr          ; "STEP" expression -> Acc
+        JSR expr          ; "STEP" expression -> Acc/XA
 forco   TYA               ; push Offset                          XXX stack full check !!!
         PHA
         LDA CODEH         ; push CODEH
@@ -950,7 +972,7 @@ prins   LDA (CODE),Y      ; [5] read code
         CMP #OP_STMT      ; [2] next stmt/line? ($C0)          ASSUMES: OP_STMT > OP_EXPRs
         BCS prend         ; [2] -> end print [+1]
         ; print expr
-prexp   JSR expr          ; evaluate expression -> Acc
+prexp   JSR expr          ; evaluate expression -> Acc/XA
         JSR wrnum         ; print Acc (uses A,X,B,C,F,Src,Dst) -> EQ
         BEQ print         ; -> always
         ; symbol or alpha
@@ -971,14 +993,14 @@ prend   CMP #OP_I0        ; number? ($F0)
         JSR wrnl          ; crlf (uses A,X,F,Src,Dst) preserves Y
 prret   JMP colon         ; -> colon
 prcml   JSR wrsp          ; write space (uses A,X,F,Src,Dst) preserves Y
-prcom   LDA RemX          ; remaining space                            ; XXX field-width control?
+prcom   LDA RemX          ; remaining space
         AND #7            ; 8 spaces
         BNE prcml         ; -> more spaces
 prsem   LDX #1            ; Sep=1
         BNE prins         ; -> always
 
 
-        ; OP_NEXT (pop frame) (20b)
+        ; OP_NEXT total   (85b)
 nxtno   CMP #TAG_GOSUB
         BNE efor          ; -> "?FOR"
         LDA #3            ; TAG_GOSUB frame (minus TAG)
@@ -993,7 +1015,7 @@ nxtsk   LDA #7            ; TAG_FOR frame (minus TAG and VAR)
         TXS
         BNE nxtfr         ; -> always
 
-        ; OP_NEXT         (65b)
+        ; OP_NEXT
         ; Stack: TAG_FOR Vofs StL StH ToH ToL CoH CoL CoY (9 bytes)
 next    JSR findv         ; find var -> A=ofs
         STA B             ; save var ofs (`@` won't match)
@@ -1165,11 +1187,9 @@ eqexp   LDA (CODE),Y
         BNE expr          ; always (Y>0)
 
         ; expr `,` expr
-exp2    JSR expr
-        LDA Acc0
-        STA Ptr
-        LDA Acc1
-        STA PtrH
+exp2    JSR expr          ; -> Acc/XA
+        STA Ptr           ; Acc -> Ptr
+        STX PtrH
         LDA (CODE),Y      ; [5] next byte
         CMP #44           ; [2] is comma?
         BNE xsyn1         ; [2] -> syntax error
@@ -1192,7 +1212,7 @@ exprc   LDA (CODE),Y      ; [5]
 
         ; push operator
 xpshy   INY               ; [2] advance
-        LDX OpTop         ; [3] stack ptr                      XXX use full asc (moves DEX->INX)
+        LDX OpTop         ; [3] stack ptr
         CPX #OprsE        ; [2] end of stack
         BCS xbig          ; [2] -> "?BIG"
         STA Oprs,X        ; [4] push operator index [zp,X]
@@ -1250,7 +1270,10 @@ xinfp   LDA D             ; [3] is prec = 0? (end of expr)
         TSX
         CPX SChk
         BNE xbig
-xret    RTS
+        ; Acc -> XA for callers
+xret    LDX Acc1
+        LDA Acc0
+        RTS
 
 xsyn    JMP esyn          ; -> syntax error
         DB $2C            ; BIT abs
@@ -1555,8 +1578,8 @@ xrnd    PLA               ; [4] low byte
 ; ALIGN 256
 ProgPg = $   ; start of program memory
 
-; ORG BasROM+$7FF
-;   DB 0
+ORG BasROM+$FFF
+DB 0
 
 ; ins/del line
 ; "at line NNN"
@@ -1572,4 +1595,6 @@ ProgPg = $   ; start of program memory
 ; 842 (moved RND)
 ; 83D (CALL -> USR)
 ; 845 (stack check: TSX;STX SChk;TSX;CPX SChk;BNE xbig) +8 bytes
-; 864 (?SYN AT 10) +31 bytes!
+; 862 (?SYN AT 10) +29 bytes
+; 853 (Acc/XA)
+; 8AF (insert line)
